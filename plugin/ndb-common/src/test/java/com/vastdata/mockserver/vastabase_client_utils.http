@@ -1,0 +1,20 @@
+# IntelliJ HTTP Client requests
+
+# EXAMPLES:
+
+# Create bucket:
+#POST http://localhost:9092/bucketname
+#Accept: application/json
+
+###
+# Create schema:
+#POST http://localhost:9092/bucketname/schemaname
+#
+
+###
+# List schemas:
+#GET http://localhost:9092/bucketname
+#Accept: application/xml
+
+
+

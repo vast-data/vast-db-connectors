@@ -1,0 +1,6 @@
+plugin/trino-vast/target/
+build.sh
+run.sh
+*.gz
+out/
+.m2/
