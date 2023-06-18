@@ -11,16 +11,14 @@ import io.trino.spi.block.Block;
 import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.expression.Constant;
 import io.trino.spi.expression.Variable;
-import io.trino.spi.type.BooleanType;
 import io.trino.spi.type.Type;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.Objects;
 
 import static io.trino.spi.predicate.Utils.nativeValueToBlock;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
-import static io.trino.spi.type.TypeUtils.readNativeValue;
-import static java.lang.String.format;
 
 public class VastExpression
 {
@@ -110,5 +108,24 @@ public class VastExpression
     public String toString()
     {
         return symbol;
+    }
+
+    @Override
+    public boolean equals(Object o)
+    {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        VastExpression that = (VastExpression) o;
+        return Objects.equals(symbol, that.symbol);
+    }
+
+    @Override
+    public int hashCode()
+    {
+        return Objects.hash(symbol);
     }
 }

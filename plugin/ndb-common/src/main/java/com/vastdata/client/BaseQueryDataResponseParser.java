@@ -7,6 +7,7 @@ package com.vastdata.client;
 import com.google.common.collect.ImmutableList;
 import com.vastdata.client.error.VastIOException;
 import com.vastdata.client.tx.VastTraceToken;
+import com.vastdata.client.util.TypeUtils;
 import io.airlift.log.Logger;
 import org.apache.arrow.flatbuf.Message;
 import org.apache.arrow.flatbuf.MessageHeader;

@@ -67,6 +67,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.net.ConnectException;
+import java.net.NoRouteToHostException;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -448,7 +449,7 @@ public class VastClient
                 .build();
         try {
             String statsStr = s3.getObjectAsString(bucketName, keyName);
-            LOG.info("Downloading object %s from Vast succeeded", keyName);
+            LOG.info("Downloading object %s from Vast succeeded: %s", keyName, statsStr);
             return Optional.of(statsStr);
 
         } catch (AmazonS3Exception e) {
@@ -898,7 +899,7 @@ public class VastClient
         Request req = new VastRequestBuilder(config, DELETE, BASE, Requests.ROLLBACK_TRANSACTION.getRequestParam())
                 .addHeaders(headers)
                 .build();
-        return retryConnectionErrors(() -> httpClient.execute(req, VastResponseHandler.createVastResponseHandler()));
+        return retryIOErrorsAndTimeouts(() -> httpClient.execute(req, VastResponseHandler.createVastResponseHandler()));
     }
 
     public VastResponse commitTransaction(VastTransaction transaction)
@@ -968,7 +969,7 @@ public class VastClient
 
     private static void ignoreConnectionError(RuntimeException e)
     {
-        if (e instanceof UncheckedIOException && e.getCause() instanceof ConnectException) {
+        if (e instanceof UncheckedIOException && (e.getCause() instanceof ConnectException || e.getCause() instanceof NoRouteToHostException)) {
             // May happen during HA
             LOG.warn(e, "retrying due to connection failure");
             return;

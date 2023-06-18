@@ -267,7 +267,7 @@ public class VastSessionProperties
         return session.getProperty(COMPLEX_PREDICATE_PUSHDOWN, Boolean.class);
     }
 
-    public static boolean getExprsesionProjectionPushdown(ConnectorSession session)
+    public static boolean getExpressionProjectionPushdown(ConnectorSession session)
     {
         return session.getProperty(EXPRESSION_PROJECTION_PUSHDOWN, Boolean.class);
     }

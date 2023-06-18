@@ -20,7 +20,7 @@ public class SimpleVastTransaction
     private final boolean readOnly;
     private final boolean autocommit;
 
-    private final AtomicInteger operationCount = new AtomicInteger(0);
+    private static final AtomicInteger operationCount = new AtomicInteger(0);
 
     public SimpleVastTransaction(long id, boolean readOnly, boolean autocommit)
     {

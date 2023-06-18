@@ -82,6 +82,7 @@ public class VastPageSourceProvider
                 .simplify(getDynamicFilterCompactionThreshold(session));
         TupleDomain<VastColumnHandle> predicate = enforcedPredicate.intersect(dynamicPredicate);
         if (predicate.isNone()) {
+            LOG.debug("QueryData(%s) returning EmptyPageSource", traceStr);
             return new EmptyPageSource();
         }
 
@@ -102,7 +103,7 @@ public class VastPageSourceProvider
         EnumeratedSchema enumeratedSchema = new EnumeratedSchema(schemaFields);
 
         TrinoPredicateSerializer predicateSerializer = new TrinoPredicateSerializer(predicate, substringMatches, enumeratedSchema);
-        TrinoProjectionSerializer projectionSerializer = new TrinoProjectionSerializer(session, projectedColumns, enumeratedSchema);
+        TrinoProjectionSerializer projectionSerializer = new TrinoProjectionSerializer(projectedColumns, enumeratedSchema);
         List<Integer> projections = projectionSerializer.getProjectionIndices();
         LinkedHashMap<Field, LinkedHashMap<List<Integer>, Integer>> baseFieldWithProjections = projectionSerializer.getBaseFieldWithProjections();
         LOG.info("QueryData(%s) schema: %s, projections: %s, projectedColumns=%s, filteredColumns=%s", traceToken, enumeratedSchema, projections, projectedColumns, filteredColumns);

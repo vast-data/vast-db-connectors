@@ -5,6 +5,7 @@
 package com.vastdata.trino;
 
 import com.vastdata.client.VastClient;
+import com.vastdata.client.VastVersion;
 import com.vastdata.client.schema.StartTransactionContext;
 import com.vastdata.trino.statistics.VastStatisticsManager;
 import com.vastdata.trino.tx.VastTransactionHandle;
@@ -59,6 +60,7 @@ public class VastConnector
             Set<SessionPropertiesProvider> sessionProperties,
             Set<Procedure> procedures)
     {
+        LOG.info("Creating VAST connector: system=%s, hash=%s", VastVersion.SYS_VERSION, VastVersion.HASH);
         this.lifeCycleManager = requireNonNull(lifeCycleManager, "lifeCycleManager is null");
         this.client = requireNonNull(client, "vast client is null");
         this.transManager = requireNonNull(transManager, "vast transaction factory is null");
@@ -96,6 +98,7 @@ public class VastConnector
     @Override
     public ConnectorMetadata getMetadata(ConnectorSession session, ConnectorTransactionHandle transactionHandle)
     {
+        LOG.info("Creating VAST metadata: system=%s, hash=%s, tx=%s", VastVersion.SYS_VERSION, VastVersion.HASH, transactionHandle);
         VastTransactionHandle vastTransHandle = (VastTransactionHandle) transactionHandle;
         if (!this.transManager.isOpen(vastTransHandle)) {
             throw closedTransaction(vastTransHandle);

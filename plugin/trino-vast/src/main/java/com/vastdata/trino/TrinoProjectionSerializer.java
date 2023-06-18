@@ -24,6 +24,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static io.trino.spi.type.TypeUtils.readNativeValue;
+import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
 public class TrinoProjectionSerializer
@@ -45,13 +46,12 @@ public class TrinoProjectionSerializer
     }
 
     private final List<ColumnEntry> entries;
-    private final ConnectorSession session;
 
-    public TrinoProjectionSerializer(ConnectorSession session, List<VastColumnHandle> projectedColumns, EnumeratedSchema enumeratedSchema)
+    public TrinoProjectionSerializer(List<VastColumnHandle> projectedColumns, EnumeratedSchema enumeratedSchema)
     {
         ImmutableList.Builder<ColumnEntry> builder = ImmutableList.builder();
         for (VastColumnHandle column : projectedColumns) {
-            List<Integer> projections = collectProjectionIndices(column, enumeratedSchema);
+            List<Integer> projections = collectProjectionIndices(column, enumeratedSchema, false);
             Field response = column.getBaseField();
             VastExpression expression = column.getExpression();
             // modify response schema in case of a projection pushdown
@@ -61,13 +61,14 @@ public class TrinoProjectionSerializer
             builder.add(new ColumnEntry(column, projections, response));
         }
         this.entries = builder.build();
-        this.session = session;
     }
 
     public List<Integer> getProjectionIndices()
     {
+        EnumeratedSchema responseSchema = new EnumeratedSchema(getResponseSchema().getFields());
         Set<Integer> result = new LinkedHashSet<>();
-        entries.forEach(e -> result.addAll(e.projections));
+        entries.forEach(e -> result.addAll(collectProjectionIndices(e.column, responseSchema, true)));
+        LOG.debug("projection indices: %s", result);
         return List.copyOf(result);
     }
 
@@ -112,11 +113,12 @@ public class TrinoProjectionSerializer
         return Project.createExpressionsVector(builder, Ints.toArray(expressionsBuilder.build()));
     }
 
-    private static List<Integer> collectProjectionIndices(VastColumnHandle column, EnumeratedSchema enumeratedSchema)
+    private static List<Integer> collectProjectionIndices(VastColumnHandle column, EnumeratedSchema enumeratedSchema, boolean supportExpressionProjection)
     {
+        LOG.debug("collecting indices for %s", column);
         Set<Integer> orderedProjectionsSet = new LinkedHashSet<>();
         enumeratedSchema.collectProjectionIndices(
-                column.getBaseField().getName(),
+                (supportExpressionProjection && nonNull(column.getExpression())) ? column.getExpression().getSymbol() : column.getBaseField().getName(),
                 column.getProjectionPath(),
                 orderedProjectionsSet::add);
         return List.copyOf(orderedProjectionsSet);

@@ -28,11 +28,16 @@ import io.trino.spi.statistics.TableStatistics;
 import javax.inject.Inject;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.IntSupplier;
+import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static com.vastdata.client.util.NumOfSplitsEstimator.estimateNumberOfSplits;
 import static com.vastdata.trino.VastSessionProperties.getDataEndpoints;
 import static com.vastdata.trino.VastSessionProperties.getDynamicFilteringWaitTimeout;
 import static com.vastdata.trino.VastSessionProperties.getNumOfSplits;
@@ -127,19 +132,11 @@ public class VastSplitManager
 
     private static int estimateNumOfSplits(ConnectorSession session, Estimate rowsEstimate)
     {
-        int maxNumOfSplits = getNumOfSplits(session);
-        long rowsPerSplit = getQueryDataRowsPerSplit(session);
-        LOG.debug("estimateNumOfSplits: maxNumOfSplits=%d, rowsPerSplit=%d", maxNumOfSplits, rowsPerSplit);
-        if (rowsPerSplit < 1) {
-            return maxNumOfSplits;
-        }
-        else if (rowsEstimate.isUnknown()) {
-            return maxNumOfSplits;
-        }
-        else {
-            double rows = rowsEstimate.getValue();
-            double numOfSplits = Math.max(1, Math.ceil(rows / rowsPerSplit));
-            return (numOfSplits < maxNumOfSplits) ? (int) numOfSplits : maxNumOfSplits;
-        }
+        IntSupplier maxSplitsSupplier = () -> getNumOfSplits(session);
+        LongSupplier rowPerSplitSupplier = () -> getQueryDataRowsPerSplit(session);
+        Supplier<Optional<Double>> rowsEstimateSupplier = () -> rowsEstimate.isUnknown() ? Optional.empty() : Optional.of(rowsEstimate.getValue());
+        return estimateNumberOfSplits(maxSplitsSupplier, rowPerSplitSupplier, rowsEstimateSupplier);
     }
+
+
 }

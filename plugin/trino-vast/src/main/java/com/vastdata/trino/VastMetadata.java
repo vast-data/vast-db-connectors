@@ -61,7 +61,6 @@ import io.trino.spi.statistics.ComputedStatistics;
 import io.trino.spi.statistics.TableStatistics;
 import io.trino.spi.statistics.TableStatisticsMetadata;
 import io.trino.spi.type.Type;
-import io.trino.sql.planner.Symbol;
 import org.apache.arrow.vector.types.pojo.Field;
 
 import java.util.ArrayList;
@@ -73,6 +72,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiPredicate;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -85,7 +85,7 @@ import static com.vastdata.client.importdata.VastImportDataMetadataUtils.getTabl
 import static com.vastdata.client.importdata.VastImportDataMetadataUtils.isImportDataTableName;
 import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_FIELD;
 import static com.vastdata.trino.VastSessionProperties.getComplexPredicatePushdown;
-import static com.vastdata.trino.VastSessionProperties.getExprsesionProjectionPushdown;
+import static com.vastdata.trino.VastSessionProperties.getExpressionProjectionPushdown;
 import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static io.trino.spi.StandardErrorCode.GENERIC_USER_ERROR;
 import static io.trino.spi.StandardErrorCode.TABLE_NOT_FOUND;
@@ -665,7 +665,7 @@ public class VastMetadata
         VastProjectionPushdown pushdown = new VastProjectionPushdown(session);
 
         for (ConnectorExpression projection : projections) {
-            Optional<VastProjectionPushdown.Result> expressionPushdownResult = getExprsesionProjectionPushdown(session) ? pushdown.apply(projection) : Optional.empty();
+            Optional<VastProjectionPushdown.Result> expressionPushdownResult = getExpressionProjectionPushdown(session) ? pushdown.apply(projection) : Optional.empty();
             if (expressionPushdownResult.isPresent()) {
                 VastProjectionPushdown.Result result = expressionPushdownResult.get();
                 LOG.debug("applyProjection: result=%s", result);
@@ -700,11 +700,12 @@ public class VastMetadata
                 String newName = projectionPath.isEmpty() ? variable.getName() : format("%s#%s", variable.getName(), projectionPath);
                 Variable newVariable = new Variable(newName, projectionType);
                 projectionsBuilder.add(newVariable);
-
-                VastColumnHandle newColumn = column.withProjectionPath(projectionPath); // create a new "synthetic" column handle to represent the projection
-                Assignment newAssignment = new Assignment(newName, newColumn, projectionType);
-                assignmentBuilder.add(newAssignment);
-                LOG.debug("applyProjection: new variable=%s, assignment=%s", newVariable, newAssignment);
+                if (newVariables.add(newName)) {
+                    VastColumnHandle newColumn = column.withProjectionPath(projectionPath); // create a new "synthetic" column handle to represent the projection
+                    Assignment newAssignment = new Assignment(newName, newColumn, projectionType);
+                    assignmentBuilder.add(newAssignment);
+                    LOG.debug("applyProjection: new variable=%s, assignment=%s", newVariable, newAssignment);
+                }
                 continue;
             }
             if (projection instanceof Constant) {
@@ -714,6 +715,18 @@ public class VastMetadata
                 // planner fails (due to https://github.com/trinodb/trino/blob/8b0c754d9d2e6c4e5ea4eed0c8c8cefb9146fcc0/core/trino-spi/src/main/java/io/trino/spi/connector/ConnectorMetadata.java#L1007-L1008).
                 LOG.debug("keeping literal projection: %s", projection);
                 projectionsBuilder.add(projection);
+                continue;
+            }
+            if (projection instanceof Call) {
+                LOG.debug("keeping function projection: %s", projection);
+                projectionsBuilder.add(projection);
+
+                forVariableChildren(projection, variable -> {
+                    if (newVariables.add(variable.getName())) {
+                        ColumnHandle column = requireNonNull(assignments.get(variable.getName()), () -> format("Missing %s in %s", variable, assignments));
+                        assignmentBuilder.add(new Assignment(variable.getName(), column, variable.getType()));
+                    }
+                });
                 continue;
             }
             LOG.warn("cannot pushdown unsupported projection: %s", projection);
@@ -727,6 +740,15 @@ public class VastMetadata
         }
         LOG.debug("applyProjection: newProjections=%s, newAssignments=%s", newProjections, newAssignments);
         return Optional.of(new ProjectionApplicationResult<>(handle, newProjections, newAssignments, true));
+    }
+
+    private void forVariableChildren(ConnectorExpression expression, Consumer<Variable> consumer)
+    {
+        if (expression instanceof Variable) {
+            consumer.accept((Variable) expression);
+            return;
+        }
+        expression.getChildren().forEach(child -> forVariableChildren(child, consumer));
     }
 
     @Override

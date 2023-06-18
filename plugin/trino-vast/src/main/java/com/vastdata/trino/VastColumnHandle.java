@@ -166,7 +166,7 @@ public final class VastColumnHandle
     @Override
     public int hashCode()
     {
-        return Objects.hash(getBaseField(), getProjectionPath());
+        return Objects.hash(getBaseField(), getProjectionPath(), getExpression());
     }
 
     @Override
@@ -180,7 +180,9 @@ public final class VastColumnHandle
         }
 
         VastColumnHandle other = (VastColumnHandle) obj;
-        return getBaseField().equals(other.getBaseField()) && getProjectionPath().equals(other.getProjectionPath());
+        return getBaseField().equals(other.getBaseField())
+                && getProjectionPath().equals(other.getProjectionPath())
+                && Objects.equals(getExpression(), other.getExpression());
     }
 
     @Override
