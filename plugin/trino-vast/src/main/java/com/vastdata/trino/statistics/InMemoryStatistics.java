@@ -4,7 +4,7 @@
 
 package com.vastdata.trino.statistics;
 
-import com.vastdata.client.VastStatisticsStorage;
+import com.vastdata.client.stats.VastStatisticsStorage;
 import io.trino.spi.statistics.TableStatistics;
 
 import java.util.Optional;

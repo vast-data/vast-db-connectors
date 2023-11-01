@@ -6,11 +6,10 @@ package com.vastdata.trino;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.vastdata.trino.predicate.ComplexPredicate;
 import io.trino.spi.connector.ConnectorTableHandle;
 import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.predicate.TupleDomain;
-
-import javax.ws.rs.HEAD;
 
 import java.util.List;
 import java.util.Objects;
@@ -26,73 +25,76 @@ public final class VastTableHandle
     private final boolean forImportData;
     private final String schemaName;
     private final String tableName;
-    private final boolean updatable; // set if VastUpdatablePageSource should be created (see https://trino.io/docs/current/develop/delete-and-update.html)
     private List<VastColumnHandle> tableColumns;
-    private final List<VastColumnHandle> updatedColumns; // set by `VastMetadata#beginUpdate`
+    private final List<VastColumnHandle> mergedColumns; // set by `VastMetadata#beginMerge`
     private final Optional<Long> limit;
     private final TupleDomain<VastColumnHandle> predicate; // enforced by connector
+    private final ComplexPredicate complexPredicate;
     private final Optional<String> bigCatalogSearchPath;
     private final List<VastSubstringMatch> substringMatches; // enforced (i.e. Trino applies post-filtering)
+    private final String handleID;
 
     @JsonCreator
     public VastTableHandle(
             @JsonProperty("schemaName") String schemaName,
             @JsonProperty("tableName") String tableName,
-            @JsonProperty("updatable") boolean updatable,
-            @JsonProperty("updatedColumns") List<VastColumnHandle> updatedColumns,
+            @JsonProperty("mergedColumns") List<VastColumnHandle> mergedColumns,
             @JsonProperty("predicate") TupleDomain<VastColumnHandle> predicate,
+            @JsonProperty("complexPredicate") ComplexPredicate complexPredicate,
             @JsonProperty("bigCatalogSearchPath") Optional<String> bigCatalogSearchPath,
             @JsonProperty("substringMatches") List<VastSubstringMatch> substringMatches,
             @JsonProperty("limit") Optional<Long> limit,
-            @JsonProperty("forImportData") boolean forImportData)
+            @JsonProperty("forImportData") boolean forImportData,
+            @JsonProperty("handleID") String handleID)
     {
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
         this.tableName = requireNonNull(tableName, "tableName is null");
-        this.updatable = updatable;
-        this.updatedColumns = requireNonNull(updatedColumns, "updatedColumns is null");
+        this.mergedColumns = requireNonNull(mergedColumns, "mergedColumns is null");
         this.predicate = requireNonNull(predicate, "predicate is null");
+        this.complexPredicate = complexPredicate;
         this.bigCatalogSearchPath = requireNonNull(bigCatalogSearchPath, "bigCatalogSearchPath is null");
         this.substringMatches = requireNonNull(substringMatches, "substringMatches is null");
         this.limit = requireNonNull(limit, "limit is null");
         this.forImportData = forImportData;
+        this.handleID = requireNonNull(handleID, "handleID is null");
     }
 
-    public VastTableHandle(String schemaName, String tableName, boolean forImportData)
+    public VastTableHandle(String schemaName, String tableName, String handleID, boolean forImportData)
     {
-        this(schemaName, tableName, false, List.of(), TupleDomain.all(), Optional.empty(), List.of(), Optional.empty(), forImportData);
+        this(schemaName, tableName, List.of(), TupleDomain.all(), null, Optional.empty(), List.of(), Optional.empty(), forImportData, handleID);
     }
 
     public VastTableHandle forDelete()
     {
-        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, true, List.of(), predicate, bigCatalogSearchPath, substringMatches, limit, false);
+        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, List.of(), predicate, complexPredicate, bigCatalogSearchPath, substringMatches, limit, false, handleID);
         newHandle.setColumnHandlesCache(this.tableColumns);
         return newHandle;
     }
 
-    public VastTableHandle forUpdate(List<VastColumnHandle> updatedColumns)
+    public VastTableHandle forMerge(List<VastColumnHandle> mergeableColumns)
     {
-        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, true, updatedColumns, predicate, bigCatalogSearchPath, substringMatches, limit, false);
+        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, mergeableColumns, predicate, complexPredicate, bigCatalogSearchPath, substringMatches, limit, false, handleID);
         newHandle.setColumnHandlesCache(this.tableColumns);
         return newHandle;
     }
 
-    public VastTableHandle withPredicate(TupleDomain<VastColumnHandle> predicate, List<VastSubstringMatch> substringMatches)
+    public VastTableHandle withPredicate(TupleDomain<VastColumnHandle> predicate, Optional<ComplexPredicate> complexPredicate, List<VastSubstringMatch> substringMatches)
     {
-        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, updatable, updatedColumns, predicate, bigCatalogSearchPath, substringMatches, limit, false);
+        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, mergedColumns, predicate, complexPredicate.orElse(null), bigCatalogSearchPath, substringMatches, limit, false, handleID);
         newHandle.setColumnHandlesCache(this.tableColumns);
         return newHandle;
     }
 
     public VastTableHandle withBigCatalogSearchPath(String bigCatalogSearchPath)
     {
-        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, updatable, updatedColumns, predicate, Optional.of(bigCatalogSearchPath), substringMatches, limit, false);
+        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, mergedColumns, predicate, complexPredicate, Optional.of(bigCatalogSearchPath), substringMatches, limit, false, handleID);
         newHandle.setColumnHandlesCache(this.tableColumns);
         return newHandle;
     }
 
     public VastTableHandle withLimit(long limit)
     {
-        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, updatable, updatedColumns, predicate, bigCatalogSearchPath, substringMatches, Optional.of(limit), false);
+        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, mergedColumns, predicate, complexPredicate, bigCatalogSearchPath, substringMatches, Optional.of(limit), false, handleID);
         newHandle.setColumnHandlesCache(this.tableColumns);
         return newHandle;
     }
@@ -110,21 +112,21 @@ public final class VastTableHandle
     }
 
     @JsonProperty
-    public boolean getUpdatable()
+    public List<VastColumnHandle> getMergedColumns()
     {
-        return updatable;
-    }
-
-    @JsonProperty
-    public List<VastColumnHandle> getUpdatedColumns()
-    {
-        return updatedColumns;
+        return mergedColumns;
     }
 
     @JsonProperty
     public TupleDomain<VastColumnHandle> getPredicate()
     {
         return predicate;
+    }
+
+    @JsonProperty
+    public ComplexPredicate getComplexPredicate()
+    {
+        return complexPredicate;
     }
 
     @JsonProperty
@@ -159,7 +161,7 @@ public final class VastTableHandle
     @Override
     public int hashCode()
     {
-        return Objects.hash(schemaName, tableName, updatable, predicate, limit, forImportData);
+        return Objects.hash(schemaName, tableName, predicate, complexPredicate, substringMatches, limit, forImportData);
     }
 
     @Override
@@ -175,8 +177,9 @@ public final class VastTableHandle
         VastTableHandle other = (VastTableHandle) obj;
         return Objects.equals(this.schemaName, other.schemaName) &&
                 Objects.equals(this.tableName, other.tableName) &&
-                Objects.equals(this.updatable, other.updatable) &&
                 Objects.equals(this.predicate, other.predicate) &&
+                Objects.equals(this.complexPredicate, other.complexPredicate) &&
+                Objects.equals(this.substringMatches, other.substringMatches) &&
                 Objects.equals(this.limit, other.limit) &&
                 Objects.equals(this.forImportData, other.forImportData);
     }
@@ -184,12 +187,7 @@ public final class VastTableHandle
     @Override
     public String toString()
     {
-        return format("%s:%s%s@%s%s", schemaName, tableName, getState(), predicate, limit.map(value -> format(",limit=%d", value)).orElse(""));
-    }
-
-    private String getState()
-    {
-        return updatable ? "(update)" : (forImportData ? "(forImportData)" : "");
+        return format("%s:%s@%s%s", schemaName, tableName, predicate, limit.map(value -> format(",limit=%d", value)).orElse(""));
     }
 
     public void clearColumnHandlesCache()
@@ -210,5 +208,11 @@ public final class VastTableHandle
     public String getPath()
     {
         return getTablePath(this.getSchemaName(), this.getTableName());
+    }
+
+    @JsonProperty
+    public String getHandleID()
+    {
+        return this.handleID;
     }
 }

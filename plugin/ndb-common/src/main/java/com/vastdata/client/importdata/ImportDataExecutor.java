@@ -82,7 +82,7 @@ public class ImportDataExecutor<T extends VastTransaction>
         final String tableName = of.getTableName();
         if (!hasSchema(ctx)) {
             VerifyParam.verify(client.listBuckets(false).contains(bucket), format("ImportData(%s): Bucket %s doesn't exist", traceToken, bucket));
-            VerifyParam.verify(client.listAllSchemas(vastTransaction, 1000).anyMatch(schemaName::equals), format("ImportData(%s): Schema name %s doesn't exist", traceToken, schemaName));
+            VerifyParam.verify(client.schemaExists(vastTransaction, schemaName), format("ImportData(%s): Schema name %s doesn't exist", traceToken, schemaName));
             VerifyParam.verify(client.listTables(vastTransaction, schemaName, 1000).anyMatch(tableName::equals), format("ImportData(%s): Table %s doesn't exist", traceToken, tableName));
             final List<Field> fields = client.listColumns(vastTransaction, schemaName, VastImportDataMetadataUtils.getTableNameForAPI(tableName), 1000);
             final Map<String, Field> fieldsMap = fields.stream().collect(Collectors.toMap(Field::getName, Function.identity()));

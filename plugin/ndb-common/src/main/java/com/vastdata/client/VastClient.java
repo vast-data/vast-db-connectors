@@ -4,6 +4,7 @@
 
 package com.vastdata.client;
 
+import com.amazonaws.SdkClientException;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
@@ -12,6 +13,7 @@ import com.amazonaws.http.HttpMethodName;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
+import com.amazonaws.services.s3.model.PutObjectResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
@@ -20,6 +22,8 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Multimap;
 import com.google.flatbuffers.FlatBufferBuilder;
+import com.google.inject.Inject;
+import com.google.inject.Provider;
 import com.vastdata.client.error.VastConflictException;
 import com.vastdata.client.error.VastException;
 import com.vastdata.client.error.VastExceptionFactory;
@@ -38,6 +42,7 @@ import com.vastdata.client.schema.ImportDataContext;
 import com.vastdata.client.schema.StartTransactionContext;
 import com.vastdata.client.schema.TableColumnLifecycleContext;
 import com.vastdata.client.schema.VastPayloadSerializer;
+import com.vastdata.client.stats.VastStatistics;
 import com.vastdata.client.tx.VastTraceToken;
 import com.vastdata.client.tx.VastTransaction;
 import io.airlift.http.client.HeaderName;
@@ -59,9 +64,6 @@ import vast_flatbuf.tabular.ListSchemasResponse;
 import vast_flatbuf.tabular.ListTablesResponse;
 import vast_flatbuf.tabular.ObjectDetails;
 
-import javax.inject.Inject;
-import javax.inject.Provider;
-
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -69,6 +71,7 @@ import java.io.UncheckedIOException;
 import java.net.ConnectException;
 import java.net.NoRouteToHostException;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -107,10 +110,11 @@ public class VastClient
     private static final Logger LOG = Logger.get(VastClient.class);
     private static final String BASE = "/";
 
-    @VisibleForTesting
-    protected static final String BIG_CATALOG_BUCKET = "vast-big-catalog-bucket"; // special bucket name for BigCatalog support
+    public static final String AUDIT_LOG_BUCKET_NAME = "vast-audit-log-bucket"; // special bucket name for audit log support
+    public static final String BIG_CATALOG_BUCKET_NAME = "vast-big-catalog-bucket"; // special bucket name for BigCatalog support
 
     private static final RootAllocator allocator = new RootAllocator();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private final ArrowSchemaUtils arrowSchemaUtils = new ArrowSchemaUtils();
     private final VastConfig config;
     @VisibleForTesting
@@ -208,9 +212,10 @@ public class VastClient
         VastResponse response = retryIOErrorsAndTimeouts(() -> httpClient.execute(request, VastResponseHandler.createVastResponseHandlerForListBuckets()));
         try {
             ImmutableList.Builder<String> result = ImmutableList.builder();
-            result.add(new ObjectMapper().readValue(response.getBytes(), String[].class));
+            result.add(OBJECT_MAPPER.readValue(response.getBytes(), String[].class));
             if (includeHidden) {
-                result.add(BIG_CATALOG_BUCKET);
+                result.add(AUDIT_LOG_BUCKET_NAME);
+                result.add(BIG_CATALOG_BUCKET_NAME);
             }
             return result.build();
         }
@@ -403,52 +408,41 @@ public class VastClient
         return results.stream();
     }
 
-    public String getVastTableHandleId(VastTransaction transaction, String schemaName, String tableName)
+    public Optional<String> getVastTableHandleId(VastTransaction transaction, String schemaName, String tableName)
             throws VastServerException, VastUserException
     {
         VerifyParam.verify(!Strings.isNullOrEmpty(schemaName), "schemaName is null or empty");
         VerifyParam.verify(!Strings.isNullOrEmpty(tableName), "tableName is null or empty");
         VerifyParam.verify(dependenciesFactory.getSchemaNameValidator().test(schemaName), "schema name is invalid");
         String path = BASE + schemaName;
-
         List<String> results = Collections.synchronizedList(new ArrayList<>());
         Consumer<ListTablesResponse> responseConsumer = r -> streamListTablesResponseHandle.apply(r).forEach(results::add);
         singleObjectFetch(transaction, VastClient::parseListTablesResponse, responseConsumer, Requests.LIST_TABLES, path, tableName);
-        LOG.debug("matching table handle: %s", results);
-        VerifyParam.verify(results.size() == 1,
-                "Vast Table handle should contain a single element, but has " + results.size() + ".");
-        return results.get(0);
+        LOG.debug("Matching table handle: %s for path: %s", results, path);
+        VerifyParam.verify(results.size() <= 1,
+                format("Vast Table handle must not contain multiple elements: %s", results));
+        return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
     }
 
     public void s3PutObj(String keyName, String bucketName, String statsStr) {
-        AWSCredentials credentials = new BasicAWSCredentials(config.getAccessKeyId(), config.getSecretAccessKey());
-        AwsClientBuilder.EndpointConfiguration ec = new AwsClientBuilder
-                .EndpointConfiguration(config.getEndpoint().toString(), config.getRegion());
-        final AmazonS3 s3 = AmazonS3ClientBuilder
-                .standard()
-                .withPathStyleAccessEnabled(Boolean.TRUE)
-                .withEndpointConfiguration(ec)
-                .withCredentials(new AWSStaticCredentialsProvider(credentials))
-                .build();
         try {
-            s3.putObject(bucketName, keyName, statsStr);
+            retryAwsSdkErrors(() -> getPutObjectResult(keyName, bucketName, statsStr));
             LOG.info("Uploading object %s to Vast succeeded", keyName);
-        } catch (Exception e) {
-            LOG.info("Uploading object %s to Vast failed", keyName);
-            throw new RuntimeException(e);
+        } catch (RuntimeException e) {
+            LOG.error(e, "Uploading object %s to Vast failed", keyName);
+            throw e;
         }
     }
+
+    public PutObjectResult getPutObjectResult(String keyName, String bucketName, String data)
+    {
+        final AmazonS3 s3 = getAmazonS3Client();
+        return s3.putObject(bucketName, keyName, data);
+    }
+
     public Optional<String> s3GetObj(String keyName, String bucketName) {
-        AWSCredentials credentials = new BasicAWSCredentials(config.getAccessKeyId(), config.getSecretAccessKey());
-        AwsClientBuilder.EndpointConfiguration ec = new AwsClientBuilder.EndpointConfiguration(config.getEndpoint().toString(), config.getRegion());
-        final AmazonS3 s3 = AmazonS3ClientBuilder
-                .standard()
-                .withPathStyleAccessEnabled(Boolean.TRUE)
-                .withEndpointConfiguration(ec)
-                .withCredentials(new AWSStaticCredentialsProvider(credentials))
-                .build();
         try {
-            String statsStr = s3.getObjectAsString(bucketName, keyName);
+            String statsStr = retryAwsSdkErrors(() -> getObjectAsString(keyName, bucketName));
             LOG.info("Downloading object %s from Vast succeeded: %s", keyName, statsStr);
             return Optional.of(statsStr);
 
@@ -456,14 +450,32 @@ public class VastClient
             if (e.getStatusCode() == 404) {
                 LOG.warn(e, "Couldn't find statistics file %s in bucket %s", keyName, bucketName);
             } else {
-                LOG.warn(e, "Failed to get object, object %s not found, error message %s", keyName);
+                LOG.warn(e, "S3 GET failed for object %s, bucket: %s", keyName, bucketName);
             }
             return Optional.empty();
         } catch (Exception e) {
-            LOG.warn(e, "Failed to get object %s, error message %s", keyName);
+            LOG.warn(e, "Failed to get object %s, bucket: %s", keyName, bucketName);
             //TODO should we fail or return empty statistics?
             throw toRuntime(e);
         }
+    }
+
+    public String getObjectAsString(String keyName, String bucketName)
+    {
+        final AmazonS3 s3 = getAmazonS3Client();
+        return s3.getObjectAsString(bucketName, keyName);
+    }
+
+    private AmazonS3 getAmazonS3Client()
+    {
+        AWSCredentials credentials = new BasicAWSCredentials(config.getAccessKeyId(), config.getSecretAccessKey());
+        AwsClientBuilder.EndpointConfiguration ec = new AwsClientBuilder.EndpointConfiguration(config.getEndpoint().toString(), config.getRegion());
+        return AmazonS3ClientBuilder
+                .standard()
+                .withPathStyleAccessEnabled(Boolean.TRUE)
+                .withEndpointConfiguration(ec)
+                .withCredentials(new AWSStaticCredentialsProvider(credentials))
+                .build();
     }
 
     public boolean tableExists(VastTransaction transaction, String schemaName, String tableName)
@@ -581,7 +593,7 @@ public class VastClient
             VastTransaction transaction, VastTraceToken traceToken, String schemaName, String tableName, Schema schema, FlatBufferSerializer projections, FlatBufferSerializer predicate,
             Supplier<QueryDataResponseHandler> handlerSupplier, AtomicReference<URI> usedDataEndpoint,
             VastSplitContext split, VastSchedulingInfo schedulingInfo, List<URI> dataEndpoints, VastRetryConfig retryConfig, Optional<Integer> limit,
-            Optional<String> bigCatalogSearchPath, QueryDataPagination pagination)
+            Optional<String> bigCatalogSearchPath, QueryDataPagination pagination, boolean enableSortedProjections)
     {
         String path = format("/%s/%s", schemaName, tableName);
         byte[] body = serializeQueryDataRequestBody(path, schema, projections, predicate);
@@ -596,6 +608,9 @@ public class VastClient
         headers.put("tabular-request-format", "string");
         headers.put("tabular-response-format", "string");
         headers.put("tabular-client-tag-trace-token", traceToken.toString());
+        if (enableSortedProjections) {
+            headers.put("tabular-enable-sorted-projections", "true");
+        }
         schedulingInfo.updateHeaders(headers);
         pagination.updateHeaders(headers);
         limit.ifPresent(value -> headers.put("tabular-limit-rows", Integer.toString(value)));
@@ -603,7 +618,7 @@ public class VastClient
 
         for (int i = 0; i <= retryConfig.getMaxRetries(); ++i) {
             // TODO: currently, we do a round-robin between configured endpoints - in the future, we should get them by querying Vast.
-            URI dataEndpoint = dataEndpoints.get((split.getCurrentSplit() + i) % dataEndpoints.size());
+            URI dataEndpoint = dataEndpoints.get(getEndpointIndex(tableName, split, i, dataEndpoints.size()));
             LOG.debug("QueryData(%s) %s (retry %d/%d) is sent to %s", traceToken, split, i, retryConfig.getMaxRetries(), dataEndpoint);
             Request request = new VastRequestBuilder(dataEndpoint, config, GET, path, Requests.QUERY_DATA.getRequestParam())
                     .addHeaders(headers)
@@ -633,6 +648,12 @@ public class VastClient
             }
         }
         throw toRuntime(serverException(format("QueryData(%s) failed after %d retries", traceToken, retryConfig.getMaxRetries())));
+    }
+
+    @VisibleForTesting
+    protected static int getEndpointIndex(String tableName, VastSplitContext split, int i, int size)
+    {
+        return (split.getCurrentSplit() + i + (tableName.hashCode() & Integer.MAX_VALUE)) % size;
     }
 
     public void insertRows(VastTransaction transaction, String schema, String table, VectorSchemaRoot root, URI dataEndpoint, Optional<Integer> maxRowsPerInsert)
@@ -910,7 +931,24 @@ public class VastClient
         Request req = new VastRequestBuilder(config, PUT, BASE, Requests.COMMIT_TRANSACTION.getRequestParam())
                 .addHeaders(headers)
                 .build();
-        return retryConnectionErrors(() -> httpClient.execute(req, VastResponseHandler.createVastResponseHandler()));
+        // There is always a possibility that sending a response will fail (e.g. due to HA) after the commit is applied
+        // successfully on VAST. Therefore, a failed query doesn't imply that the table's data wasn't modified.
+        // In order to clean-up uncommitted transactions (see https://vastdata.atlassian.net/browse/ORION-120144)
+        // we retry commit RPC even on I/O errors, with the following scenarios:
+        // 1. if the transaction wasn't committed, the retry will succeed (and clean-up the transaction).
+        // 2. if the transaction was committed, the retry will fail - and the user will have to inspect the data to understand what happened.
+        return retryIOErrorsAndTimeouts(() -> httpClient.execute(req, VastResponseHandler.createVastResponseHandler()));
+    }
+
+    public void transactionKeepAlive(VastTransaction transaction)
+    {
+        Multimap<String, String> headers = dependenciesFactory.getHeadersFactory()
+                .withTransaction(transaction)
+                .build();
+        Request req = new VastRequestBuilder(config, GET, BASE, Requests.GET_TRANSACTION.getRequestParam())
+                .addHeaders(headers)
+                .build();
+        retryIOErrorsAndTimeouts(() -> httpClient.execute(req, VastResponseHandler.createVastResponseHandler()));
     }
 
     public VastSchedulingInfo getSchedulingInfo(VastTransaction transaction, VastTraceToken traceToken, String schemaName, String tableName)
@@ -935,6 +973,11 @@ public class VastClient
         singleObjectFetch(transaction, VastClient::parseGetTableStats, results::set, Requests.GET_TABLE_STATS, path, tableName);
         LOG.info("Got stats for table %s: %s", path, results);
         return results.get();
+    }
+
+    private <T> T retryAwsSdkErrors(Provider<T> call)
+    {
+        return retryIfNeeded(call, VastClient::ignoreAwsSdkError);
     }
 
     private <T> T retryConnectionErrors(Provider<T> call)
@@ -965,6 +1008,20 @@ public class VastClient
             }
         }
         throw toRuntime(serverException(format("Request failed after %d retries", config.getRetryMaxCount())));
+    }
+
+    private static void ignoreAwsSdkError(RuntimeException e)
+    {
+        if (e instanceof SdkClientException && e.getCause() != null) {
+            Throwable cause = e.getCause();
+            while (cause.getCause() != null) {
+                cause = cause.getCause();
+            }
+            if (cause instanceof ConnectException || cause instanceof UnknownHostException) {
+                return;
+            }
+        }
+        throw e;
     }
 
     private static void ignoreConnectionError(RuntimeException e)

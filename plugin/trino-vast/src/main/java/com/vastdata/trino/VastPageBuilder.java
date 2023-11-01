@@ -172,7 +172,7 @@ public class VastPageBuilder
             return vectorIsNull;
         }
         else {
-            boolean[] parentNulls = parentVectorIsNull.get();
+            boolean[] parentNulls = parentVectorIsNull.orElseThrow();
             if (vectorIsNull.isEmpty()) {
                 boolean[] newChildNulls = new boolean[parentNulls.length];
                 int newSize = 0;
@@ -184,7 +184,7 @@ public class VastPageBuilder
                 return Optional.of(Arrays.copyOfRange(newChildNulls, 0, newSize));
             }
             else {
-                boolean[] childNulls = vectorIsNull.get();
+                boolean[] childNulls = vectorIsNull.orElseThrow();
                 boolean[] newChildNulls = new boolean[childNulls.length];
                 int newSize = 0;
                 for (int i = 0; i < childNulls.length; i++) {
@@ -213,7 +213,7 @@ public class VastPageBuilder
             Slice slice = Slices.allocate(totalBytes);
             copyDataBuffers(slice, vectors);
             if (parentVectorIsNull.isPresent()) {
-                int[] offsets = buildOffsetsUsingParentNullsVector(vectors, parentVectorIsNull.get());
+                int[] offsets = buildOffsetsUsingParentNullsVector(vectors, parentVectorIsNull.orElseThrow());
                 verify(offsets[offsets.length - 1] == totalBytes, "QueryData(%s) last offset is %s, instead of %s", traceStr, offsets[offsets.length - 1], totalBytes);
                 LOG.info("QueryData(%s) VARTRACE returning VariableWidthBlock block for type %s", traceStr, type);
                 return new VariableWidthBlock(offsets.length - 1, slice, offsets, compactedIsNull);
@@ -226,8 +226,8 @@ public class VastPageBuilder
         }
         else if (BIGINT.equals(type) || isTimestampType(type, TIMESTAMP_MICROS.getPrecision())) {
             if (parentVectorIsNull.isPresent()) {
-                BlockBuilder builder = new LongArrayBlockBuilder(null, compactedIsNull.get().length);
-                vectors.forEach(vector -> copyLong(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull.get()));
+                BlockBuilder builder = new LongArrayBlockBuilder(null, compactedIsNull.orElseThrow().length);
+                vectors.forEach(vector -> copyLong(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull.orElseThrow()));
                 return builder.build();
             }
             else {
@@ -239,8 +239,8 @@ public class VastPageBuilder
         }
         else if (DOUBLE.equals(type)) {
             if (parentVectorIsNull.isPresent()) {
-                BlockBuilder builder = new LongArrayBlockBuilder(null, compactedIsNull.get().length);
-                vectors.forEach(vector -> copyDouble(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull.get()));
+                BlockBuilder builder = new LongArrayBlockBuilder(null, compactedIsNull.orElseThrow().length);
+                vectors.forEach(vector -> copyDouble(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull.orElseThrow()));
                 return builder.build();
             }
             else {
@@ -251,8 +251,8 @@ public class VastPageBuilder
         }
         else if (type instanceof CharType) {
             if (parentVectorIsNull.isPresent()) {
-                BlockBuilder builder = type.createBlockBuilder(null, compactedIsNull.get().length);
-                vectors.forEach(vector -> copyCharsUsingParentNullsBitmap(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull.get()));
+                BlockBuilder builder = type.createBlockBuilder(null, compactedIsNull.orElseThrow().length);
+                vectors.forEach(vector -> copyCharsUsingParentNullsBitmap(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull.orElseThrow()));
                 return builder.build();
             }
             else {
@@ -264,8 +264,8 @@ public class VastPageBuilder
         }
         else if (TINYINT.equals(type)) {
             if (parentVectorIsNull.isPresent()) {
-                BlockBuilder builder = TINYINT.createFixedSizeBlockBuilder(compactedIsNull.get().length);
-                vectors.forEach(vector -> copyTinyInt(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull.get()));
+                BlockBuilder builder = TINYINT.createFixedSizeBlockBuilder(compactedIsNull.orElseThrow().length);
+                vectors.forEach(vector -> copyTinyInt(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull.orElseThrow()));
                 return builder.build();
             }
             else {
@@ -276,8 +276,8 @@ public class VastPageBuilder
         }
         else if (SMALLINT.equals(type)) {
             if (parentVectorIsNull.isPresent()) {
-                BlockBuilder builder = SMALLINT.createFixedSizeBlockBuilder(compactedIsNull.get().length);
-                vectors.forEach(vector -> copySmallInt(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull.get()));
+                BlockBuilder builder = SMALLINT.createFixedSizeBlockBuilder(compactedIsNull.orElseThrow().length);
+                vectors.forEach(vector -> copySmallInt(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull.orElseThrow()));
                 return builder.build();
             }
             else {
@@ -288,8 +288,8 @@ public class VastPageBuilder
         }
         else if (INTEGER.equals(type) || DATE.equals(type)) {
             if (parentVectorIsNull.isPresent()) {
-                BlockBuilder builder = new IntArrayBlockBuilder(null, compactedIsNull.get().length);
-                vectors.forEach(vector -> copyInt(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull.get()));
+                BlockBuilder builder = new IntArrayBlockBuilder(null, compactedIsNull.orElseThrow().length);
+                vectors.forEach(vector -> copyInt(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull.orElseThrow()));
                 return builder.build();
             }
             else {
@@ -300,8 +300,8 @@ public class VastPageBuilder
         }
         else if (REAL.equals(type)) {
             if (parentVectorIsNull.isPresent()) {
-                BlockBuilder builder = new IntArrayBlockBuilder(null, compactedIsNull.get().length);
-                vectors.forEach(vector -> copyFloat(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull.get()));
+                BlockBuilder builder = new IntArrayBlockBuilder(null, compactedIsNull.orElseThrow().length);
+                vectors.forEach(vector -> copyFloat(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull.orElseThrow()));
                 return builder.build();
             }
             else {
@@ -313,8 +313,8 @@ public class VastPageBuilder
         else if (BOOLEAN.equals(type)) {
             BlockBuilder builder;
             if (parentVectorIsNull.isPresent()) {
-                builder = BOOLEAN.createFixedSizeBlockBuilder(compactedIsNull.get().length);
-                vectors.forEach(vector -> copyBooleanUsingParentNullsBitmap(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull.get()));
+                builder = BOOLEAN.createFixedSizeBlockBuilder(compactedIsNull.orElseThrow().length);
+                vectors.forEach(vector -> copyBooleanUsingParentNullsBitmap(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull.orElseThrow()));
             }
             else {
                 builder = BOOLEAN.createFixedSizeBlockBuilder(positions);
@@ -328,10 +328,10 @@ public class VastPageBuilder
             if (parentVectorIsNull.isPresent()) {
                 if (decimalType.isShort()) {
                     // convert 128-bit decimal into 64-bit block
-                    vectors.forEach(vector -> copyShortDecimalUsingParentNullsBitmap(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull.get()));
+                    vectors.forEach(vector -> copyShortDecimalUsingParentNullsBitmap(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull.orElseThrow()));
                 }
                 else {
-                    vectors.forEach(vector -> copyLongDecimalUsingParentNullsBitmap(vector.getValueCount(), vector.getReader(), builder, decimalType, parentVectorIsNull.get()));
+                    vectors.forEach(vector -> copyLongDecimalUsingParentNullsBitmap(vector.getValueCount(), vector.getReader(), builder, decimalType, parentVectorIsNull.orElseThrow()));
                 }
             }
             else {
@@ -394,10 +394,10 @@ public class VastPageBuilder
             int newPositions;
             int[] offsets;
             if (parentVectorIsNull.isPresent()) {
-                offsets = buildOffsetsUsingParentNullsVector(vectors, parentVectorIsNull.get());
+                offsets = buildOffsetsUsingParentNullsVector(vectors, parentVectorIsNull.orElseThrow());
                 newPositions = offsets.length - 1;
                 LOG.debug("QueryData(%s) Array column - parent nulls vector is present=%s, offsets=%s, newPositions=%s",
-                        traceStr, Arrays.toString(compactedIsNull.get()), Arrays.toString(offsets), newPositions);
+                        traceStr, Arrays.toString(compactedIsNull.orElseThrow()), Arrays.toString(offsets), newPositions);
             }
             else {
                 offsets = buildOffsets(positions, vectors);
@@ -428,12 +428,12 @@ public class VastPageBuilder
             Optional<boolean[]> rowIsNullForChildren;
             int rowPositionCount;
             if (parentVectorIsNull.isPresent()) {
-                LOG.info("QueryData(%s) Row column - parent null vector is present and of size=%s", traceStr, parentVectorIsNull.get().length);
+                LOG.info("QueryData(%s) Row column - parent null vector is present and of size=%s", traceStr, parentVectorIsNull.orElseThrow().length);
                 rowIsNullForChildren = parentVectorIsNull;
-                rowPositionCount = compactedIsNull.get().length;
+                rowPositionCount = compactedIsNull.orElseThrow().length;
             }
             else {
-                LOG.info("QueryData(%s) Row column - parent null vector is empty, passing self compacted null vector of size=%s", traceStr, compactedIsNull.isPresent() ? compactedIsNull.get().length : "empty");
+                LOG.info("QueryData(%s) Row column - parent null vector is empty, passing self compacted null vector of size=%s", traceStr, compactedIsNull.isPresent() ? compactedIsNull.orElseThrow().length : "empty");
                 rowIsNullForChildren = compactedIsNull;
                 rowPositionCount = positions;
             }
@@ -547,7 +547,7 @@ public class VastPageBuilder
             }
         }
         else {
-            boolean[] parentNullsBitmap = optionalParentVectorIsNull.get();
+            boolean[] parentNullsBitmap = optionalParentVectorIsNull.orElseThrow();
             int builderPosition = builder.getPositionCount();
             for (int i = 0; i < count; ++i) {
                 reader.setPosition(i);
@@ -583,7 +583,7 @@ public class VastPageBuilder
             }
         }
         else {
-            boolean[] parentNullsBitmap = optionalParentVectorIsNull.get();
+            boolean[] parentNullsBitmap = optionalParentVectorIsNull.orElseThrow();
             int builderPosition = builder.getPositionCount();
             for (int i = 0; i < count; ++i) {
                 reader.setPosition(i);
@@ -618,7 +618,7 @@ public class VastPageBuilder
             }
         }
         else {
-            boolean[] parentNullsBitmap = optionalParentVectorIsNull.get();
+            boolean[] parentNullsBitmap = optionalParentVectorIsNull.orElseThrow();
             int builderPosition = builder.getPositionCount();
             for (int i = 0; i < count; ++i) {
                 if (!parentNullsBitmap[i + builderPosition]) {
@@ -653,7 +653,7 @@ public class VastPageBuilder
             }
         }
         else {
-            boolean[] parentNullsBitmap = optionalParentVectorIsNull.get();
+            boolean[] parentNullsBitmap = optionalParentVectorIsNull.orElseThrow();
             int builderPosition = builder.getPositionCount();
             for (int i = 0; i < count; ++i) {
                 reader.setPosition(i);
@@ -688,7 +688,7 @@ public class VastPageBuilder
             }
         }
         else {
-            boolean[] parentNullsBitmap = optionalParentVectorIsNull.get();
+            boolean[] parentNullsBitmap = optionalParentVectorIsNull.orElseThrow();
             int builderPosition = builder.getPositionCount();
             for (int i = 0; i < count; ++i) {
                 reader.setPosition(i);
@@ -724,7 +724,7 @@ public class VastPageBuilder
             }
         }
         else {
-            boolean[] parentNullsBitmap = optionalParentVectorIsNull.get();
+            boolean[] parentNullsBitmap = optionalParentVectorIsNull.orElseThrow();
             int builderPosition = builder.getPositionCount();
             for (int i = 0; i < count; ++i) {
                 reader.setPosition(i);

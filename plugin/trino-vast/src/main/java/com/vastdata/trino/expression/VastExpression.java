@@ -19,14 +19,20 @@ import java.util.Objects;
 
 import static io.trino.spi.predicate.Utils.nativeValueToBlock;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
+import static java.util.Objects.nonNull;
 
 public class VastExpression
 {
-    private final ArrowComputeFunction function;
+    private final ArrowComputeFunction function; // `null` means identity function
     private final String variableName;
     private final Type variableType;
     private final List<Block> args;  // `Block` is used for literal value & type serialization across coordinator & workers (similar to `SortedRangeSet`)
     private final String symbol; // used for naming the new Trino column handle
+
+    public static VastExpression identity(Variable variable)
+    {
+        return from(null, variable, List.of(), null);
+    }
 
     public static VastExpression from(ArrowComputeFunction function, Variable variable)
     {
@@ -43,14 +49,17 @@ public class VastExpression
                 .collect(Collectors.toList());
         // construct new projected column name: "func(variable[,constants...])"
         // it will allow de-duplication in case the same projection appears in multiple expressions.
-        StringBuilder builder = new StringBuilder()
-                .append(function.getName())
-                .append('(')
-                .append(variable.getName());
-        for (Block block : blocks) {
-            builder.append(',').append(variable.getType().getObjectValue(session, block, 0));
+        StringBuilder builder = new StringBuilder();
+        if (nonNull(function)) {
+            builder.append(function.getName()).append('(').append(variable.getName());
+            for (Block block : blocks) {
+                builder.append(',').append(variable.getType().getObjectValue(session, block, 0));
+            }
+            builder.append(')');
         }
-        builder.append(')');
+        else {
+            builder.append(variable.getName());
+        }
         return new VastExpression(function, name, type, blocks, builder.toString());
     }
 

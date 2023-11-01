@@ -4,10 +4,9 @@
 
 package com.vastdata.trino.tx;
 
+import com.google.inject.Inject;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.tx.VastTransactionHandleManager;
-
-import javax.inject.Inject;
 
 public class VastTrinoTransactionHandleManager
         extends VastTransactionHandleManager<VastTransactionHandle>

@@ -14,7 +14,7 @@ import io.trino.spi.statistics.Estimate;
 
 import java.io.IOException;
 
-public class TrinoStatisticsMapper
+public final class TrinoStatisticsMapper
 {
     private TrinoStatisticsMapper() {}
 

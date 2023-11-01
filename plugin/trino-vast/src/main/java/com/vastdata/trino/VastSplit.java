@@ -10,20 +10,20 @@ import com.vastdata.client.VastSchedulingInfo;
 import com.vastdata.client.VastSplitContext;
 import io.trino.spi.HostAddress;
 import io.trino.spi.connector.ConnectorSplit;
-import org.openjdk.jol.info.ClassLayout;
 
 import java.net.URI;
 import java.util.List;
 import java.util.stream.Collectors;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
+import static com.vastdata.trino.ClassInstanceSize.sizeOf;
 import static io.airlift.slice.SizeOf.estimatedSizeOf;
 import static java.util.Objects.requireNonNull;
 
 public class VastSplit
         implements ConnectorSplit
 {
-    private static final long INSTANCE_SIZE = ClassLayout.parseClass(VastSplit.class).instanceSize();
+    private static final long INSTANCE_SIZE = sizeOf(VastSplit.class);
 
     private final VastSplitContext context;
     private final List<URI> endpoints;

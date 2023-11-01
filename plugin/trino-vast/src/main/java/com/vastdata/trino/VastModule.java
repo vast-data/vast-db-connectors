@@ -7,20 +7,16 @@ package com.vastdata.trino;
 import com.google.inject.Binder;
 import com.google.inject.Module;
 import com.google.inject.Scopes;
-import com.google.inject.multibindings.Multibinder;
 import com.vastdata.client.ForVast;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastConfig;
 import com.vastdata.client.VastDependenciesFactory;
 import com.vastdata.mockserver.VastMockS3ServerStarter;
-import com.vastdata.trino.procedure.ImportDataProcedure;
-import com.vastdata.trino.procedure.ListBucketsProcedure;
 import com.vastdata.trino.statistics.VastStatisticsManager;
 import com.vastdata.trino.tx.VastTransactionHandleFactory;
 import com.vastdata.trino.tx.VastTrinoTransactionHandleManager;
 import io.airlift.log.Logger;
 import io.trino.plugin.base.session.SessionPropertiesProvider;
-import io.trino.spi.procedure.Procedure;
 
 import static com.google.inject.multibindings.Multibinder.newSetBinder;
 import static com.vastdata.client.VastDependenciesFactory.HTTP_CLIENT_CONFIG_CONFIG_DEFAULTS;
@@ -52,9 +48,5 @@ public class VastModule
         binder.bind(VastPageSourceProvider.class).in(Scopes.SINGLETON);
         binder.bind(VastPageSinkProvider.class).in(Scopes.SINGLETON);
         configBinder(binder).bindConfig(VastConfig.class);
-
-        Multibinder<Procedure> multibinder = Multibinder.newSetBinder(binder, Procedure.class);
-        multibinder.addBinding().toProvider(ImportDataProcedure.class).in(Scopes.SINGLETON);
-        multibinder.addBinding().toProvider(ListBucketsProcedure.class).in(Scopes.SINGLETON);
     }
 }

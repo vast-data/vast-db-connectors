@@ -6,6 +6,7 @@ package com.vastdata.trino;
 
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableList;
+import com.google.inject.Inject;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastSchedulingInfo;
 import com.vastdata.client.VastSplitContext;
@@ -13,7 +14,6 @@ import com.vastdata.client.tx.VastTraceToken;
 import com.vastdata.client.tx.VastTransaction;
 import com.vastdata.trino.statistics.VastStatisticsManager;
 import io.airlift.log.Logger;
-import io.trino.spi.connector.ConnectorPartitionHandle;
 import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.connector.ConnectorSplitManager;
 import io.trino.spi.connector.ConnectorSplitSource;
@@ -24,8 +24,6 @@ import io.trino.spi.connector.DynamicFilter;
 import io.trino.spi.connector.FixedSplitSource;
 import io.trino.spi.statistics.Estimate;
 import io.trino.spi.statistics.TableStatistics;
-
-import javax.inject.Inject;
 
 import java.util.List;
 import java.util.Optional;
@@ -67,16 +65,14 @@ public class VastSplitManager
             ConnectorTransactionHandle transaction,
             ConnectorSession session,
             ConnectorTableHandle connectorTableHandle,
-            SplitSchedulingStrategy splitSchedulingStrategy,
             DynamicFilter dynamicFilter,
             Constraint constraint)
     {
-        LOG.info("getSplits(%s, %s, %s, %s, %s)", transaction, session, splitSchedulingStrategy, connectorTableHandle, constraint);
         VastTransaction vastTransaction = (VastTransaction) transaction;
         VastTableHandle table = (VastTableHandle) connectorTableHandle;
 
         String fullTableName = format("%s/%s", table.getSchemaName(), table.getTableName());
-        Estimate rowsEstimate = statisticsManager.getTableStatistics(vastTransaction, fullTableName).orElse(TableStatistics.empty()).getRowCount();
+        Estimate rowsEstimate = statisticsManager.getTableStatistics(table).orElse(TableStatistics.empty()).getRowCount();
         int numOfSplits = estimateNumOfSplits(session, rowsEstimate);
         LOG.debug("using %d splits for %s, estimated to have %s rows", numOfSplits, fullTableName, rowsEstimate);
         int numOfSubSplits = getNumOfSubSplits(session);
@@ -116,7 +112,7 @@ public class VastSplitManager
         }
 
         @Override
-        public CompletableFuture<ConnectorSplitBatch> getNextBatch(ConnectorPartitionHandle partitionHandle, int maxSize)
+        public CompletableFuture<ConnectorSplitBatch> getNextBatch(int maxSize)
         {
             long timeLeft = dynamicFilteringWaitTimeoutMillis - dynamicFilterWaitStopwatch.elapsed(TimeUnit.MILLISECONDS);
             if (dynamicFilter.isAwaitable() && timeLeft > 0) {
@@ -126,7 +122,7 @@ public class VastSplitManager
                         .completeOnTimeout(EMPTY_BATCH, timeLeft, TimeUnit.MILLISECONDS);
             }
             LOG.debug("QueryData(%s) getting %d splits from %s", traceToken, maxSize, fullTableName);
-            return super.getNextBatch(partitionHandle, maxSize);
+            return super.getNextBatch(maxSize);
         }
     }
 

@@ -16,12 +16,15 @@ import java.util.stream.Collectors;
 public class ListBucketsResponseHandler
         extends VastResponseHandler
 {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
     @Override
     public byte[] getBytes(Response response)
             throws Exception
     {
         Set<String> collect = parseBytes(response.getInputStream());
-        return new ObjectMapper().writeValueAsBytes(collect);
+        return OBJECT_MAPPER.writeValueAsBytes(collect);
     }
 
     protected Set<String> parseBytes(InputStream inputStream)

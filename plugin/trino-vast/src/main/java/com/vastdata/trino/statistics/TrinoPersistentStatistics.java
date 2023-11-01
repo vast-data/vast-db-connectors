@@ -4,125 +4,135 @@
 
 package com.vastdata.trino.statistics;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.module.SimpleModule;
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
-import com.fasterxml.jackson.module.paramnames.ParameterNamesModule;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastConfig;
-import com.vastdata.client.VastStatisticsStorage;
+import com.vastdata.client.stats.StatisticsUrl;
+import com.vastdata.client.stats.StatisticsUrlExtractor;
+import com.vastdata.client.stats.VastStatisticsStorage;
+import com.vastdata.trino.VastTableHandle;
+import com.vastdata.trino.VastTrinoDependenciesFactory;
 import io.airlift.log.Logger;
 import io.trino.collect.cache.EvictableCacheBuilder;
 import io.trino.spi.statistics.TableStatistics;
 
 import java.io.IOException;
+import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Function;
 
-import static com.vastdata.client.importdata.VastImportDataMetadataUtils.BIG_CATALOG_BUCKET_NAME;
+import static com.vastdata.client.VastClient.BIG_CATALOG_BUCKET_NAME;
 
 public class TrinoPersistentStatistics
-        implements VastStatisticsStorage<String, TableStatistics>
+        implements VastStatisticsStorage<VastTableHandle, TableStatistics>
 {
     private static final Logger LOG = Logger.get(VastStatisticsManager.class);
-
-    private final TrinoTableStatisticsIdentifierFactory factory = new TrinoTableStatisticsIdentifierFactory();
 
     private final VastClient client;
 
     private final ObjectMapper mapper = TrinoStatisticsMapper.instance();
 
-    private final LoadingCache<String, Optional<TableStatistics>> cache;
+    private final LoadingCache<VastTableHandle, Optional<TableStatistics>> cache;
+    private final StatisticsUrlExtractor<VastTableHandle> statisticsUrlHelper;
+    private final String tag;
+    private final Function<TableStatistics, String> statsSerializer;
 
     public TrinoPersistentStatistics(VastClient client, VastConfig config){
+        this(client, config, null);
+    }
+
+    @VisibleForTesting
+    protected TrinoPersistentStatistics(VastClient client, VastConfig config, Function<TableStatistics, String> statsSerializer){
+        statisticsUrlHelper = new VastTrinoDependenciesFactory().getStatisticsUrlHelper();
+        tag = new VastTrinoDependenciesFactory().getConnectorVersionedStatisticsTag();
         this.client = client;
         this.cache = EvictableCacheBuilder.newBuilder()
                 .maximumSize(config.getMaxStatisticsFilesSupportedPerSession())
                 .build(CacheLoader.from(this::tableStatisticsLoader));
+        this.statsSerializer = Objects.requireNonNullElseGet(statsSerializer, () -> stats -> {
+            try {
+                return mapper.writeValueAsString(new TrinoSerializableTableStatistics(stats));
+            }
+            catch (JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
+        });
     }
 
-    private Optional<TableStatistics> tableStatisticsLoader(String tableUrl) {
-        String bucketName = factory.getBucket(tableUrl);
-        String keyName = factory.getKeyName(tableUrl);
+    private Optional<TableStatistics> tableStatisticsLoader(VastTableHandle table) {
+        StatisticsUrl extracted = StatisticsUrl.extract(table, statisticsUrlHelper, tag);
+        String bucketName = extracted.getBucket();
+        String keyName = extracted.getKey();
         if (bucketName.equals(BIG_CATALOG_BUCKET_NAME)) {
             //Big Catalog tables do not persist, therefor don't need to undergo serialization
             return Optional.empty();
         }
         Optional<String> tsBuffer = client.s3GetObj(keyName, bucketName);
         LOG.info("Fetched object %s from Vast", keyName);
-        if (tsBuffer.isPresent()) {
+        return tsBuffer.map(bufferBytes -> {
             try {
-                TrinoSerializableTableStatistics serializableTableStatistics = mapper.readValue(tsBuffer.get(), TrinoSerializableTableStatistics.class);
+                TrinoSerializableTableStatistics serializableTableStatistics = mapper.readValue(bufferBytes, TrinoSerializableTableStatistics.class);
                 TableStatistics ts = serializableTableStatistics.getTableStatistics();
                 LOG.info("Parsed %s from S3 bucket %s", keyName, bucketName);
-                return Optional.of(ts);
+                return ts;
             } catch (IOException e) {
-                LOG.warn(e, "Failed to parse table statistics: %s", tsBuffer.get());
-                return Optional.empty();
+                LOG.warn(e, "Failed to parse table statistics: %s", bufferBytes);
+                return null;
             }
-        }
-        return Optional.empty();
+        });
     }
 
     @Override
-    public Optional<TableStatistics> getTableStatistics(String tableUrl) {
+    public Optional<TableStatistics> getTableStatistics(VastTableHandle table) {
         try {
-            LOG.info("Fetching table statistics file %s from cache\n", tableUrl);
-            Optional<TableStatistics> result = cache.get(tableUrl);
-            LOG.info("Successfully fetched table statistics file %s from cache\n", tableUrl);
+            LOG.info("Fetching statistics file for table %s from cache\n", table.toSchemaTableName());
+            Optional<TableStatistics> result = cache.get(table);
+            LOG.info("Successfully fetched statistics file for table %s from cache\n", table.toSchemaTableName());
             return result;
         } catch (Exception e) {
-            LOG.info("Failed to fetch table statistics %s from cache\n", tableUrl);
+            LOG.info("Failed to fetch statistics for table %s from cache\n", table);
             return Optional.empty();
         }
     }
 
     @Override
-    public void setTableStatistics(String tableUrl, TableStatistics tableStatistics)
+    public void setTableStatistics(VastTableHandle table, TableStatistics tableStatistics)
     {
-        String keyName = factory.getKeyName(tableUrl);
-        String bucketName = factory.getBucket(tableUrl);
+        StatisticsUrl extracted = StatisticsUrl.extract(table, statisticsUrlHelper, tag);
+        String bucketName = extracted.getBucket();
+        String keyName = extracted.getKey();
         if (!bucketName.equals(BIG_CATALOG_BUCKET_NAME)) {
             // Big Catalog table statistics are not persistent and stored directly into the cache via cache.get
             LOG.info("Uploading statistics file {} to S3 bucket {}...\n", keyName, bucketName);
+
             try {
-                String tableStatisticsStr = mapper.writeValueAsString(new TrinoSerializableTableStatistics(tableStatistics));
+                String tableStatisticsStr = statsSerializer.apply(tableStatistics);
                 client.s3PutObj(keyName, bucketName, tableStatisticsStr);
-                LOG.info("Storing table statistics %s from cache\n", keyName);
-            } catch (Exception e) {
+                LOG.info("Storing table statistics %s in cache\n", keyName);
+            } catch (RuntimeException e) {
                 LOG.warn("Failed to upload table statistics file to S3 bucket %s", bucketName);
-                throw new RuntimeException(e);
+                throw e;
             }
         }
-        this.cache.invalidate(tableUrl);
+        this.cache.invalidate(table);
         try {
-            this.cache.get(tableUrl, () -> Optional.of(tableStatistics));
+            this.cache.get(table, () -> Optional.of(tableStatistics));
         } catch (ExecutionException e) {
             LOG.info("Cache(Table Statistics) load failed: %s", e);
         }
         LOG.info("Uploaded table statistics file to S3 bucket %s", bucketName);
     }
 
-    private class tableStatisticsCallable implements Callable<Optional<TableStatistics>> {
-        private TableStatistics ts;
-        public tableStatisticsCallable(TableStatistics ts){
-            this.ts = ts;
-        }
-        @Override
-        public Optional<TableStatistics> call() throws Exception {
-            return Optional.of(this.ts);
-        }
-    }
-
     @Override
-    public void deleteTableStatistics(String tableUrl) {
-        LOG.info("Invalidating table statistics %s from cache\n", tableUrl);
+    public void deleteTableStatistics(VastTableHandle table) {
+        LOG.info("Invalidating statistics for table %s from cache\n", table);
         // Deletion of statistics files occur in cpp code upon deletion of a table
-        cache.invalidate(tableUrl);
+        cache.invalidate(table);
     }
 
 }

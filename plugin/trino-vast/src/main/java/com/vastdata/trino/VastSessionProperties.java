@@ -6,13 +6,12 @@ package com.vastdata.trino;
 
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
+import com.google.inject.Inject;
 import com.vastdata.client.VastConfig;
 import io.trino.plugin.base.session.SessionPropertiesProvider;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.session.PropertyMetadata;
-
-import javax.inject.Inject;
 
 import java.net.URI;
 import java.util.List;
@@ -25,6 +24,7 @@ import static io.trino.spi.StandardErrorCode.INVALID_SESSION_PROPERTY;
 import static io.trino.spi.session.PropertyMetadata.booleanProperty;
 import static io.trino.spi.session.PropertyMetadata.integerProperty;
 import static io.trino.spi.session.PropertyMetadata.longProperty;
+import static io.trino.spi.session.PropertyMetadata.stringProperty;
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static java.lang.String.format;
 
@@ -39,6 +39,9 @@ public class VastSessionProperties
     private static final String CLIENT_PAGE_SIZE = "client_page_size";
     private static final String DATA_ENDPOINTS = "data_endpoints";
 
+    private static final String ENABLE_CUSTOM_SCHEMA_SEPARATOR = "enable_custom_schema_separator";
+    private static final String CUSTOM_SCHEMA_SEPARATOR = "custom_schema_separator";
+
     private static final String RETRY_MAX_COUNT = "retry_max_count";
     private static final String RETRY_SLEEP_DURATION = "retry_sleep_duration";
     private static final String PARALLEL_IMPORT_DURATION = "parallel_import";
@@ -48,8 +51,10 @@ public class VastSessionProperties
     private static final String DEBUG_DISABLE_ARROW_PARSING = "debug_disable_arrow_parsing";
     private static final String DEBUG_DISABLE_PAGE_QUEUEING = "debug_disable_page_queueing";
 
+    private static final String MATCH_SUBSTRING_PUSHDOWN = "match_substring_pushdown";
     private static final String COMPLEX_PREDICATE_PUSHDOWN = "complex_predicate_pushdown";
     private static final String EXPRESSION_PROJECTION_PUSHDOWN = "expression_projection_pushdown";
+    private static final String ENABLE_SORTED_PROJECTIONS = "enable_sorted_projections";
 
     private static final String MAX_ROWS_PER_INSERT = "max_rows_per_insert";
     private static final String MAX_ROWS_PER_UPDATE = "max_rows_per_update";
@@ -107,6 +112,16 @@ public class VastSessionProperties
                                 .stream()
                                 .map(Object::toString)
                                 .collect(Collectors.joining(","))))
+                .add(booleanProperty(
+                        ENABLE_CUSTOM_SCHEMA_SEPARATOR,
+                        "Replace `/` bucket-schema separator with the specified value",
+                        config.getEnableCustomSchemaSeparator(),
+                        false))
+                .add(stringProperty(
+                        CUSTOM_SCHEMA_SEPARATOR,
+                        "Custom separator between bucket and schemas' names",
+                        config.getCustomSchemaSeparator(),
+                        false))
                 .add(integerProperty(
                         RETRY_MAX_COUNT,
                         "Maximal number of retries",
@@ -133,14 +148,24 @@ public class VastSessionProperties
                         config.getDynamicFilteringWaitTimeout(),
                         false))
                 .add(booleanProperty(
+                        MATCH_SUBSTRING_PUSHDOWN,
+                        "Enable `match_substring` pushdown (via `col LIKE '%substring%'`)",
+                        config.isMatchSubstringPushdown(),
+                        false))
+                .add(booleanProperty(
                         COMPLEX_PREDICATE_PUSHDOWN,
-                        "Enable complex predicate pushdown (e.g. col LIKE '%substring%')",
+                        "Enable complex predicate pushdown (with `OR` between columns)",
                         config.isComplexPredicatePushdown(),
                         false))
                 .add(booleanProperty(
                         EXPRESSION_PROJECTION_PUSHDOWN,
                         "Enable expression projection pushdown (e.g. col IS NOT NULL)",
                         config.isExpressionProjectionPushdown(),
+                        false))
+                .add(booleanProperty(
+                        ENABLE_SORTED_PROJECTIONS,
+                        "Enable sorted projections usage during QueryData",
+                        config.isEnableSortedProjections(),
                         false))
                 .add(booleanProperty(
                         DEBUG_DISABLE_ARROW_PARSING,
@@ -227,6 +252,16 @@ public class VastSessionProperties
         return (List<URI>) session.getProperty(DATA_ENDPOINTS, List.class);
     }
 
+    public static boolean getEnableCustomSchemaSeparator(ConnectorSession session)
+    {
+        return session.getProperty(ENABLE_CUSTOM_SCHEMA_SEPARATOR, Boolean.class);
+    }
+
+    public static String getCustomSchemaSeparator(ConnectorSession session)
+    {
+        return session.getProperty(CUSTOM_SCHEMA_SEPARATOR, String.class);
+    }
+
     public static int getRetryMaxCount(ConnectorSession session)
     {
         return session.getProperty(RETRY_MAX_COUNT, Integer.class);
@@ -262,6 +297,11 @@ public class VastSessionProperties
         return session.getProperty(DEBUG_DISABLE_PAGE_QUEUEING, Boolean.class);
     }
 
+    public static boolean getMatchSubstringPushdown(ConnectorSession session)
+    {
+        return session.getProperty(MATCH_SUBSTRING_PUSHDOWN, Boolean.class);
+    }
+
     public static boolean getComplexPredicatePushdown(ConnectorSession session)
     {
         return session.getProperty(COMPLEX_PREDICATE_PUSHDOWN, Boolean.class);
@@ -270,6 +310,11 @@ public class VastSessionProperties
     public static boolean getExpressionProjectionPushdown(ConnectorSession session)
     {
         return session.getProperty(EXPRESSION_PROJECTION_PUSHDOWN, Boolean.class);
+    }
+
+    public static boolean getEnableSortedProjections(ConnectorSession session)
+    {
+        return session.getProperty(ENABLE_SORTED_PROJECTIONS, Boolean.class);
     }
 
     public static int getMaxRowsPerInsert(ConnectorSession session)

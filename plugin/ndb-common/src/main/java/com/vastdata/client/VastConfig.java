@@ -13,6 +13,7 @@ import io.airlift.configuration.ConfigSecuritySensitive;
 
 import javax.validation.constraints.Max;
 import javax.validation.constraints.Min;
+import javax.validation.constraints.NotEmpty;
 import javax.validation.constraints.NotNull;
 
 import java.io.Serializable;
@@ -28,6 +29,12 @@ public class VastConfig
     public static final int MAX_SUB_SPLITS = 64;
 
     private static final Splitter SPLITTER = Splitter.on(',').trimResults().omitEmptyStrings();
+    public static final String DYNAMIC_FILTER_COMPACTION_THRESHOLD = "dynamic_filter_compaction_threshold";
+    public static final String MIN_MAX_COMPACTION_MIN_VALUES_THRESHOLD = "min_max_compaction_min_values_threshold";
+    public static final int MIN_MAX_COMPACTION_MIN_VALUES_DEFAULT_VALUE = 15;
+    public static final int DYNAMIC_FILTER_COMPACTION_THRESHOLD_DEFAULT_VALUE = 100;
+    public static final boolean TX_KEEP_ALIVE_ENABLED_DEFAULT = true;
+    public static final int TX_KEEP_ALIVE_INTERVAL_DEFAULT = 60;
 
     private URI endpoint = URI.create("http://localhost:9090");
     private List<URI> dataEndpoints; // optional endpoints for data-related queries
@@ -35,9 +42,12 @@ public class VastConfig
     private String secretAccessKey;
     private String region = "vast";
 
+    private boolean enableCustomSchemaSeparator;
+    private String customSchemaSeparator = "|";
+
     private int numOfSplits = 1;
     private int numOfSubSplits = 1;
-    private int rowGroupsPerSubSplit = 1;
+    private int rowGroupsPerSubSplit = 8;
     private long queryDataRowsPerSplit = 4 * 1000 * 1000; // allow dynamic splits (256 splits per 1B rows)
     private int queryDataRowsPerPage = 128 * 1024; // should be a multiple of a row group size (2 ** 16 rows)
     private long maxRequestBodySize = 5 * 1024 * 1024; // must be <= Mooktze largest buffer size (see `src/plasma/execution/silo.cpp`)
@@ -48,11 +58,15 @@ public class VastConfig
     private int dynamicFilteringWaitTimeout = 2 * 1000;
 
     private int dynamicFilterCompactionThreshold = 100;
+    private int dynamicFilterMaxValuesThreshold = 1000;
+    private int minMaxCompactionMinValuesThreshold = 15;
 
     private String engineVersion = "NA";
 
+    private boolean matchSubstringPushdown = true;
     private boolean complexPredicatePushdown = false;
     private boolean expressionProjectionPushdown = false;
+    private boolean enableSortedProjections = true;
 
     private int maxRowCountPerInsert = Integer.MAX_VALUE;
     private int maxRowCountPerUpdate = 2048;
@@ -62,6 +76,8 @@ public class VastConfig
 
     private long maxStatisticsFilesSupportedPerSession = 10000;
     private boolean keepFilterAfterPushdown = true;
+    private boolean vastTransactionKeepAliveEnabled = TX_KEEP_ALIVE_ENABLED_DEFAULT;
+    private int vastTransactionKeepAliveIntervalSeconds = TX_KEEP_ALIVE_INTERVAL_DEFAULT;
 
     public URI getEndpoint()
     {
@@ -84,6 +100,32 @@ public class VastConfig
     public VastConfig setDataEndpoints(String dataEndpoints)
     {
         this.dataEndpoints = SPLITTER.splitToStream(dataEndpoints).map(URI::create).collect(Collectors.toList());
+        return this;
+    }
+
+    public boolean getEnableCustomSchemaSeparator()
+    {
+        return enableCustomSchemaSeparator;
+    }
+
+    @Config("enable_custom_schema_separator")
+    public VastConfig setEnableCustomSchemaSeparator(boolean enableCustomSchemaSeparator)
+    {
+        this.enableCustomSchemaSeparator = enableCustomSchemaSeparator;
+        return this;
+    }
+
+
+    @NotEmpty
+    public String getCustomSchemaSeparator()
+    {
+        return customSchemaSeparator;
+    }
+
+    @Config("custom_schema_separator")
+    public VastConfig setCustomSchemaSeparator(String customSchemaSeparator)
+    {
+        this.customSchemaSeparator = customSchemaSeparator;
         return this;
     }
 
@@ -260,10 +302,34 @@ public class VastConfig
         return dynamicFilterCompactionThreshold;
     }
 
-    @Config("dynamic_filter_compaction_threshold")
+    @Config(DYNAMIC_FILTER_COMPACTION_THRESHOLD)
     public VastConfig setDynamicFilterCompactionThreshold(int dynamicFilterCompactionThreshold)
     {
         this.dynamicFilterCompactionThreshold = dynamicFilterCompactionThreshold;
+        return this;
+    }
+
+    public int getMinMaxCompactionMinValuesThreshold()
+    {
+        return minMaxCompactionMinValuesThreshold;
+    }
+
+    @Config(MIN_MAX_COMPACTION_MIN_VALUES_THRESHOLD)
+    public VastConfig setMinMaxCompactionMinValuesThreshold(int minMaxCompactionMinValuesThreshold)
+    {
+        this.minMaxCompactionMinValuesThreshold = minMaxCompactionMinValuesThreshold;
+        return this;
+    }
+
+    public int getDynamicFilterMaxValuesThreshold()
+    {
+        return this.dynamicFilterMaxValuesThreshold;
+    }
+
+    @Config("dynamic_filter_max_values_threshold")
+    public VastConfig setDynamicFilterMaxValuesThreshold(int dynamicFilterMaxValuesThreshold)
+    {
+        this.dynamicFilterMaxValuesThreshold = dynamicFilterMaxValuesThreshold;
         return this;
     }
 
@@ -275,6 +341,18 @@ public class VastConfig
     public VastConfig setEngineVersion(String engineVersion)
     {
         this.engineVersion = engineVersion;
+        return this;
+    }
+
+    public boolean isMatchSubstringPushdown()
+    {
+        return matchSubstringPushdown;
+    }
+
+    @Config("match_substring_pushdown")
+    public VastConfig setMatchSubstringPushdown(boolean matchSubstringPushdown)
+    {
+        this.matchSubstringPushdown = matchSubstringPushdown;
         return this;
     }
 
@@ -299,6 +377,18 @@ public class VastConfig
     public VastConfig setExpressionProjectionPushdown(boolean expressionProjectionPushdown)
     {
         this.expressionProjectionPushdown = expressionProjectionPushdown;
+        return this;
+    }
+
+    public boolean isEnableSortedProjections()
+    {
+        return enableSortedProjections;
+    }
+
+    @Config("enable_sorted_projections")
+    public VastConfig setEnableSortedProjections(boolean enableSortedProjections)
+    {
+        this.enableSortedProjections = enableSortedProjections;
         return this;
     }
 
@@ -373,6 +463,30 @@ public class VastConfig
     public VastConfig setKeepFilterAfterPushdown(boolean keepFilterAfterPushdown)
     {
         this.keepFilterAfterPushdown = keepFilterAfterPushdown;
+        return this;
+    }
+
+    public boolean getVastTransactionKeepAliveEnabled()
+    {
+        return vastTransactionKeepAliveEnabled;
+    }
+
+    @Config("vast_transaction_keep_alive_enabled")
+    public VastConfig setVastTransactionKeepAliveEnabled(boolean vastTransactionKeepAliveEnabled)
+    {
+        this.vastTransactionKeepAliveEnabled = vastTransactionKeepAliveEnabled;
+        return this;
+    }
+
+    public int getVastTransactionKeepAliveIntervalSeconds()
+    {
+        return vastTransactionKeepAliveIntervalSeconds;
+    }
+
+    @Config("vast_transaction_keep_alive_interval_seconds")
+    public VastConfig setVastTransactionKeepAliveIntervalSeconds(int vastTransactionKeepAliveIntervalSeconds)
+    {
+        this.vastTransactionKeepAliveIntervalSeconds = vastTransactionKeepAliveIntervalSeconds;
         return this;
     }
 }

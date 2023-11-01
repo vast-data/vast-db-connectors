@@ -46,7 +46,7 @@ public class QueryDataResponseHandler
         if (response.getStatusCode() != 200) {
             LOG.error("QueryData(%s) request failed: %s", traceToken, response);
             // VAST may respond with HTTP 503 (if the cluster is busy), so we can retry later
-            return new VastResponse(response.getStatusCode(), response.getHeaders(), getRequestPayloadBytes(response));
+            return new VastResponse(response.getStatusCode(), response.getHeaders(), getRequestPayloadBytes(request, response), request.getUri());
         }
         try {
             // we MUST read all contents before this method exits, otherwise the connection will be closed
@@ -56,9 +56,9 @@ public class QueryDataResponseHandler
                     traceToken, response.getBytesRead(), durationNanos / 1e6);
         }
         catch (IOException e) {
-            throw toRuntime(ioException(format("QueryData(%s) failed to parse response", traceToken), e));
+            throw toRuntime(ioException(format("QueryData(%s) failed to parse response: " + request, traceToken), e));
         }
         // query finished successfully
-        return new VastResponse(response.getStatusCode(), response.getHeaders(), null);
+        return new VastResponse(response.getStatusCode(), response.getHeaders(), null, request.getUri());
     }
 }

@@ -16,7 +16,7 @@ public class TestVastTableHandle
     @Test
     public void testJsonRoundTrip()
     {
-        VastTableHandle tableHandle = new VastTableHandle("schemaName", "tableName", false).forDelete();
+        VastTableHandle tableHandle = new VastTableHandle("schemaName", "tableName", "id", false).forDelete();
 
         JsonCodec<VastTableHandle> codec = jsonCodec(VastTableHandle.class);
         String json = codec.toJson(tableHandle);
@@ -28,10 +28,10 @@ public class TestVastTableHandle
     public void testEquivalence()
     {
         EquivalenceTester.equivalenceTester()
-                .addEquivalentGroup(new VastTableHandle("schema", "table", false), new VastTableHandle("schema", "table", false))
-                .addEquivalentGroup(new VastTableHandle("schemaX", "table", false), new VastTableHandle("schemaX", "table", false))
-                .addEquivalentGroup(new VastTableHandle("schemaX", "table", true), new VastTableHandle("schemaX", "table", true))
-                .addEquivalentGroup(new VastTableHandle("schema", "tableX", false), new VastTableHandle("schema", "tableX", false))
+                .addEquivalentGroup(new VastTableHandle("schema", "table", "id", false), new VastTableHandle("schema", "table", "id", false))
+                .addEquivalentGroup(new VastTableHandle("schemaX", "table", "id", false), new VastTableHandle("schemaX", "table", "id", false))
+                .addEquivalentGroup(new VastTableHandle("schemaX", "table", "id", true), new VastTableHandle("schemaX", "table", "id", true))
+                .addEquivalentGroup(new VastTableHandle("schema", "tableX", "id", false), new VastTableHandle("schema", "tableX", "id", false))
                 .check();
     }
 }

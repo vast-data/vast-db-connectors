@@ -4,18 +4,17 @@
 
 package com.vastdata.trino.statistics;
 
+import com.google.inject.Inject;
 import com.google.common.base.VerifyException;
 import com.google.common.collect.Streams;
-import com.vastdata.client.ParsedURL;
+import com.vastdata.client.VastClient;
 import com.vastdata.client.VastConfig;
-import com.vastdata.client.VastStatisticsStorage;
+import com.vastdata.client.stats.VastStatisticsStorage;
 import com.vastdata.client.error.VastServerException;
 import com.vastdata.client.error.VastUserException;
-import com.vastdata.client.tx.VastTransaction;
-import com.vastdata.client.VastClient;
-
 import com.vastdata.trino.TypeUtils;
 import com.vastdata.trino.VastColumnHandle;
+import com.vastdata.trino.VastTableHandle;
 import io.airlift.log.Logger;
 import io.trino.spi.block.Block;
 import io.trino.spi.connector.ColumnHandle;
@@ -37,8 +36,6 @@ import io.trino.spi.type.TimestampType;
 import io.trino.spi.type.Type;
 import org.apache.arrow.vector.types.TimeUnit;
 import org.apache.arrow.vector.types.pojo.Field;
-
-import javax.inject.Inject;
 
 import java.util.List;
 import java.util.Map;
@@ -76,27 +73,19 @@ public class VastStatisticsManager
 {
     private static final Logger LOG = Logger.get(VastStatisticsManager.class);
 
-    private final VastStatisticsStorage<String, TableStatistics> storage;
-
-    private final VastClient client;
+    private final VastStatisticsStorage<VastTableHandle, TableStatistics> storage;
 
     @Inject
     public VastStatisticsManager(VastClient client, VastConfig config)
     {
-        this.client = client;
         this.storage = new TrinoPersistentStatistics(client, config);
     }
 
-    public Optional<TableStatistics> getTableStatistics(VastTransaction transaction, String tableUrl){
+    public Optional<TableStatistics> getTableStatistics(VastTableHandle table){
         try {
-            ParsedURL parsedTableUrl = ParsedURL.of(tableUrl);
-            String tableHandleId = this.client.getVastTableHandleId(transaction, parsedTableUrl.getFullSchemaPath(), parsedTableUrl.getTableName());
-            LOG.info("Acquired table handle id for %s", tableUrl);
-            String bucket = parsedTableUrl.getBucket();
-            String statisticsURL = TrinoTableStatisticsIdentifierFactory.getTableStatisticsIdentifier(bucket, tableHandleId);
-            return this.storage.getTableStatistics(statisticsURL);
-        } catch (VastUserException | VastServerException e) {
-            LOG.info("Failed to get table statistics file for %s:\n %s", tableUrl, e);
+            return this.storage.getTableStatistics(table);
+        } catch (Exception e) {
+            LOG.info("Failed to get table statistics file for %s:\n %s", table.toSchemaTableName(), e);
             return Optional.empty();
         }
     }
@@ -110,21 +99,10 @@ public class VastStatisticsManager
         return new TableStatisticsMetadata(columnStatistics, tableStatistics, List.of());
     }
 
-    public void applyTableStatistics(VastTransaction transaction, String schemaName, String tableName, List<Field> tableColumnFields, ComputedStatistics statistics) throws VastServerException, VastUserException {
+    public void applyTableStatistics(VastTableHandle table, List<Field> tableColumnFields, ComputedStatistics statistics) throws VastServerException, VastUserException {
         long rowCount = getTableRowCount(statistics.getTableStatistics());
         Map<ColumnHandle, ColumnStatistics> transformedColumnStatistics = transformColumnsStatistics(rowCount, tableColumnFields, statistics.getColumnStatistics());
-
-        String tableHandleId = client.getVastTableHandleId(transaction, schemaName, tableName);
-        LOG.info("Acquired table handle id for %s.%s", schemaName, tableName);
-        String bucket = ParsedURL.of(schemaName).getBucket();
-        String statisticsURL = TrinoTableStatisticsIdentifierFactory.getTableStatisticsIdentifier(bucket, tableHandleId);
-
-        this.storage.setTableStatistics(statisticsURL, new TableStatistics(Estimate.of(rowCount), transformedColumnStatistics));
-    }
-
-    public void deleteTableStatistics(String tableUrl)
-    {
-        this.storage.deleteTableStatistics(tableUrl);
+        this.storage.setTableStatistics(table, new TableStatistics(Estimate.of(rowCount), transformedColumnStatistics));
     }
 
     private long getTableRowCount(Map<TableStatisticType, Block> tableStatistics)

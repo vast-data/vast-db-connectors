@@ -27,6 +27,8 @@ import static com.amazonaws.http.HttpMethodName.DELETE;
 import static com.amazonaws.http.HttpMethodName.GET;
 import static com.amazonaws.http.HttpMethodName.POST;
 import static com.amazonaws.http.HttpMethodName.PUT;
+import static com.vastdata.client.VastClient.AUDIT_LOG_BUCKET_NAME;
+import static com.vastdata.client.VastClient.BIG_CATALOG_BUCKET_NAME;
 
 public class VastRootHandler
         implements HttpHandler
@@ -45,7 +47,8 @@ public class VastRootHandler
     public VastRootHandler()
     {
         Set<String> openTransactions = Sets.newConcurrentHashSet();
-        schema.put("vast-big-catalog-bucket", new HashSet<>());
+        schema.put(AUDIT_LOG_BUCKET_NAME, new HashSet<>());
+        schema.put(BIG_CATALOG_BUCKET_NAME, new HashSet<>());
         handlersMap.put(GET, new GetHandler(schema, openTransactions));
         handlersMap.put(POST, new PostHandler(schema, openTransactions));
         handlersMap.put(PUT, new PutHandler(schema, openTransactions));

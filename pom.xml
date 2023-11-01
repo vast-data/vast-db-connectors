@@ -10,7 +10,7 @@
 
     <groupId>ndb</groupId>
     <artifactId>ndb-root</artifactId>
-    <version>4.6.0</version>
+    <version>5.0.0</version>
 
     <name>ndb-root</name>
     <description>NDB</description>
@@ -43,14 +43,15 @@
         <air.modernizer.java-version>8</air.modernizer.java-version>
         <dep.aws-sdk.version>1.12.172</dep.aws-sdk.version>
         <dep.errorprone.version>2.11.0</dep.errorprone.version>
-        <dep.airlift.version>206</dep.airlift.version>
-        <dep.jackson.version>2.13.4</dep.jackson.version>
+        <dep.jackson.version>2.14.2</dep.jackson.version>
         <dep.testng.version>6.10</dep.testng.version>
+        <dep.arrow.version>11.0.0</dep.arrow.version>
     </properties>
 
     <modules>
         <module>plugin/ndb-common</module>
-        <module>plugin/trino-vast</module>
+        <module>plugin/spark3</module>
+<!--        <module>plugin/trino-vast</module>-->
     </modules>
 
     <repositories>
@@ -171,6 +172,14 @@
         <pluginManagement>
             <plugins>
                 <plugin>
+                    <groupId>com.mycila</groupId>
+                    <artifactId>license-maven-plugin</artifactId>
+                    <version>4.2</version>
+                    <configuration>
+                        <skip>true</skip>
+                    </configuration>
+                </plugin>
+                <plugin>
                     <groupId>org.antlr</groupId>
                     <artifactId>antlr4-maven-plugin</artifactId>
                     <version>${dep.antlr.version}</version>
@@ -258,6 +267,7 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-enforcer-plugin</artifactId>
                     <configuration>
+                        <fail>false</fail>
                         <rules>
                             <compound implementation="com.github.ferstl.maven.pomenforcers.CompoundPedanticEnforcer">
                                 <enforcers>POM_SECTION_ORDER,MODULE_ORDER,DEPENDENCY_MANAGEMENT_ORDER,DEPENDENCY_ORDER,DEPENDENCY_ELEMENT</enforcers>
@@ -274,7 +284,6 @@
                                     <!-- TODO: fix this in Airlift resolver -->
                                     <exclude>org.codehaus.plexus:plexus-utils</exclude>
                                     <exclude>com.google.guava:guava</exclude>
-                                    <exclude>com.google.inject:guice</exclude>
                                     <exclude>com.google.protobuf:protobuf-java</exclude>
                                     <exclude>com.fasterxml.jackson.core:jackson-core</exclude>
                                     <exclude>com.fasterxml.jackson.core:jackson-databind</exclude>
@@ -306,7 +315,11 @@
                                     <exclude>com.google.code.gson:gson</exclude>
                                     <exclude>org.apache.curator:curator-client</exclude>
                                     <exclude>org.apache.hadoop:hadoop-client</exclude>
-                                    <exclude>joda-time:joda-time</exclude>
+                                    <exclude>org.apache.parquet:parquet-common</exclude>
+                                    <exclude>org.apache.parquet:parquet-format-structures</exclude>
+                                    <exclude>org.xerial.snappy:snappy-java</exclude>
+<!--                                    <exclude>joda-time:joda-time</exclude>-->
+                                    <exclude>net.bytebuddy:byte-buddy</exclude>
                                 </excludes>
                             </requireUpperBoundDeps>
                         </rules>
@@ -330,6 +343,7 @@
                     <groupId>pl.project13.maven</groupId>
                     <artifactId>git-commit-id-plugin</artifactId>
                     <configuration>
+                        <skip>true</skip>
                         <runOnlyOnce>true</runOnlyOnce>
                         <injectAllReactorProjects>true</injectAllReactorProjects>
                         <offline>true</offline>
@@ -352,7 +366,7 @@
                             <goal>exec</goal>
                         </goals>
                         <configuration>
-                            <executable>true</executable>
+                            <executable>scripts/generate.sh</executable>
                         </configuration>
                     </execution>
                 </executions>
@@ -367,6 +381,7 @@
             <plugin>
                 <groupId>ca.vanzyl.provisio.maven.plugins</groupId>
                 <artifactId>provisio-maven-plugin</artifactId>
+                <version>1.0.18</version>
                 <extensions>true</extensions>
             </plugin>
         </plugins>

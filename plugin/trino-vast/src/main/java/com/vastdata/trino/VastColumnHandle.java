@@ -24,6 +24,7 @@ import java.util.Objects;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.vastdata.trino.TypeUtils.convertArrowFieldToTrinoType;
+import static java.util.Objects.requireNonNull;
 
 public final class VastColumnHandle
         implements ColumnHandle
@@ -83,6 +84,7 @@ public final class VastColumnHandle
 
     public VastColumnHandle withProjectionExpression(VastExpression expression)
     {
+        requireNonNull(expression.getFunction());
         return new VastColumnHandle(
                 this.serializedField,
                 this.projectionPath,

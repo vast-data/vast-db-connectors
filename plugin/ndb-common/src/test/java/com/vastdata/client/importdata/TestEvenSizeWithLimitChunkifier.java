@@ -7,6 +7,8 @@ package com.vastdata.client.importdata;
 import com.vastdata.client.schema.ImportDataContext;
 import com.vastdata.client.schema.ImportDataFile;
 import org.mockito.Mock;
+import org.testng.annotations.AfterTest;
+import org.testng.annotations.BeforeTest;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -15,7 +17,7 @@ import java.util.Collections;
 import java.util.List;
 
 import static com.vastdata.client.importdata.EvenSizeWithLimitChunkifier.CHUNK_SIZE_LIMIT;
-import static org.mockito.MockitoAnnotations.initMocks;
+import static org.mockito.MockitoAnnotations.openMocks;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
@@ -23,6 +25,21 @@ public class TestEvenSizeWithLimitChunkifier
 {
     @Mock ImportDataFile mockImportDataFile;
     URI endpoint = URI.create("http://localhost");
+
+    private AutoCloseable autoCloseable;
+
+    @BeforeTest
+    public void setup()
+    {
+        autoCloseable = openMocks(this);
+    }
+
+    @AfterTest
+    public void tearDown()
+            throws Exception
+    {
+        autoCloseable.close();
+    }
 
     @DataProvider
     public static Object[][] testCases()
@@ -42,7 +59,6 @@ public class TestEvenSizeWithLimitChunkifier
     @Test(dataProvider = "testCases")
     public void testApply(int numOfFiles, int numOfEndpoints, int expectedChunksNumber, int expectedMaxChunkSize, int chunkLimit)
     {
-        initMocks(this);
         ImportDataContext ctx = new ImportDataContext(Collections.nCopies(numOfFiles, mockImportDataFile), "dest")
                 .withChunkLimit(chunkLimit);
         List<URI> endpoints = Collections.nCopies(numOfEndpoints, endpoint);

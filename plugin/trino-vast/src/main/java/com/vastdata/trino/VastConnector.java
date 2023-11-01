@@ -4,6 +4,7 @@
 
 package com.vastdata.trino;
 
+import com.google.inject.Inject;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastVersion;
 import com.vastdata.client.schema.StartTransactionContext;
@@ -20,11 +21,10 @@ import io.trino.spi.connector.ConnectorPageSourceProvider;
 import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.connector.ConnectorSplitManager;
 import io.trino.spi.connector.ConnectorTransactionHandle;
+import io.trino.spi.connector.SystemTable;
 import io.trino.spi.procedure.Procedure;
 import io.trino.spi.session.PropertyMetadata;
 import io.trino.spi.transaction.IsolationLevel;
-
-import javax.inject.Inject;
 
 import java.util.List;
 import java.util.Set;
@@ -45,7 +45,6 @@ public class VastConnector
     private final VastPageSourceProvider pageSourceProvider;
     private final VastPageSinkProvider pageSinkProvider;
     private final List<PropertyMetadata<?>> sessionProperties;
-    private final Set<Procedure> procedures;
     private final VastStatisticsManager statisticsManager;
 
     @Inject
@@ -57,8 +56,7 @@ public class VastConnector
             VastPageSourceProvider pageSourceProvider,
             VastPageSinkProvider pageSinkProvider,
             VastStatisticsManager statisticsManager,
-            Set<SessionPropertiesProvider> sessionProperties,
-            Set<Procedure> procedures)
+            Set<SessionPropertiesProvider> sessionProperties)
     {
         LOG.info("Creating VAST connector: system=%s, hash=%s", VastVersion.SYS_VERSION, VastVersion.HASH);
         this.lifeCycleManager = requireNonNull(lifeCycleManager, "lifeCycleManager is null");
@@ -71,7 +69,6 @@ public class VastConnector
         this.sessionProperties = requireNonNull(sessionProperties, "sessionProperties is null").stream()
                 .flatMap(sessionPropertiesProvider -> sessionPropertiesProvider.getSessionProperties().stream())
                 .collect(toImmutableList());
-        this.procedures = requireNonNull(procedures, "procedures is null");
     }
 
     @Override
@@ -141,9 +138,15 @@ public class VastConnector
     }
 
     @Override
+    public Set<SystemTable> getSystemTables()
+    {
+        return Set.of(new VastSystemTable());
+    }
+
+    @Override
     public Set<Procedure> getProcedures()
     {
-        return procedures;
+        return Set.of();
     }
 
     @Override

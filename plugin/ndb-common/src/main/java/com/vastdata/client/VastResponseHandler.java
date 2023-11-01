@@ -12,8 +12,12 @@ import io.airlift.http.client.ResponseHandlerUtils;
 import io.airlift.log.Logger;
 import org.apache.commons.codec.binary.Hex;
 
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.net.URI;
 import java.util.List;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 
 import static com.vastdata.client.error.VastExceptionFactory.ioException;
@@ -47,7 +51,12 @@ public class VastResponseHandler
     @Override
     public VastResponse handleException(Request request, Exception exception)
     {
-        LOG.error(exception, getRequestExceptionTitle(request));
+        String message = getRequestExceptionTitle(request);
+        LOG.error(exception, message);
+        if (exception instanceof TimeoutException) {
+            // Add request information to exception message in case of a timeout (following ORION-110163)
+            throw new UncheckedIOException(message + " due to timeout", new IOException(exception));
+        }
         throw ResponseHandlerUtils.propagate(request, exception);
     }
 
@@ -59,23 +68,24 @@ public class VastResponseHandler
     @Override
     public VastResponse handle(Request request, Response response)
     {
-        LOG.info("response: %s", response);
+        URI requestUri = request.getUri();
+        LOG.debug("response: %s", response);
         // we MUST read all contents before this method exits, otherwise the connection will be closed
-        byte[] data = getRequestPayloadBytes(response);
+        byte[] data = getRequestPayloadBytes(request, response);
         if (LOG.isDebugEnabled()) {
             LOG.debug("read %d bytes: %s", data.length, Hex.encodeHexString(data));
         }
-        return new VastResponse(response.getStatusCode(), response.getHeaders(), data);
+        return new VastResponse(response.getStatusCode(), response.getHeaders(), data, requestUri);
     }
 
-    protected byte[] getRequestPayloadBytes(Response response)
+    protected byte[] getRequestPayloadBytes(Request request, Response response)
     {
         byte[] data;
         try {
             data = getBytes(response);
         }
         catch (Exception e) {
-            throw toRuntime(ioException("Failed handling request", e));
+            throw toRuntime(ioException("Failed handling request: " + request, e));
         }
         return data;
     }

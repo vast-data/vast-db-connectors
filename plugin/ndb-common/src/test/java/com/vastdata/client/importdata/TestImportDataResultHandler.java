@@ -13,6 +13,8 @@ import com.vastdata.client.tx.VastTraceToken;
 import com.vastdata.client.tx.VastTransaction;
 import io.airlift.http.client.HeaderName;
 import org.mockito.Mock;
+import org.testng.annotations.AfterTest;
+import org.testng.annotations.BeforeTest;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -21,7 +23,7 @@ import java.util.Optional;
 
 import static com.vastdata.client.importdata.ImportDataResultHandler.handleResponse;
 import static org.mockito.Mockito.when;
-import static org.mockito.MockitoAnnotations.initMocks;
+import static org.mockito.MockitoAnnotations.openMocks;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
@@ -32,11 +34,25 @@ public class TestImportDataResultHandler
     @Mock VastTraceToken mockTraceToken;
     @Mock VastTransaction mockTrans;
 
+    private AutoCloseable autoCloseable;
+
+    @BeforeTest
+    public void setup()
+    {
+        autoCloseable = openMocks(this);
+    }
+
+    @AfterTest
+    public void tearDown()
+            throws Exception
+    {
+        autoCloseable.close();
+    }
+
     @Test(dataProvider = "importDataResultsProvider")
     public void testSuccessfulRequest(int expectedNumberOfSuccessfulFiles, int expectedNumberOfFailedFiles, boolean expectedException)
             throws ImportDataFailure
     {
-        initMocks(this);
         when(mockTraceToken.toString()).thenReturn("SomeTraceToken");
         when(mockTrans.getId()).thenReturn(Long.parseUnsignedLong("514026084031791104"));
         Multimap<HeaderName, String> m = ImmutableMultimap.of(HeaderName.of(RequestsHeaders.TABULAR_TRANSACTION_ID.getHeaderName()), "transid");
@@ -70,10 +86,10 @@ public class TestImportDataResultHandler
     public void testFailedRequest()
             throws ImportDataFailure
     {
-        initMocks(this);
         when(mockTraceToken.toString()).thenReturn("SomeTraceToken");
         when(mockImportDataResponse.getBytes()).thenReturn("test fail message".getBytes(StandardCharsets.UTF_8));
         when(mockImportDataResponse.getStatus()).thenReturn(400);
+        when(mockImportDataResponse.getErrorMessage()).thenReturn(Optional.empty());
         handleResponse(mockImportDataResponse, null, mockTraceToken);
     }
 }

@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class SimpleVastTransaction
         implements VastTransaction, Serializable
 {
+    public static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private final long id;
     private final boolean readOnly;
     private final boolean autocommit;
@@ -76,7 +77,7 @@ public class SimpleVastTransaction
     public String toString()
     {
         try {
-            return new ObjectMapper().writeValueAsString(this);
+            return OBJECT_MAPPER.writeValueAsString(this);
         }
         catch (JsonProcessingException e) {
             throw new RuntimeException(e);
@@ -87,7 +88,7 @@ public class SimpleVastTransaction
             throws VastIOException
     {
         try {
-            return new ObjectMapper().readValue(serialized, SimpleVastTransaction.class);
+            return OBJECT_MAPPER.readValue(serialized, SimpleVastTransaction.class);
         }
         catch (JsonProcessingException e) {
             throw new VastIOException(e);

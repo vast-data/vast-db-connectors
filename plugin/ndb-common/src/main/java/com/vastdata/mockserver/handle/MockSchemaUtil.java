@@ -46,7 +46,7 @@ public final class MockSchemaUtil
             int schemaNameOffset = flatbuffBuilder.createString(name);
             int propertiesOffset = flatbuffBuilder.createString("");
             int handleOffset = flatbuffBuilder.createString("0");
-            int objectDetails = ObjectDetails.createObjectDetails(flatbuffBuilder, schemaNameOffset, propertiesOffset, handleOffset);
+            int objectDetails = ObjectDetails.createObjectDetails(flatbuffBuilder, schemaNameOffset, propertiesOffset, handleOffset, 0, 0);
             schemaDetailsOffsets[i] = objectDetails;
             i++;
         }
@@ -78,7 +78,7 @@ public final class MockSchemaUtil
             int tableNameOffset = flatbuffBuilder.createString(tableName);
             int propertiesOffset = flatbuffBuilder.createString("");
             int handleOffset = flatbuffBuilder.createString("0");
-            int objectDetails = ObjectDetails.createObjectDetails(flatbuffBuilder, tableNameOffset, propertiesOffset, handleOffset);
+            int objectDetails = ObjectDetails.createObjectDetails(flatbuffBuilder, tableNameOffset, propertiesOffset, handleOffset, 0, 0);
             tableDetailsOffset.add(objectDetails);
         }
         int tablesVectorOffset = flatbuffBuilder.createVectorOfTables(Ints.toArray(tableDetailsOffset));

@@ -4,14 +4,13 @@
 
 package com.vastdata.client.tx;
 
+import com.google.inject.Inject;
 import com.google.common.collect.Sets;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastResponse;
 import com.vastdata.client.error.VastExceptionFactory;
 import com.vastdata.client.schema.StartTransactionContext;
 import io.airlift.log.Logger;
-
-import javax.inject.Inject;
 
 import java.util.Set;
 

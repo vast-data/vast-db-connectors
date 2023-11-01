@@ -6,10 +6,10 @@ package com.vastdata.client;
 
 public class VastVersion
 {
-    public final static int MAJOR = 4;
-    public final static int MINOR = 6;
+    public final static int MAJOR = 5;
+    public final static int MINOR = 0;
     public final static int PATCH = 0;
-    public final static int PROTOCOL = 104;
-    public final static String SYS_VERSION = "4.6.0.104";
-    public final static String HASH = "a3765c4d2d75d9c6de6b0493ac33292d2c249991";
+    public final static int PROTOCOL = 14;
+    public final static String SYS_VERSION = "5.0.0.14";
+    public final static String HASH = "66e76f4b3674a37c81dba1f654b5c767b9e00739";
 }

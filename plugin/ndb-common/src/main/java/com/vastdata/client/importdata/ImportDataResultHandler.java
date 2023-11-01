@@ -41,7 +41,7 @@ public final class ImportDataResultHandler
         }
         else {
             LOG.error("ImportData(%s): procedure failed with status %s", traceToken, status);
-            throw ImportDataFailure.fromFailedRequest(status);
+            throw ImportDataFailure.fromFailedRequest(vastResponse);
         }
     }
 

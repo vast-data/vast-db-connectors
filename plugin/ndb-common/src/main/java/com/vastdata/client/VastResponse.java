@@ -10,6 +10,7 @@ import io.airlift.http.client.HeaderName;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.nio.ByteBuffer;
 import java.util.Optional;
 
@@ -20,12 +21,19 @@ public class VastResponse
     private final int status;
     private final Multimap<HeaderName, String> headers;
     private final byte[] contents;
+    private final URI requestUri;
 
-    public VastResponse(int status, Multimap<HeaderName, String> headers, byte[] contents)
+    public VastResponse(int status, Multimap<HeaderName, String> headers, byte[] contents, URI requestUri)
     {
         this.status = status;
         this.headers = headers;
         this.contents = contents;
+        this.requestUri = requestUri;
+    }
+
+    public URI getRequestUri()
+    {
+        return requestUri;
     }
 
     public int getStatus()
@@ -78,6 +86,7 @@ public class VastResponse
     {
         return toStringHelper(this)
                 .add("status", status)
+                .add("requestUri", requestUri)
                 .add("headers", headers)
                 .toString();
     }

@@ -5,6 +5,7 @@
 package com.vastdata.trino.expression;
 
 import com.google.common.base.MoreObjects;
+import com.google.common.collect.ImmutableList;
 import com.vastdata.client.ArrowComputeFunction;
 import io.airlift.log.Logger;
 import io.trino.spi.connector.ConnectorSession;
@@ -15,12 +16,11 @@ import io.trino.spi.expression.FunctionName;
 import io.trino.spi.expression.Variable;
 
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static com.vastdata.client.ArrowComputeFunction.EQUAL;
@@ -35,6 +35,7 @@ import static io.trino.spi.expression.StandardFunctions.AND_FUNCTION_NAME;
 import static io.trino.spi.expression.StandardFunctions.EQUAL_OPERATOR_FUNCTION_NAME;
 import static io.trino.spi.expression.StandardFunctions.GREATER_THAN_OPERATOR_FUNCTION_NAME;
 import static io.trino.spi.expression.StandardFunctions.GREATER_THAN_OR_EQUAL_OPERATOR_FUNCTION_NAME;
+import static io.trino.spi.expression.StandardFunctions.IN_PREDICATE_FUNCTION_NAME;
 import static io.trino.spi.expression.StandardFunctions.IS_NULL_FUNCTION_NAME;
 import static io.trino.spi.expression.StandardFunctions.LESS_THAN_OPERATOR_FUNCTION_NAME;
 import static io.trino.spi.expression.StandardFunctions.LESS_THAN_OR_EQUAL_OPERATOR_FUNCTION_NAME;
@@ -46,6 +47,7 @@ import static java.util.Objects.nonNull;
 public class VastProjectionPushdown
 {
     private static final Logger LOG = Logger.get(VastProjectionPushdown.class);
+
     private static final Map<FunctionName, ArrowComputeFunction> supportedComparisons = Map.of(
             EQUAL_OPERATOR_FUNCTION_NAME, EQUAL,
             NOT_EQUAL_OPERATOR_FUNCTION_NAME, NOT_EQUAL,
@@ -55,6 +57,9 @@ public class VastProjectionPushdown
             LESS_THAN_OR_EQUAL_OPERATOR_FUNCTION_NAME, LESS_EQUAL);
 
     private static final Set<FunctionName> pushThroughFunctions = Set.of(AND_FUNCTION_NAME, OR_FUNCTION_NAME);
+
+    // Will be kept unmodified and evaluated in Trino, to allow other parts of the expression to be pushed down into VAST
+    private static final Set<FunctionName> functionsToKeep = Set.of(IN_PREDICATE_FUNCTION_NAME);
 
     public static class Result {
         private final ConnectorExpression remaining;
@@ -105,12 +110,12 @@ public class VastProjectionPushdown
         LOG.debug("trying to pushdown %s", expression);
         Optional<Variable> result = matchUnaryCalls(expression, IS_NULL_FUNCTION_NAME);
         if (result.isPresent()) {
-            Variable variable = result.get();
+            Variable variable = result.orElseThrow();
             return Optional.of(Result.from(VastExpression.from(IS_NULL, variable)));
         }
         result = matchUnaryCalls(expression, NOT_FUNCTION_NAME, IS_NULL_FUNCTION_NAME);
         if (result.isPresent()) {
-            Variable variable = result.get();
+            Variable variable = result.orElseThrow();
             return Optional.of(Result.from(VastExpression.from(IS_VALID, variable)));
         }
         return matchComparison(expression);
@@ -132,7 +137,7 @@ public class VastProjectionPushdown
                 if (result.isEmpty()) {
                     return Optional.empty();
                 }
-                results.add(result.get());
+                results.add(result.orElseThrow());
             }
             // rewrite new function call arguments
             args = results.stream().map(Result::getRemaining).collect(Collectors.toList());
@@ -155,6 +160,15 @@ public class VastProjectionPushdown
             Constant constant = (Constant) right;
             return Optional.of(Result.from(VastExpression.from(function, variable, List.of(constant), session)));
         }
+
+        if (functionsToKeep.contains(call.getFunctionName())) {
+            ImmutableList.Builder<Variable> builder = ImmutableList.builder();
+            forVariableChildren(call, builder::add);
+            List<VastExpression> variables = builder.build().stream().map(VastExpression::identity).collect(Collectors.toList());
+            return Optional.of(new Result(call, variables));
+        }
+
+        // unsupported expression
         return Optional.empty();
     }
 
@@ -174,5 +188,14 @@ public class VastProjectionPushdown
             return Optional.empty();
         }
         return Optional.of((Variable) expression);
+    }
+
+    public static void forVariableChildren(ConnectorExpression expression, Consumer<Variable> consumer)
+    {
+        if (expression instanceof Variable) {
+            consumer.accept((Variable) expression);
+            return;
+        }
+        expression.getChildren().forEach(child -> forVariableChildren(child, consumer));
     }
 }

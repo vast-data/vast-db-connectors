@@ -7,6 +7,9 @@ package com.vastdata.trino;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.vastdata.client.schema.EnumeratedSchema;
+import com.vastdata.trino.predicate.ColumnDomain;
+import com.vastdata.trino.predicate.ComplexPredicate;
+import com.vastdata.trino.predicate.LogicalFunction;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slices;
 import io.trino.spi.predicate.Domain;
@@ -18,9 +21,13 @@ import io.trino.spi.predicate.ValueSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static com.google.common.base.Verify.verify;
+import static io.trino.spi.expression.StandardFunctions.AND_FUNCTION_NAME;
+import static io.trino.spi.expression.StandardFunctions.OR_FUNCTION_NAME;
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static java.lang.String.format;
 
@@ -31,10 +38,19 @@ public class TrinoPredicateSerializer
 
     private final Map<Long, Domain> domainsMap;  // mapping a column position within the schema to its domain
     private final Map<Long, String> substringsMap;
+    private final Optional<ComplexPredicate> complexPredicate;
+    private final EnumeratedSchema enumeratedSchema;
 
-    public TrinoPredicateSerializer(TupleDomain<VastColumnHandle> tupleDomain, List<VastSubstringMatch> substringMatches, EnumeratedSchema enumeratedSchema)
+    public TrinoPredicateSerializer(
+            TupleDomain<VastColumnHandle> tupleDomain,
+            Optional<ComplexPredicate> complexPredicate,
+            List<VastSubstringMatch> substringMatches,
+            EnumeratedSchema enumeratedSchema)
     {
-        LOG.debug("serializing %s and %s (schema=%s) to Arrow Compute IR flatbuffer format", tupleDomain, substringMatches, enumeratedSchema);
+        LOG.debug("serializing %s, %s and %s (schema=%s) to Arrow Compute IR flatbuffer format", tupleDomain, complexPredicate, substringMatches, enumeratedSchema);
+        this.complexPredicate = complexPredicate;
+        this.enumeratedSchema = enumeratedSchema;
+
         this.domainsMap = tupleDomain.getDomains().orElseThrow().entrySet().stream().collect(Collectors.toMap(
                 entry -> getColumnPosition(entry.getKey(), enumeratedSchema),
                 Map.Entry::getValue));
@@ -60,6 +76,11 @@ public class TrinoPredicateSerializer
     @Override
     public int serialize()
     {
+        if (complexPredicate.isPresent()) {
+            verify(domainsMap.isEmpty());
+            LOG.debug("serializing complex predicate: %s", complexPredicate);
+            return buildPredicate(complexPredicate.orElseThrow());
+        }
         // `ALL` predicate is serialized as an empty `domainsMap`.
         int[] offsets = new int[domainsMap.size() + substringsMap.size()];
         int i = 0;
@@ -75,6 +96,27 @@ public class TrinoPredicateSerializer
             offsets[i++] = buildOr(match);
         }
         return buildAnd(offsets);
+    }
+
+    private int buildPredicate(ComplexPredicate predicate)
+    {
+        if (predicate instanceof LogicalFunction) {
+            LogicalFunction func = (LogicalFunction) predicate;
+            IntStream args = func.getChildren().stream().mapToInt(child -> buildPredicate(child));
+            if (func.getName().equals(AND_FUNCTION_NAME.getName())) {
+                return buildAnd(args.toArray());
+            }
+            if (func.getName().equals(OR_FUNCTION_NAME.getName())) {
+                return buildOr(args.toArray());
+            }
+            throw new UnsupportedOperationException(format("Unsupported function: %s", func));
+        }
+        if (predicate instanceof ColumnDomain) {
+            ColumnDomain columnDomain = (ColumnDomain) predicate;
+            long position = getColumnPosition(columnDomain.getColumn(), enumeratedSchema);
+            return buildDomain(buildColumn(position), columnDomain.getDomain());
+        }
+        throw new UnsupportedOperationException(format("Unsupported predicate: %s", predicate));
     }
 
     private int buildDomain(int column, Domain domain)

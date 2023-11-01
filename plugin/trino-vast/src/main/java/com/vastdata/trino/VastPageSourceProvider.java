@@ -4,6 +4,8 @@
 
 package com.vastdata.trino;
 
+import com.google.common.collect.ImmutableSet;
+import com.google.inject.Inject;
 import com.vastdata.client.QueryDataPagination;
 import com.vastdata.client.QueryDataResponseHandler;
 import com.vastdata.client.VastClient;
@@ -12,6 +14,7 @@ import com.vastdata.client.executor.VastRetryConfig;
 import com.vastdata.client.schema.EnumeratedSchema;
 import com.vastdata.client.tx.VastTraceToken;
 import com.vastdata.client.tx.VastTransaction;
+import com.vastdata.trino.predicate.ComplexPredicate;
 import io.airlift.log.Logger;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ConnectorPageSource;
@@ -26,8 +29,6 @@ import io.trino.spi.predicate.TupleDomain;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 
-import javax.inject.Inject;
-
 import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -39,6 +40,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static com.vastdata.trino.VastSessionProperties.getDynamicFilterCompactionThreshold;
+import static com.vastdata.trino.VastSessionProperties.getEnableSortedProjections;
 import static com.vastdata.trino.VastSessionProperties.getQueryDataRowsPerPage;
 import static com.vastdata.trino.VastSessionProperties.getRetryMaxCount;
 import static com.vastdata.trino.VastSessionProperties.getRetrySleepDuration;
@@ -97,12 +99,19 @@ public class VastPageSourceProvider
         filteredColumns.forEach(vch -> schemaFields.add(vch.getBaseField()));
 
         List<VastSubstringMatch> substringMatches = table.getSubstringMatches();
-        substringMatches.forEach(match -> schemaFields.add(match.getColumn().getField()));
+        substringMatches.forEach(match -> schemaFields.add(match.getColumn().getBaseField()));
+
+        Optional<ComplexPredicate> complexPredicate = Optional.ofNullable(table.getComplexPredicate());
+        complexPredicate.ifPresent(pred -> {
+            ImmutableSet.Builder<VastColumnHandle> builder = ImmutableSet.builder();
+            pred.collectColumns(builder);
+            builder.build().forEach(column -> schemaFields.add(column.getBaseField()));
+        });
 
         LOG.debug("schemaFields: %s", schemaFields);
         EnumeratedSchema enumeratedSchema = new EnumeratedSchema(schemaFields);
 
-        TrinoPredicateSerializer predicateSerializer = new TrinoPredicateSerializer(predicate, substringMatches, enumeratedSchema);
+        TrinoPredicateSerializer predicateSerializer = new TrinoPredicateSerializer(predicate, complexPredicate, substringMatches, enumeratedSchema);
         TrinoProjectionSerializer projectionSerializer = new TrinoProjectionSerializer(projectedColumns, enumeratedSchema);
         List<Integer> projections = projectionSerializer.getProjectionIndices();
         LinkedHashMap<Field, LinkedHashMap<List<Integer>, Integer>> baseFieldWithProjections = projectionSerializer.getBaseFieldWithProjections();
@@ -120,7 +129,7 @@ public class VastPageSourceProvider
         AtomicReference<URI> usedDataEndpoint = new AtomicReference<>();
         int rowsPerPage = getQueryDataRowsPerPage(session);
         if (table.getLimit().isPresent()) {
-            long limit = table.getLimit().get();
+            long limit = table.getLimit().orElseThrow();
             if (limit < rowsPerPage) {
                 rowsPerPage = (int) limit;
             }
@@ -141,15 +150,15 @@ public class VastPageSourceProvider
                     handlerSupplier,
                     usedDataEndpoint,
                     vastSplit.getContext(), vastSplit.getSchedulingInfo(),
-                    dataEndpoints, retryConfig, batchSize, table.getBigCatalogSearchPath(), pagination);
+                    dataEndpoints, retryConfig, batchSize, table.getBigCatalogSearchPath(), pagination,
+                    getEnableSortedProjections(session));
             return result.get();
         };
 
         VastPageSource source = new VastPageSource(traceToken, vastSplit, fetchPages, table.getLimit());
-        if (table.getUpdatable()) {
-            // see https://trino.io/docs/current/develop/delete-and-update.html for details
-            return new VastUpdatablePageSource(source, client, tx, table, usedDataEndpoint, session);
-        }
+//        if (table.getUpdatable()) {
+//            return new VastMergablePageSource();?
+//        }
         return source;
     }
 }

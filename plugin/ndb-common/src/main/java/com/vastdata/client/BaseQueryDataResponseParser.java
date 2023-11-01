@@ -200,7 +200,7 @@ abstract public class BaseQueryDataResponseParser<T>
         public void process()
                 throws IOException, InterruptedException
         {
-            nextRowId = Long.max(readLong(input), nextRowId);
+            nextRowId = readLong(input);
             if (debugConfig.isDisableArrowParsing()) {
                 if (Objects.isNull(messageReader)) {
                     messageReader = new MessageChannelReader(new ReadChannel(Channels.newChannel(input)), allocator);

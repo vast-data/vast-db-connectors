@@ -4,12 +4,14 @@
 
 package com.vastdata.client;
 
+import com.vastdata.client.stats.StatisticsUrlExtractor;
+
 import java.util.function.Predicate;
 
 public class DummyDependenciesFactory
         implements VastDependenciesFactory
 {
-    private VastConfig vastConfig;
+    private final VastConfig vastConfig;
 
     DummyDependenciesFactory(VastConfig vastConfig)
     {
@@ -28,5 +30,17 @@ public class DummyDependenciesFactory
     public VastRequestHeadersBuilder getHeadersFactory()
     {
         return new CommonRequestHeadersBuilder(() -> "DUMMY-" + vastConfig.getEngineVersion());
+    }
+
+    @Override
+    public String getConnectorVersionedStatisticsTag()
+    {
+        return "dummy";
+    }
+
+    @Override
+    public StatisticsUrlExtractor<?> getStatisticsUrlHelper()
+    {
+        return null;
     }
 }

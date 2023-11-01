@@ -26,10 +26,11 @@ public class VastPayloadSerializer<T>
 {
     private static final Logger LOG = Logger.get(VastPayloadSerializer.class);
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     @SuppressWarnings("rawtypes")
     private static final Function<Map, byte[]> mapFunction = map -> {
         try {
-            return new ObjectMapper().writeValueAsBytes(map);
+            return OBJECT_MAPPER.writeValueAsBytes(map);
         }
         catch (JsonProcessingException e) {
             throw serializationException("Failed serializing parameters o", e);

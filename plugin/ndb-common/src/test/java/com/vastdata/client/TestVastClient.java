@@ -24,6 +24,7 @@ import io.airlift.http.client.Request;
 import io.airlift.http.client.jetty.JettyHttpClient;
 import org.mockito.Mock;
 import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
@@ -43,15 +44,17 @@ import java.util.Set;
 import java.util.function.Consumer;
 
 import static com.amazonaws.http.HttpMethodName.GET;
-import static com.vastdata.client.VastClient.BIG_CATALOG_BUCKET;
+import static com.vastdata.client.VastClient.AUDIT_LOG_BUCKET_NAME;
+import static com.vastdata.client.VastClient.BIG_CATALOG_BUCKET_NAME;
+import static com.vastdata.client.VastClient.getEndpointIndex;
 import static com.vastdata.client.VastClientForTests.RETRY_MAX_COUNT;
 import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.MockitoAnnotations.initMocks;
+import static org.mockito.MockitoAnnotations.openMocks;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -63,6 +66,8 @@ public class TestVastClient
     private int testPort;
     @Mock VastTransaction mockTransactionHandle;
     @Mock HttpClient mockHttpClient;
+
+    private AutoCloseable autoCloseable;
 
     @BeforeClass
     public void startMockServer()
@@ -84,8 +89,15 @@ public class TestVastClient
     public void clearMockServer()
     {
         handler.clearSchema();
-        initMocks(this);
+        autoCloseable = openMocks(this);
         when(mockTransactionHandle.getId()).thenReturn(Long.parseUnsignedLong("514026084031791104"));
+    }
+
+    @AfterMethod
+    public void tearDown()
+            throws Exception
+    {
+        autoCloseable.close();
     }
 
     @Test(enabled = false)
@@ -194,12 +206,13 @@ public class TestVastClient
                 handler.setSchema(testMockServerSchema);
             }
             List<String> replyBuckets = vastClient.listBuckets(true);
-            assertEquals(replyBuckets.size(), i + 1);
+            assertEquals(replyBuckets.size(), i + 2);
             for (int j = 1; j < i; j++) {
                 String bucketName = bucketNamePrefix + j;
                 assertTrue(replyBuckets.contains(bucketName), format("Failed on iteration no. %d: %s not in list", i, bucketName));
             }
-            assertTrue(replyBuckets.contains(BIG_CATALOG_BUCKET));
+            assertTrue(replyBuckets.contains(AUDIT_LOG_BUCKET_NAME));
+            assertTrue(replyBuckets.contains(BIG_CATALOG_BUCKET_NAME));
         }
     }
 
@@ -316,5 +329,32 @@ public class TestVastClient
             // that's fine
         }
         verify(mockHttpClient, times(expectedNumOfRetries)).execute(any(Request.class), any(VastResponseHandler.class));
+    }
+
+    @Test
+    public void testHashIndex()
+    {
+        VastSplitContext split = new VastSplitContext(0, 256, 5, 1);
+        int endpointLength = 8;
+        int retry = 0;
+        String tableName = "polygenelubricants";  //hash = Integer.MIN_VALUE
+        int endpointIndex = getEndpointIndex(tableName, split, retry++, endpointLength);
+        assertTrue(endpointIndex >= 0);
+        assertEquals(getEndpointIndex(tableName, split, retry++, endpointLength), ++endpointIndex % endpointLength);
+        assertEquals(getEndpointIndex(tableName, split, retry, endpointLength), ++endpointIndex % endpointLength);
+
+        retry = 0;
+        tableName = "a"; // some positive hash
+        endpointIndex = getEndpointIndex(tableName, split, retry++, endpointLength);
+        assertTrue(endpointIndex >= 0);
+        assertEquals(getEndpointIndex(tableName, split, retry++, endpointLength) % endpointLength, ++endpointIndex % endpointLength);
+        assertEquals(getEndpointIndex(tableName, split, retry, endpointLength) % endpointLength, ++endpointIndex % endpointLength);
+
+        retry = 0;
+        tableName = "someTable"; // some negative hash
+        endpointIndex = getEndpointIndex(tableName, split, retry++, endpointLength);
+        assertTrue(endpointIndex >= 0);
+        assertEquals(getEndpointIndex(tableName, split, retry++, endpointLength) % endpointLength, ++endpointIndex % endpointLength);
+        assertEquals(getEndpointIndex(tableName, split, retry, endpointLength) % endpointLength, ++endpointIndex % endpointLength);
     }
 }

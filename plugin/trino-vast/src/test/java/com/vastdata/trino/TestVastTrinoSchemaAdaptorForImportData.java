@@ -51,7 +51,7 @@ public class TestVastTrinoSchemaAdaptorForImportData
         }
         catch (Exception e) {
             assertTrue(expectedException.isPresent(), String.format("Unexpected exception: %s", e));
-            assertEquals(e.getClass(), expectedException.get().getClass());
+            assertEquals(e.getClass(), expectedException.orElseThrow().getClass());
         }
     }
 }

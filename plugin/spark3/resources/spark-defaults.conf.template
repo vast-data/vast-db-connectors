@@ -1,0 +1,17 @@
+[NDB]
+spark.ndb.endpoint=
+spark.ndb.data_endpoints=
+spark.ndb.access_key_id=
+spark.ndb.secret_access_key=
+spark.ndb.num_of_splits=16
+spark.ndb.num_of_sub_splits=8
+spark.ndb.rowgroups_per_subsplit=1
+spark.ndb.query_data_rows_per_split=4000000
+spark.ndb.retry_max_count=3
+spark.ndb.retry_sleep_duration=1
+spark.ndb.parallel_import=true
+spark.ndb.dynamic_filter_compaction_threshold=100
+spark.ndb.dynamic_filtering_wait_timeout=2
+spark.sql.catalog.ndb=spark.sql.catalog.ndb.VastCatalog
+spark.sql.extensions=ndb.NDBSparkSessionExtension
+spark.python.authenticate.socketTimeout=1m

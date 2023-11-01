@@ -6,6 +6,7 @@ package com.vastdata.client.executor;
 
 import com.google.common.collect.ImmutableList;
 import org.mockito.Mock;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.net.URI;
@@ -14,16 +15,30 @@ import java.util.function.BooleanSupplier;
 
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.MockitoAnnotations.initMocks;
+import static org.mockito.MockitoAnnotations.openMocks;
 
 public class TestSubmittedWorkProcessor
 {
     @Mock WorkExecutor<Object> mockWorkExecutor;
 
+    private AutoCloseable autoCloseable;
+
+    @BeforeMethod
+    public void setup()
+    {
+        autoCloseable = openMocks(this);
+    }
+
+    @BeforeMethod
+    public void tearDown()
+            throws Exception
+    {
+        autoCloseable.close();
+    }
+
     @Test
     public void testCircuitBreaker()
     {
-        initMocks(this);
         URI endpoint = URI.create("http://localhost:8080");
         LinkedBlockingDeque<WorkExecutor<Object>> queue = new LinkedBlockingDeque<>(ImmutableList.of(mockWorkExecutor, mockWorkExecutor));
         BooleanSupplier breaker = () -> queue.size() > 0;
@@ -34,7 +49,6 @@ public class TestSubmittedWorkProcessor
     @Test
     public void testGracefulRun()
     {
-        initMocks(this);
         URI endpoint = URI.create("http://localhost:8080");
         LinkedBlockingDeque<WorkExecutor<Object>> queue = new LinkedBlockingDeque<>(ImmutableList.of(mockWorkExecutor, mockWorkExecutor));
         BooleanSupplier breaker = () -> true;

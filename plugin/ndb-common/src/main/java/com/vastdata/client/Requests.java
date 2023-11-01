@@ -26,6 +26,7 @@ enum Requests
     START_TRANSACTION("transaction"),
     ROLLBACK_TRANSACTION("transaction"),
     COMMIT_TRANSACTION("transaction"),
+    GET_TRANSACTION("transaction"),
     GET_SCHEDULING_INFO("schedule"),
     GET_TABLE_STATS("stats");
 

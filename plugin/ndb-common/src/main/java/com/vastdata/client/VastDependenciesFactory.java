@@ -4,6 +4,7 @@
 
 package com.vastdata.client;
 
+import com.vastdata.client.stats.StatisticsUrlExtractor;
 import io.airlift.configuration.ConfigDefaults;
 import io.airlift.http.client.HttpClientConfig;
 import io.airlift.units.DataSize;
@@ -36,4 +37,8 @@ public interface VastDependenciesFactory
     {
         return HTTP_CLIENT_CONFIG_CONFIG_DEFAULTS;
     }
+
+    String getConnectorVersionedStatisticsTag();
+
+    StatisticsUrlExtractor<?> getStatisticsUrlHelper();
 }

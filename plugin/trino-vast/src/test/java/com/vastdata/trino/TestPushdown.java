@@ -20,7 +20,7 @@ import java.util.Set;
 import static com.vastdata.trino.VastMetadata.tryParseSubstringMatch;
 import static io.airlift.slice.Slices.utf8Slice;
 import static io.trino.spi.expression.StandardFunctions.IS_NULL_FUNCTION_NAME;
-import static io.trino.spi.expression.StandardFunctions.LIKE_PATTERN_FUNCTION_NAME;
+import static io.trino.spi.expression.StandardFunctions.LIKE_FUNCTION_NAME;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,11 +42,11 @@ public class TestPushdown
         assertThat(tryParseSubstringMatch(expr, Set.of(), assignments)).isEqualTo(Optional.empty());
 
         // no support for escaped LIKE expression
-        expr = new Call(BOOLEAN, LIKE_PATTERN_FUNCTION_NAME, List.of(variable, constant("%123%"), constant("#")));
+        expr = new Call(BOOLEAN, LIKE_FUNCTION_NAME, List.of(variable, constant("%123%"), constant("#")));
         assertThat(tryParseSubstringMatch(expr, Set.of(), assignments)).isEqualTo(Optional.empty());
 
         // substring LIKE expression
-        expr = new Call(BOOLEAN, LIKE_PATTERN_FUNCTION_NAME, List.of(variable, constant("%123%")));
+        expr = new Call(BOOLEAN, LIKE_FUNCTION_NAME, List.of(variable, constant("%123%")));
         VastSubstringMatch match = new VastSubstringMatch(column, "123");
         assertThat(tryParseSubstringMatch(expr, Set.of(), assignments)).isEqualTo(Optional.of(match));
         assertThat(tryParseSubstringMatch(expr, Set.of("another"), assignments)).isEqualTo(Optional.of(match));
@@ -73,7 +73,7 @@ public class TestPushdown
     public void testParseUnsupportedPatterns(String pattern)
     {
         Variable variable = new Variable("i", VARCHAR);
-        Call expr = new Call(BOOLEAN, LIKE_PATTERN_FUNCTION_NAME, List.of(
+        Call expr = new Call(BOOLEAN, LIKE_FUNCTION_NAME, List.of(
                 variable, constant(pattern)));
         assertThat(tryParseSubstringMatch(expr, Set.of(), Map.of())).isEqualTo(Optional.empty());
     }

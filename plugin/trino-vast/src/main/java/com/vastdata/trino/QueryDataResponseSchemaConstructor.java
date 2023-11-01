@@ -363,7 +363,7 @@ public class QueryDataResponseSchemaConstructor
                 relativeIndex += children.size();
                 UnaryOperator<Field> fieldConstructor = f -> {
                     if (parentConstructor.isPresent()) {
-                        return getFieldConstructor(field).andThen(parentConstructor.get()).apply(f);
+                        return getFieldConstructor(field).andThen(parentConstructor.orElseThrow()).apply(f);
                     }
                     else {
                         return getFieldConstructor(field).apply(f);
@@ -468,14 +468,14 @@ public class QueryDataResponseSchemaConstructor
     private Block rebuildBlockWithParentNulls(Block block, Field field, Optional<boolean[]> parentNullVector)
     {
         boolean haveNullsFromParent = parentNullVector.isPresent();
-        int parentPositionCount = haveNullsFromParent ? parentNullVector.get().length : block.getPositionCount();
+        int parentPositionCount = haveNullsFromParent ? parentNullVector.orElseThrow().length : block.getPositionCount();
         if (field.getType().equals(ArrowType.List.INSTANCE)) {
             LOG.debug("QueryData(%s) rebuildBlockWithParentNulls ARRAY block=%s, field=%s", traceStr, block, field);
             ColumnarArray asColumnarBlock = ColumnarArray.toColumnarArray(block);
             int[] offsets = haveNullsFromParent ?
-                    buildOffsetsConsideringParentNulls(asColumnarBlock::getOffset, parentNullVector.get()) :
+                    buildOffsetsConsideringParentNulls(asColumnarBlock::getOffset, parentNullVector.orElseThrow()) :
                     getOffsets(asColumnarBlock.getPositionCount(), asColumnarBlock::getOffset);
-            Optional<boolean[]> nulls = haveNullsFromParent ? Optional.of(buildNullsConsideringParentNulls(asColumnarBlock::isNull, parentNullVector.get())) :
+            Optional<boolean[]> nulls = haveNullsFromParent ? Optional.of(buildNullsConsideringParentNulls(asColumnarBlock::isNull, parentNullVector.orElseThrow())) :
                     parentNullVector;
             Block arrayBlock = ArrayBlock.fromElementBlock(parentPositionCount, nulls, offsets, Iterables.getOnlyElement(block.getChildren()));
             LOG.debug("QueryData(%s) rebuildBlockWithParentNulls ARRAY returning block=%s, offsets=%s, nulls=%s", traceStr, arrayBlock, Arrays.toString(offsets), nulls.map(Arrays::toString).orElse("empty"));
@@ -483,7 +483,7 @@ public class QueryDataResponseSchemaConstructor
         }
         else if (field.getType().equals(ArrowType.Struct.INSTANCE)) {
             LOG.debug("QueryData(%s) rebuildBlockWithParentNulls ROW from block=%s, field=%s, nulls=%s", traceStr, block, field, parentNullVector.map(Arrays::toString).orElse("empty"));
-            Optional<boolean[]> nulls = haveNullsFromParent ? Optional.of(buildNullsConsideringParentNulls(block::isNull, parentNullVector.get())) :
+            Optional<boolean[]> nulls = haveNullsFromParent ? Optional.of(buildNullsConsideringParentNulls(block::isNull, parentNullVector.orElseThrow())) :
                     parentNullVector;
             Block rowBlock = RowBlock.fromFieldBlocks(parentPositionCount, nulls, block.getChildren().toArray(Block[]::new));
             LOG.debug("QueryData(%s) rebuildBlockWithParentNulls ROW returning block=%s, nulls=%s", traceStr, rowBlock, nulls.map(Arrays::toString).orElse("empty"));
@@ -497,9 +497,9 @@ public class QueryDataResponseSchemaConstructor
             Type keyType = convertArrowFieldToTrinoType(field.getChildren().get(0).getChildren().get(0));
             Type valueType = convertArrowFieldToTrinoType(field.getChildren().get(0).getChildren().get(1));
             int[] offsets = haveNullsFromParent ?
-                    buildOffsetsConsideringParentNulls(columnarMap::getOffset, parentNullVector.get()) :
+                    buildOffsetsConsideringParentNulls(columnarMap::getOffset, parentNullVector.orElseThrow()) :
                     getOffsets(columnarMap.getPositionCount(), columnarMap::getOffset);
-            Optional<boolean[]> nulls = haveNullsFromParent ? Optional.of(buildNullsConsideringParentNulls(columnarMap::isNull, parentNullVector.get())) :
+            Optional<boolean[]> nulls = haveNullsFromParent ? Optional.of(buildNullsConsideringParentNulls(columnarMap::isNull, parentNullVector.orElseThrow())) :
                     parentNullVector;
             MapBlock mapBlock = MapBlock.fromKeyValueBlock(nulls, offsets, keysBlock, valuesBlock, new MapType(keyType, valueType, TYPE_OPERATORS));
             LOG.debug("QueryData(%s) rebuildBlockWithParentNulls MAP returning block=%s, offsets=%s, nulls=%s", traceStr, mapBlock, Arrays.toString(offsets), nulls.map(Arrays::toString).orElse("empty"));
@@ -508,7 +508,7 @@ public class QueryDataResponseSchemaConstructor
         else {
             LOG.debug("QueryData(%s) rebuildBlockWithParentNulls OTHER block=%s, field=%s", traceStr, block, field);
             if (haveNullsFromParent) {
-                return expandNullsToMatchParent(parentNullVector.get(), block, field);
+                return expandNullsToMatchParent(parentNullVector.orElseThrow(), block, field);
             }
             else {
                 return block;
@@ -672,7 +672,7 @@ public class QueryDataResponseSchemaConstructor
         }
         else {
             if (parentNullVector.isPresent()) {
-                boolean[] nullsFromParent = parentNullVector.get();
+                boolean[] nullsFromParent = parentNullVector.orElseThrow();
                 int newSize = nullsFromParent.length;
                 boolean[] newNulls = new boolean[newSize];
                 int selfPositionIteration = 0;

@@ -23,7 +23,6 @@ import io.trino.spi.type.RowType;
 import io.trino.spi.type.Type;
 import io.trino.spi.type.TypeOperators;
 import io.trino.spi.type.VarcharType;
-import io.trino.testing.TestingConnectorSession;
 import org.apache.arrow.vector.BigIntVector;
 import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
@@ -326,8 +325,8 @@ public class TestVastRecordBatchBuilder
     private static void assertBlockEquals(Type type, Block actual, Block expected)
     {
         assertEquals(actual.getPositionCount(), expected.getPositionCount());
-        List<Object> collectedActualObjects = IntStream.range(0, actual.getPositionCount()).mapToObj(position -> type.getObjectValue(TestingConnectorSession.SESSION, actual, position)).collect(Collectors.toList());
-        List<Object> collectedExpectedObjects = IntStream.range(0, expected.getPositionCount()).mapToObj(position -> type.getObjectValue(TestingConnectorSession.SESSION, expected, position)).collect(Collectors.toList());
+        List<Object> collectedActualObjects = IntStream.range(0, actual.getPositionCount()).mapToObj(position -> type.getObjectValue(null, actual, position)).collect(Collectors.toList());
+        List<Object> collectedExpectedObjects = IntStream.range(0, expected.getPositionCount()).mapToObj(position -> type.getObjectValue(null, expected, position)).collect(Collectors.toList());
         assertEquals(collectedActualObjects, collectedExpectedObjects);
     }
 }

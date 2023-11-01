@@ -9,6 +9,7 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Streams;
 import com.vastdata.client.VerifyParam;
 import com.vastdata.client.error.VastUserException;
+import com.vastdata.client.importdata.ImportDataFileMapper;
 import com.vastdata.client.schema.AlterColumnContext;
 import com.vastdata.client.schema.CreateTableContext;
 import com.vastdata.client.schema.DropTableContext;
@@ -23,16 +24,15 @@ import io.trino.spi.connector.ConnectorTableMetadata;
 import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.statistics.ColumnStatistics;
 import io.trino.spi.type.Type;
-import org.apache.arrow.vector.VarCharVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.function.IntFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -41,8 +41,6 @@ import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 import static com.vastdata.client.error.VastExceptionFactory.userException;
 import static com.vastdata.client.importdata.VastImportDataMetadataUtils.IMPORT_DATA_HIDDEN_COLUMN_NAME;
 import static com.vastdata.client.importdata.VastImportDataMetadataUtils.getImportDataHiddenColumnIndex;
-import static com.vastdata.client.importdata.VastImportDataMetadataUtils.getTableNameForAPI;
-import static com.vastdata.client.importdata.VastImportDataMetadataUtils.getTablePath;
 import static java.lang.String.format;
 
 public class VastTrinoSchemaAdaptor
@@ -95,20 +93,10 @@ public class VastTrinoSchemaAdaptor
         List<Field> fields = schema.getFields();
         final int hiddenColumnIndex = getImportDataHiddenColumnIndex(fields);
         VastRecordBatchBuilder vastRecordBatchBuilder = new VastRecordBatchBuilder(schema);
-        List<ImportDataFile> sourceFiles = IntStream.range(0, page.getPositionCount()).mapToObj(i -> {
-            Page singleValuePage = page.getSingleValuePage(i);
-            VectorSchemaRoot vectorSchemaRoot = vastRecordBatchBuilder.build(singleValuePage);
-            // last field is the column name
-            VarCharVector parquetPathVector = (VarCharVector) vectorSchemaRoot.getVector(hiddenColumnIndex);
-            String fileName = new String(parquetPathVector.get(0), StandardCharsets.UTF_8);
-            String[] split = (fileName.startsWith("/") ? fileName.substring(1) : fileName).split("/", 2);
-            if (split.length != 2) {
-                vectorSchemaRoot.close();
-                throw toRuntime(userException("Invalid source file name string format - bucket is not specified"));
-            }
-            VectorSchemaRoot partitionsOnlyVectorSchemaRoot = vectorSchemaRoot.removeVector(hiddenColumnIndex);
-            return new ImportDataFile(split[0], split[1], partitionsOnlyVectorSchemaRoot);
-        }).collect(Collectors.toList());
+        Function<Integer, VectorSchemaRoot> rowSupplier = i -> vastRecordBatchBuilder.build(page.getSingleValuePage(i));
+
+        IntFunction<ImportDataFile> importDataFileIntFunction = new ImportDataFileMapper(rowSupplier, hiddenColumnIndex);
+        List<ImportDataFile> sourceFiles = IntStream.range(0, page.getPositionCount()).mapToObj(importDataFileIntFunction).collect(Collectors.toList());
         return new ImportDataContext(sourceFiles, table.getPath());
     }
 

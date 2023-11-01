@@ -16,12 +16,11 @@ import io.trino.spi.statistics.DoubleRange;
 import io.trino.spi.statistics.Estimate;
 
 import java.io.IOException;
-import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
 
-public class TrinoSerializableTableStatisticsDeserializer extends JsonDeserializer
+public class TrinoSerializableTableStatisticsDeserializer extends JsonDeserializer<TrinoSerializableTableStatistics>
 {
     public TrinoSerializableTableStatisticsDeserializer() {}
 
@@ -37,9 +36,7 @@ public class TrinoSerializableTableStatisticsDeserializer extends JsonDeserializ
         Estimate est = getEstimationNode(rowCount);
 
         ArrayNode pairList = (ArrayNode) node.get("pairList");
-        Iterator<JsonNode> entryIterator = pairList.iterator();
-        while (entryIterator.hasNext()) {
-            JsonNode next = entryIterator.next();
+        for (JsonNode next : pairList) {
             JsonParser key = next.get("key").traverse();
 
             VastColumnHandle vastColumnHandle = mapper.readValue(key, VastColumnHandle.class);
@@ -58,7 +55,7 @@ public class TrinoSerializableTableStatisticsDeserializer extends JsonDeserializ
                 r = Optional.of(mapper.readValue(rangeNodeString, DoubleRange.class));
             }
             ColumnStatistics stats = new ColumnStatistics(nullsFraction, distinctValueCount, dataSize, r);
-            pairs.add(new TrinoSerializableTableStatistics.Entry<ColumnHandle, ColumnStatistics>(vastColumnHandle, stats));
+            pairs.add(new TrinoSerializableTableStatistics.Entry<>(vastColumnHandle, stats));
         }
         return new TrinoSerializableTableStatistics(est, pairs);
     }

@@ -37,7 +37,7 @@ public class InputStreamConsumingResponseHandler
             LOG.debug("response: %s", response);
             try (InputStream inputStream = response.getInputStream()) {
                 inputStreamConsumer.accept(inputStream);
-                return new VastResponse(response.getStatusCode(), response.getHeaders(), new byte[0]);
+                return new VastResponse(response.getStatusCode(), response.getHeaders(), new byte[0], request.getUri());
             }
             catch (IOException e) {
                 throw toRuntime(ioException("Failed reading input stream", e));

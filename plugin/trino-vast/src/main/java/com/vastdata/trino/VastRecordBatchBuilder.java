@@ -16,6 +16,7 @@ import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.block.ColumnarArray;
 import io.trino.spi.block.ColumnarMap;
 import io.trino.spi.block.ColumnarRow;
+import io.trino.spi.block.DictionaryBlock;
 import io.trino.spi.block.MapBlock;
 import io.trino.spi.block.RunLengthEncodedBlock;
 import io.trino.spi.type.CharType;
@@ -409,6 +410,16 @@ public class VastRecordBatchBuilder
             MapBlock mapValueBlock = (MapBlock) ((RunLengthEncodedBlock) nestedBlock).getValue();
             for (int i = 0; i < parentBlock.getPositionCount(); i++) {
                 trinoType.appendTo(mapValueBlock, 0, blockBuilder);
+            }
+            copyMap(trinoType, parentBlock, blockBuilder.build(), vector);
+        }
+        else if (nestedBlock instanceof DictionaryBlock) {
+            BlockBuilder blockBuilder = trinoType.createBlockBuilder(null, parentBlock.getPositionCount());
+            DictionaryBlock dictionaryBlock = (DictionaryBlock) nestedBlock;
+            MapBlock mapValueBlock = (MapBlock) dictionaryBlock.getDictionary();
+            for (int i = 0; i < dictionaryBlock.getPositionCount(); i++) {
+                int position = dictionaryBlock.getId(i);
+                trinoType.appendTo(mapValueBlock, position, blockBuilder);
             }
             copyMap(trinoType, parentBlock, blockBuilder.build(), vector);
         }

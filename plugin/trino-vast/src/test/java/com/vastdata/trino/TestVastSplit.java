@@ -10,6 +10,8 @@ import io.airlift.json.JsonCodec;
 import org.testng.annotations.Test;
 
 import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.List;
 
 import static io.airlift.json.JsonCodec.jsonCodec;
@@ -32,5 +34,18 @@ public class TestVastSplit
         assertEquals(copy.getAddresses(), split.getAddresses());
         assertEquals(copy.getContext(), split.getContext());
         assertTrue(copy.isRemotelyAccessible());
+    }
+
+    @Test
+    public void testInstanceSize()
+            throws URISyntaxException
+    {
+        VastSchedulingInfo schedulingInfo = new VastSchedulingInfo("id");
+        VastSplitContext ctx = new VastSplitContext(0, 10, 5, 1);
+        VastSplit split1 = new VastSplit(endpoints, ctx, schedulingInfo);
+        List<URI> endpoints2 = new ArrayList<>(endpoints);
+        endpoints2.add(new URI("http://localhost:8080"));
+        VastSplit split2 = new VastSplit(endpoints2, ctx, schedulingInfo);
+        assertTrue(split1.getRetainedSizeInBytes() < split2.getRetainedSizeInBytes(), "expected second split size to be larger");
     }
 }

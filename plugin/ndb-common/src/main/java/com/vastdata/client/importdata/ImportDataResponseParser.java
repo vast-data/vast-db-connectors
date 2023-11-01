@@ -24,6 +24,7 @@ import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 public class ImportDataResponseParser
         implements Consumer<InputStream>
 {
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final Logger LOG = Logger.get(ImportDataResponseParser.class);
 
     private final Consumer<Map> mapConsumer;
@@ -35,10 +36,9 @@ public class ImportDataResponseParser
 
     private void iterateJsonsFromStream(InputStream is, Consumer<Map> mapConsumer)
     {
-        ObjectMapper mapper = new ObjectMapper();
         JsonFactory jsonFactory = new JsonFactory();
         try (Reader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
-            mapper.readValues(jsonFactory.createParser(reader), Map.class).forEachRemaining(mapConsumer);
+            OBJECT_MAPPER.readValues(jsonFactory.createParser(reader), Map.class).forEachRemaining(mapConsumer);
         }
         catch (JsonParseException e) {
             LOG.error(e, "Failed parsing json response");

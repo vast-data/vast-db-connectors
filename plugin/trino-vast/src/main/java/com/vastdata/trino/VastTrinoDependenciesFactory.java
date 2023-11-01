@@ -10,6 +10,7 @@ import com.vastdata.client.ValidSchemaNamePredicate;
 import com.vastdata.client.VastDependenciesFactory;
 import com.vastdata.client.VastRequestHeadersBuilder;
 import com.vastdata.client.VastVersion;
+import com.vastdata.client.stats.StatisticsUrlExtractor;
 import io.trino.spi.connector.Connector;
 
 import java.util.function.Predicate;
@@ -33,8 +34,15 @@ public class VastTrinoDependenciesFactory
         return new CommonRequestHeadersBuilder(() -> VAST_TRINO_CLIENT_TAG + "-trino-" + trinoVersion);
     }
 
-    public static final String getVastTrinoVersionedClientTag() {
-        String trinoVersion = Connector.class.getPackage().getImplementationVersion();
-        return "trino-" + trinoVersion;
+    @Override
+    public final String getConnectorVersionedStatisticsTag() {
+        String trinoVersion = "v1";
+        return "VastTrinoPlugin." + trinoVersion;
+    }
+
+    @Override
+    public StatisticsUrlExtractor<VastTableHandle> getStatisticsUrlHelper()
+    {
+        return TrinoStatisticsUrlExtractor.instance();
     }
 }

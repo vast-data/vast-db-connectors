@@ -66,7 +66,7 @@ public class QueryDataPagination
                 return; // skip subsplits that are finished
             }
             String key = format("tabular-start-row-id-%d", subSplit);
-            String value = format("%d,%d", subSplit, nextRowId);
+            String value = format("%d,%s", subSplit, Long.toUnsignedString(nextRowId));
             headers.put(key, value);
         });
     }

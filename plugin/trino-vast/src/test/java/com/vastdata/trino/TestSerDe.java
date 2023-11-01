@@ -13,11 +13,10 @@ import io.trino.plugin.base.metrics.LongCount;
 import io.trino.spi.Page;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.commons.codec.DecoderException;
-import org.apache.commons.codec.binary.Hex;
 import org.testng.annotations.Test;
 
 import java.io.ByteArrayInputStream;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
@@ -30,9 +29,8 @@ public class TestSerDe
 {
     @Test
     public void testQueryDataStream()
-            throws DecoderException
     {
-        byte[] response = Hex.decodeHex(
+        byte[] response = HexFormat.of().parseHex(
                 // first column
                 "000000000300000000000000ffffffffb80000001000000000000a000c000600050008000a000000000104000c0000000800080000000400080000000400000001000000180000000000120018000800060007000c00000010001400120000000000010214000000580000000800000010000000000000000000000000000000010000000c00000008000c00040008000800000008000000180000000e000000564153543a636f6c756d6e5f69640000010000003000000008000c0008000700080000000000000108000000" +
                 "ffffffff" + // keepalive

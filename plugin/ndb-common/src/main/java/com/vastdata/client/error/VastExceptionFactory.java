@@ -7,6 +7,7 @@ package com.vastdata.client.error;
 import com.vastdata.client.VastResponse;
 import com.vastdata.client.tx.VastTransaction;
 
+import java.net.URI;
 import java.util.Optional;
 
 import static java.lang.String.format;
@@ -14,6 +15,16 @@ import static java.lang.String.format;
 public final class VastExceptionFactory
 {
     private VastExceptionFactory() {}
+
+    public static VastRuntimeException toRuntime(String message, Throwable t)
+    {
+        if (t instanceof VastException) {
+            return new VastRuntimeException(message, t, ((VastException) t).getErrorType());
+        }
+        else {
+            return new VastRuntimeException(message, t, ErrorType.GENERAL);
+        }
+    }
 
     public static VastRuntimeException toRuntime(Throwable t)
     {
@@ -74,14 +85,14 @@ public final class VastExceptionFactory
     {
         int status = vastResponse.getStatus();
         if (status >= 500) {
-            return Optional.of(serverException(renderErrorMessage(wrapErrorMessageWithCode(msg, status), vastResponse)));
+            return Optional.of(serverException(renderErrorMessage(wrapErrorMessageWithErrorDetails(msg, status, vastResponse.getRequestUri()), vastResponse)));
         }
         if (status >= 400) {
             switch (status) { // TODO - complete all supported specific codes
                 case 409:
-                    return Optional.of(conflictException(renderErrorMessage(wrapErrorMessageWithCode(msg, status), vastResponse)));
+                    return Optional.of(conflictException(renderErrorMessage(wrapErrorMessageWithErrorDetails(msg, status, vastResponse.getRequestUri()), vastResponse)));
                 default:
-                    return Optional.of(userException(renderErrorMessage(wrapErrorMessageWithCode(msg, status), vastResponse)));
+                    return Optional.of(userException(renderErrorMessage(wrapErrorMessageWithErrorDetails(msg, status, vastResponse.getRequestUri()), vastResponse)));
             }
         }
         return Optional.empty();
@@ -92,13 +103,18 @@ public final class VastExceptionFactory
         return vastResponse.getErrorMessage().map(err -> format("%s. %s", msg, err)).orElse(msg);
     }
 
-    private static String wrapErrorMessageWithCode(String msg, int code)
+    private static String wrapErrorMessageWithErrorDetails(String msg, int code, URI requestUri)
     {
-        return format("%s. HTTP Error: %s", msg, code);
+        return format("%s. request URI: %s. HTTP Error: %s", msg, requestUri, code);
     }
 
     public static Throwable maxRetries(int currentRetryCount)
     {
         return new WorkReachedMaxRetries(currentRetryCount);
+    }
+
+    public static VastRuntimeException tableHandleIdNotFound(String schemaName, String tableName)
+    {
+        return new VastRuntimeException(format("Failed fetching table handle ID for table: %s/%s", schemaName, tableName), ErrorType.GENERAL);
     }
 }

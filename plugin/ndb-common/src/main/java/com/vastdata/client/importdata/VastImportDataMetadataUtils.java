@@ -11,6 +11,7 @@ import org.apache.arrow.vector.types.pojo.FieldType;
 import java.util.List;
 import java.util.Optional;
 
+import static com.vastdata.client.VastClient.BIG_CATALOG_BUCKET_NAME;
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 import static com.vastdata.client.error.VastExceptionFactory.userException;
 import static java.lang.String.format;
@@ -21,7 +22,6 @@ public final class VastImportDataMetadataUtils
     public static final String IMPORT_DATA_TABLE_NAME_SUFFIX = " vast.import_data";
     public static final Field IMPORT_DATA_HIDDEN_FIELD = new Field(IMPORT_DATA_HIDDEN_COLUMN_NAME, FieldType.notNullable(ArrowType.Utf8.INSTANCE), null);
 
-    public static final String BIG_CATALOG_BUCKET_NAME = "vast-big-catalog-bucket";
     public static final String BIG_CATALOG_SCHEMA_PREFIX = BIG_CATALOG_BUCKET_NAME + "/";
     public static final String BIG_CATALOG_SCHEMA_SUFFIX = "/vast_big_catalog_schema";
     public static final String BIG_CATALOG_TABLE_NAME = "vast_big_catalog_table";
