@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>ndb</groupId>
+        <artifactId>spark-vast</artifactId>
+        <version>5.1.0</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>spark-vast-common</artifactId>
+    <version>5.1.0</version>
+    <name>spark-common</name>
+    <description>Spark - VAST Common</description>
+    <packaging>jar</packaging>
+
+    <dependencies>
+        <dependency>
+            <groupId>io.airlift</groupId>
+            <artifactId>configuration</artifactId>
+            <version>${spark.airlift.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.airlift</groupId>
+            <artifactId>http-client</artifactId>
+            <version>${spark.airlift.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${dep.jackson.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>31.0.1-jre</version>
+        </dependency>
+        <dependency>
+            <groupId>ndb</groupId>
+            <artifactId>ndb-common</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.airlift</groupId>
+            <artifactId>units</artifactId>
+            <version>1.6</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+            <version>${dep.jackson.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>net.bytebuddy</groupId>
+            <artifactId>byte-buddy</artifactId>
+            <version>1.14.2</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>4.11.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testng</groupId>
+            <artifactId>testng</artifactId>
+            <version>${dep.testng.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+    <build>
+      <sourceDirectory>./src/main/java</sourceDirectory>
+      <testSourceDirectory>./test/java</testSourceDirectory>
+        <plugins>
+            <plugin>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <configuration>
+                    <sourceDirectories>
+                        <sourceDirectory>src/main/java/com/vastdata/trino/plugin/spark3/common</sourceDirectory>
+                    </sourceDirectories>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration combine.self="override">
+                    <source>8</source>
+                    <target>8</target>
+                    <fork>false</fork>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration combine.self="override">
+                    <includes>
+                        <!-- Tests classes should start with "Test", but we do also want to include tests incorrectly named, with "Test" at the end -->
+                        <include>**/Test*.java</include>
+                        <include>**/*Test.java</include>
+                        <include>**/Benchmark*.java</include>
+                    </includes>
+                    <excludes>
+                        <exclude>**/*jmhTest*.java</exclude>
+                        <exclude>**/*jmhType*.java</exclude>
+                    </excludes>
+                    <argLine>${argLine}
+                        -Dfile.encoding=UTF-8
+                        -Xmx3g
+                        -Xms3g
+                        -XX:+ExitOnOutOfMemoryError
+                        -XX:+HeapDumpOnOutOfMemoryError
+                        -XX:-OmitStackTraceInFastThrow
+                        --add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED
+                        --add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED
+                        --add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED
+                        --add-exports=jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED
+                        --add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED
+                        --add-exports=jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED
+                        --add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED
+                        --add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED
+                        --add-opens=java.base/java.io=ALL-UNNAMED
+                        --add-opens=java.base/java.lang=ALL-UNNAMED
+                        --add-opens=java.base/java.nio=ALL-UNNAMED
+                        --add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED
+                        --add-opens=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED
+                        --add-opens=java.base/java.nio=ALL-UNNAMED
+                        --add-opens=java.base/java.lang=ALL-UNNAMED
+                        --add-exports=java.base/sun.nio.ch=ALL-UNNAMED
+                    </argLine>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-dependencies</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <excludeTransitive>false</excludeTransitive>
+                            <includeScope>runtime</includeScope>
+                            <outputDirectory>target/dependencies</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.basepom.maven</groupId>
+                <artifactId>duplicate-finder-maven-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                    <ignoredResourcePatterns>
+                        <!-- [org.apache.arrow:arrow-format, org.apache.arrow:arrow-memory-core, org.apache.arrow:arrow-vector] -->
+                        <ignoredResourcePattern>arrow-git.properties</ignoredResourcePattern>
+                        <!-- [org.eclipse.jetty.http2:http2-client, org.eclipse.jetty.http2:http2-common, org.eclipse.jetty.http2:http2-hpack, org.eclipse.jetty.http2:http2-http-client-transport, org.eclipse.jetty:jetty-alpn-client, org.eclipse.jetty:jetty-alpn-java-client, org.eclipse.jetty:jetty-client, org.eclipse.jetty:jetty-http, org.eclipse.jetty:jetty-io, org.eclipse.jetty:jetty-util] -->
+                        <ignoredResourcePattern>about.html</ignoredResourcePattern>
+                        <!-- [jakarta.validation:jakarta.validation-api:2.0.2, javax.validation:validation-api:2.0.1.Final] -->
+                        <ignoredClassPatterns>javax.validation.executable.ExecutableType$</ignoredClassPatterns>
+                        <!-- [org.apache.spark:*, org.spark-project.spark:unused:1.0.0] -->
+                        <ignoredClassPatterns>org.apache.spark.unused.UnusedStubClass$</ignoredClassPatterns>
+                        <!-- [org.mockito:mockito-all:1.10.19, org.objenesis:objenesis:2.5.1] -->
+                        <ignoredClassPatterns>org.objenesis.*$</ignoredClassPatterns>
+                        <!-- [aopalliance:aopalliance:1.0, org.glassfish.hk2.external:aopalliance-repackaged:2.6.1] -->
+                        <ignoredClassPatterns>org.aopalliance.*$</ignoredClassPatterns>
+                    </ignoredResourcePatterns>
+                </configuration>
+            </plugin>
+        </plugins>
+
+    </build>
+</project>
