@@ -12,8 +12,12 @@ import com.sun.net.httpserver.HttpExchange;
 import com.vastdata.client.error.VastConflictException;
 import com.vastdata.client.error.VastException;
 import com.vastdata.client.error.VastIOException;
+import com.vastdata.client.error.VastRuntimeException;
 import com.vastdata.client.error.VastServerException;
 import com.vastdata.client.error.VastUserException;
+import com.vastdata.client.executor.VastRetryConfig;
+import com.vastdata.client.schema.ArrowSchemaUtils;
+import com.vastdata.client.tx.VastTraceToken;
 import com.vastdata.client.tx.VastTransaction;
 import com.vastdata.mockserver.MockMapSchema;
 import com.vastdata.mockserver.MockUtils;
@@ -21,7 +25,9 @@ import com.vastdata.mockserver.VastMockS3Server;
 import com.vastdata.mockserver.VastRootHandler;
 import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.Request;
+import io.airlift.http.client.ResponseHandler;
 import io.airlift.http.client.jetty.JettyHttpClient;
+import org.apache.arrow.vector.types.pojo.Schema;
 import org.mockito.Mock;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
@@ -33,15 +39,24 @@ import org.testng.annotations.Test;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static com.amazonaws.http.HttpMethodName.GET;
 import static com.vastdata.client.VastClient.AUDIT_LOG_BUCKET_NAME;
@@ -51,6 +66,8 @@ import static com.vastdata.client.VastClientForTests.RETRY_MAX_COUNT;
 import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -66,6 +83,8 @@ public class TestVastClient
     private int testPort;
     @Mock VastTransaction mockTransactionHandle;
     @Mock HttpClient mockHttpClient;
+    @Mock ArrowSchemaUtils mockArrowSchemaUtils = mock(ArrowSchemaUtils.class);
+    @Mock QueryDataPagination mockPagination = mock(QueryDataPagination.class);
 
     private AutoCloseable autoCloseable;
 
@@ -228,6 +247,13 @@ public class TestVastClient
         return new VastClient(httpClient, getMockServerReadyVastConfig(), new DummyDependenciesFactory(vastConfig));
     }
 
+    private VastClient getVastClient(HttpClient httpClient, ArrowSchemaUtils arrowSchemaUtils)
+    {
+        VastConfig vastConfig = new VastConfig();
+        vastConfig.setEngineVersion("1.2.3");
+        return new VastClient(httpClient, getMockServerReadyVastConfig(), new DummyDependenciesFactory(vastConfig), arrowSchemaUtils);
+    }
+
     private VastConfig getMockServerReadyVastConfig()
     {
         return new VastConfig()
@@ -356,5 +382,57 @@ public class TestVastClient
         assertTrue(endpointIndex >= 0);
         assertEquals(getEndpointIndex(tableName, split, retry++, endpointLength) % endpointLength, ++endpointIndex % endpointLength);
         assertEquals(getEndpointIndex(tableName, split, retry, endpointLength) % endpointLength, ++endpointIndex % endpointLength);
+    }
+
+    @Test
+    public void testQueryData503ExceptionEndpointsRoundRobin()
+    {
+        VastClient vastClient = getVastClient(mockHttpClient, mockArrowSchemaUtils);
+        int maxRetries = 3;
+        int expectedRequests = (maxRetries + 1) * 2; // (initial request + retries conf) * (exception + 503 response)
+        long transactionID = 777L;
+        int queryID = 123;
+        VastTraceToken traceToken = new VastTraceToken(Optional.empty(), transactionID, queryID);
+        Supplier<QueryDataResponseHandler> handlerSupplier = () -> null;
+        AtomicReference<URI> usedDataEndpoint = new AtomicReference<>();
+        VastSplitContext split = new VastSplitContext(0, 128, 10, 1);
+        VastSchedulingInfo schedulingInfo = new VastSchedulingInfo("987");
+        List<URI> dataEndpoints = IntStream.range(0, expectedRequests + 1).mapToObj(i -> URI.create(format("http://localhost:%s", 1000 + i))).collect(Collectors.toList());
+        VastRetryConfig retryConfig = new VastRetryConfig(maxRetries, 10);
+        Optional<Integer> limit = Optional.empty();
+        Optional<String> bigCatalogSearchPath = Optional.empty();
+
+        ArrayList<URI> errorUris = new ArrayList<>();
+
+        AtomicBoolean shouldThrowExecuteException = new AtomicBoolean(true);
+        when(mockHttpClient.execute(any(Request.class), nullable(ResponseHandler.class)))
+                .thenAnswer(a -> {
+                    Request req = a.getArgument(0);
+                    URI uri = req.getUri();
+                    errorUris.add(uri);
+                    boolean b = shouldThrowExecuteException.get();
+                    if (b) {
+                        shouldThrowExecuteException.set(false);
+                        throw new UncheckedIOException(new IOException("testQueryData503ExceptionEndpointsRoundRobin exception"));
+                    }
+                    else {
+                        shouldThrowExecuteException.set(true);
+                        return new VastResponse(503, null, null, uri);
+                    }
+                });
+        when(mockArrowSchemaUtils.serializeQueryDataRequestBody(any(String.class), nullable(Schema.class), nullable(FlatBufferSerializer.class), nullable(FlatBufferSerializer.class)))
+                .thenReturn(new byte[0]);
+        when(mockTransactionHandle.getId()).thenReturn(999L);
+        try {
+            vastClient.queryData(mockTransactionHandle, traceToken, "s", "t", null, null, null, handlerSupplier, usedDataEndpoint,
+                    split, schedulingInfo, dataEndpoints, retryConfig, limit, bigCatalogSearchPath, mockPagination, false);
+        }
+        catch (VastRuntimeException vre) {
+            assertTrue(vre.getCause() instanceof VastServerException, vre.toString());
+            VastServerException vse = (VastServerException) vre.getCause();
+            assertTrue(vse.getMessage().contains(format("QueryData(%s:%s) failed after %s retries", transactionID, queryID, maxRetries)), vse.getMessage());
+        }
+        assertEquals(errorUris.size(), expectedRequests); // total requests
+        assertEquals(new HashSet<>(errorUris).size(), expectedRequests); // unique endpoints
     }
 }

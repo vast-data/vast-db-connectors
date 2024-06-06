@@ -28,7 +28,7 @@ public class QueryDataPagination
 
         public void advance(int subsplit, long nextRowId)
         {
-            this.nextRowIds.merge(subsplit, nextRowId, Long::max);
+            this.nextRowIds.put(subsplit, nextRowId);
         }
 
         @Override
@@ -51,7 +51,7 @@ public class QueryDataPagination
     // Should be called only after QueryData response is successfully parsed
     public void advance(Update update)
     {
-        update.nextRowIds.forEach((subsplit, nextRowId) -> this.nextRowIds.merge(subsplit, nextRowId, Long::max));
+        nextRowIds.putAll(update.nextRowIds);
     }
 
     public boolean isFinished()

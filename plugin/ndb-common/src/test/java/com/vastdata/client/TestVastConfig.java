@@ -32,6 +32,8 @@ public class TestVastConfig
                 .setRowGroupsPerSubSplit(8)
                 .setQueryDataRowsPerSplit(4000000)
                 .setQueryDataRowsPerPage(131072)
+                .setAdvisoryPartitionSize(256 * 1024 * 1024)
+                .setAdaptivePartitioning(true)
                 .setMaxRequestBodySize(5 * 1024 * 1024)
                 .setRetryMaxCount(600)
                 .setRetrySleepDuration(1000)
@@ -40,6 +42,7 @@ public class TestVastConfig
                 .setDynamicFilterCompactionThreshold(VastConfig.DYNAMIC_FILTER_COMPACTION_THRESHOLD_DEFAULT_VALUE)
                 .setDynamicFilterMaxValuesThreshold(1000)
                 .setDynamicFilteringWaitTimeout(2 * 1000)
+                .setPredicatePushdownEnabled(true)
                 .setMatchSubstringPushdown(true)
                 .setComplexPredicatePushdown(false)
                 .setExpressionProjectionPushdown(false)
@@ -50,8 +53,11 @@ public class TestVastConfig
                 .setImportChunkLimit(10)
                 .setMaxStatisticsFilesSupportedPerSession(10000)
                 .setKeepFilterAfterPushdown(true)
+                .setUseColumnHistogram(true)
                 .setVastTransactionKeepAliveIntervalSeconds(60)
-                .setVastTransactionKeepAliveEnabled(true));
+                .setVastTransactionKeepAliveEnabled(true)
+                .setEstimateSplitsFromRowIdPredicate(false)
+                .setSeedForShufflingEndpoints(null));
     }
 
     @Test
@@ -70,6 +76,8 @@ public class TestVastConfig
                 .put("rowgroups_per_subsplit", "16")
                 .put("query_data_rows_per_split", "1024")
                 .put("query_data_rows_per_page", "1024")
+                .put("advisory_partition_size", "134217728")
+                .put("adaptive_partitioning", "false")
                 .put("max_request_body_size", "10485760")
                 .put("retry_max_count", "3")
                 .put("retry_sleep_duration", "30000")
@@ -78,6 +86,7 @@ public class TestVastConfig
                 .put("dynamic_filter_compaction_threshold", "1000")
                 .put("dynamic_filter_max_values_threshold", "2000")
                 .put("dynamic_filtering_wait_timeout", "10000")
+                .put("enable_predicate_pushdown", "false")
                 .put("match_substring_pushdown", "false")
                 .put("complex_predicate_pushdown", "true")
                 .put("expression_projection_pushdown", "true")
@@ -88,8 +97,11 @@ public class TestVastConfig
                 .put("import_chunk_limit", "3")
                 .put("max_statistics_files_supported_per_session", "5000")
                 .put("keep_filter_after_pushdown", "false")
+                .put("use_column_histogram", "false")
                 .put("vast_transaction_keep_alive_enabled", "false")
                 .put("vast_transaction_keep_alive_interval_seconds", "150")
+                .put("estimate_splits_from_row_id_predicate", "true")
+                .put("seed_for_shuffling_endpoints", "123")
                 .buildOrThrow();
 
         VastConfig expected = new VastConfig()
@@ -105,6 +117,8 @@ public class TestVastConfig
                 .setRowGroupsPerSubSplit(16)
                 .setQueryDataRowsPerSplit(1024)
                 .setQueryDataRowsPerPage(1024)
+                .setAdvisoryPartitionSize(134217728)
+                .setAdaptivePartitioning(false)
                 .setMaxRequestBodySize(10485760)
                 .setRetryMaxCount(3)
                 .setRetrySleepDuration(30000)
@@ -113,6 +127,7 @@ public class TestVastConfig
                 .setDynamicFilterCompactionThreshold(1000)
                 .setDynamicFilterMaxValuesThreshold(2000)
                 .setDynamicFilteringWaitTimeout(10000)
+                .setPredicatePushdownEnabled(false)
                 .setMatchSubstringPushdown(false)
                 .setComplexPredicatePushdown(true)
                 .setExpressionProjectionPushdown(true)
@@ -123,8 +138,11 @@ public class TestVastConfig
                 .setImportChunkLimit(3)
                 .setMaxStatisticsFilesSupportedPerSession(5000)
                 .setKeepFilterAfterPushdown(false)
+                .setUseColumnHistogram(false)
                 .setVastTransactionKeepAliveEnabled(false)
-                .setVastTransactionKeepAliveIntervalSeconds(150);
+                .setVastTransactionKeepAliveIntervalSeconds(150)
+                .setEstimateSplitsFromRowIdPredicate(true)
+                .setSeedForShufflingEndpoints(123L);
 
         assertFullMapping(properties, expected);
     }

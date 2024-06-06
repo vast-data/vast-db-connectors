@@ -9,7 +9,6 @@ import com.google.common.base.VerifyException;
 import com.google.common.collect.Streams;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastConfig;
-import com.vastdata.client.stats.VastStatisticsStorage;
 import com.vastdata.client.error.VastServerException;
 import com.vastdata.client.error.VastUserException;
 import com.vastdata.trino.TypeUtils;
@@ -73,7 +72,7 @@ public class VastStatisticsManager
 {
     private static final Logger LOG = Logger.get(VastStatisticsManager.class);
 
-    private final VastStatisticsStorage<VastTableHandle, TableStatistics> storage;
+    private final TrinoPersistentStatistics storage;
 
     @Inject
     public VastStatisticsManager(VastClient client, VastConfig config)

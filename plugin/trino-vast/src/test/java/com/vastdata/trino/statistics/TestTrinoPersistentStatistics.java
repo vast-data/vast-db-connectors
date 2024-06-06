@@ -12,6 +12,7 @@ import com.vastdata.trino.VastColumnHandle;
 import com.vastdata.trino.VastTableHandle;
 import com.vastdata.trino.VastTrinoDependenciesFactory;
 import io.trino.spi.connector.ColumnHandle;
+import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.statistics.ColumnStatistics;
 import io.trino.spi.statistics.Estimate;
 import io.trino.spi.statistics.TableStatistics;
@@ -22,13 +23,17 @@ import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
+import java.net.ConnectException;
 import java.net.URI;
+import java.util.List;
 import java.util.Optional;
 
 import static com.vastdata.client.importdata.VastImportDataMetadataUtils.BIG_CATALOG_SCHEMA_PREFIX;
 import static com.vastdata.client.importdata.VastImportDataMetadataUtils.BIG_CATALOG_TABLE_NAME;
 import static java.lang.String.format;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -147,7 +152,7 @@ public class TestTrinoPersistentStatistics
             while (cause != null && cause.getCause() != null) {
                 cause = cause.getCause();
             }
-            assertTrue(cause instanceof VastServerException, format("Cause is: %s", cause));
+            assertTrue(cause instanceof ConnectException, format("Cause is: %s", cause));
         }
         verify(spyClient, times(RETRY_MAX_COUNT + 1)).getPutObjectResult(anyString(), anyString(), anyString());
 
@@ -162,5 +167,31 @@ public class TestTrinoPersistentStatistics
             assertTrue(cause instanceof VastServerException, format("Cause is: %s", cause));
         }
         verify(spyClient, times(RETRY_MAX_COUNT + 1)).getObjectAsString(anyString(), anyString());
+    }
+
+    @Test
+    public void testFetchingStatisticsFilesFromTwoDifferentHandlesOverSameFile()
+    {
+        VastClient mockClient = this.mockClient;
+        VastConfig config = getMockServerReadyVastConfig();
+        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(mockClient, config);
+        TableStatistics stats = TableStatistics.builder()
+                .setRowCount(Estimate.of(11.0))
+                .build();
+        VastTableHandle handle1 = new VastTableHandle("buck/schem", "tab", "id", false);
+        VastTableHandle handle2 = new VastTableHandle("buck/schem", "tab", List.of(), TupleDomain.all(), null, Optional.empty(), List.of(), Optional.of(13L), false, "id");
+        VastTableHandle handle3 = new VastTableHandle("buck/schem", "tab2", "id", false);
+
+        persistentStatistics.setTableStatistics(handle1, stats);
+        Optional<TableStatistics> fetchedStats1 = persistentStatistics.getTableStatistics(handle1);
+        assertEquals(stats, fetchedStats1.orElseThrow());
+
+        Optional<TableStatistics> fetchedStats2 = persistentStatistics.getTableStatistics(handle2);
+        assertEquals(stats, fetchedStats2.orElseThrow());
+
+        Optional<TableStatistics> fetchedStats3 = persistentStatistics.getTableStatistics(handle3);
+        assertEquals(stats, fetchedStats3.orElseThrow());
+
+        verify(mockClient, never()).s3GetObj(any(), any());
     }
 }

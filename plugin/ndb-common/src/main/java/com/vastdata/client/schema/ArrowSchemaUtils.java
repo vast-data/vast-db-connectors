@@ -6,6 +6,7 @@ package com.vastdata.client.schema;
 
 import com.google.common.collect.ImmutableList;
 import com.google.flatbuffers.FlatBufferBuilder;
+import com.vastdata.client.FlatBufferSerializer;
 import com.vastdata.client.error.VastExceptionFactory;
 import com.vastdata.client.error.VastSerializationException;
 import org.apache.arrow.memory.RootAllocator;
@@ -50,6 +51,9 @@ public class ArrowSchemaUtils
     // Returned by VAST server for DELETE/UPDATE support (see https://trino.io/docs/current/develop/delete-and-update.html)
     public static final Field ROW_ID_FIELD = Field.nullable("$row_id", new ArrowType.Int(64, false));
     public static final Field ROW_ID_FIELD_SIGNED = Field.nullable("$row_id", new ArrowType.Int(64, true));
+    // "vastdb_rowid" is part of https://vastdata.atlassian.net/browse/ORION-132013
+    // This feature exposes vast’s internal row ID for user defined allocation and efficient queries
+    public static final Field VASTDB_ROW_ID_FIELD = Field.nullable("vastdb_rowid", new ArrowType.Int(64, true));
 
 
     public Schema parseSchema(byte[] buffer, RootAllocator allocator)
@@ -287,5 +291,31 @@ public class ArrowSchemaUtils
         }
         byte[] bytes = outputStream.toByteArray();
         return S3File.createPartitionsVector(builder, bytes);
+    }
+
+    public byte[] serializeQueryDataRequestBody(
+            String tablePath, Schema schema, FlatBufferSerializer projections, FlatBufferSerializer predicate)
+    {
+        FlatBufferBuilder builder = new FlatBufferBuilder(128);
+        int nameOffset = builder.createString(tablePath);
+        int schemaOffset = schema.getSchema(builder); // serialize the schema
+        int filterOffset = predicate.serialize(builder);
+
+        org.apache.arrow.computeir.flatbuf.Source.startSource(builder);
+        org.apache.arrow.computeir.flatbuf.Source.addName(builder, nameOffset);
+        org.apache.arrow.computeir.flatbuf.Source.addSchema(builder, schemaOffset);
+        org.apache.arrow.computeir.flatbuf.Source.addFilter(builder, filterOffset);
+        int sourceOffset = org.apache.arrow.computeir.flatbuf.Source.endSource(builder);
+        int childRel = org.apache.arrow.computeir.flatbuf.Relation.createRelation(builder, org.apache.arrow.computeir.flatbuf.RelationImpl.Source, sourceOffset);
+
+        int expressionsOffset = projections.serialize(builder);
+        org.apache.arrow.computeir.flatbuf.Project.startProject(builder);
+        org.apache.arrow.computeir.flatbuf.Project.addRel(builder, childRel);
+        org.apache.arrow.computeir.flatbuf.Project.addExpressions(builder, expressionsOffset);
+        int projectOffset = org.apache.arrow.computeir.flatbuf.Project.endProject(builder);
+
+        int relationOffset = org.apache.arrow.computeir.flatbuf.Relation.createRelation(builder, org.apache.arrow.computeir.flatbuf.RelationImpl.Project, projectOffset);
+        builder.finish(relationOffset);
+        return builder.sizedByteArray(); // TODO: don't copy the data
     }
 }

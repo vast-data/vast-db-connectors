@@ -14,6 +14,8 @@ import io.trino.spi.block.ArrayBlock;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.block.ByteArrayBlock;
+import io.trino.spi.block.ByteArrayBlockBuilder;
+import io.trino.spi.block.Fixed12BlockBuilder;
 import io.trino.spi.block.IntArrayBlock;
 import io.trino.spi.block.IntArrayBlockBuilder;
 import io.trino.spi.block.LongArrayBlock;
@@ -21,7 +23,9 @@ import io.trino.spi.block.LongArrayBlockBuilder;
 import io.trino.spi.block.PageBuilderStatus;
 import io.trino.spi.block.RowBlock;
 import io.trino.spi.block.ShortArrayBlock;
+import io.trino.spi.block.ShortArrayBlockBuilder;
 import io.trino.spi.block.VariableWidthBlock;
+import io.trino.spi.block.VariableWidthBlockBuilder;
 import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.CharType;
 import io.trino.spi.type.DecimalType;
@@ -41,7 +45,10 @@ import org.apache.arrow.vector.types.TimeUnit;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
+import sun.misc.Unsafe;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -50,6 +57,9 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.google.common.base.Verify.verify;
+import static io.airlift.slice.SizeOf.SIZE_OF_INT;
+import static io.airlift.slice.SizeOf.SIZE_OF_LONG;
+import static io.airlift.slice.SizeOf.SIZE_OF_SHORT;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.spi.type.Chars.trimTrailingSpaces;
@@ -79,6 +89,18 @@ public class VastPageBuilder
 
     // Mapping validity bitmap bytes into a NULL boolean array.
     private static final boolean[][] NULL_UNPACKING_TABLE;
+
+    private static final Unsafe unsafe;
+
+    static {
+        try {
+            java.lang.reflect.Field theUnsafe = Unsafe.class.getDeclaredField("theUnsafe");
+            theUnsafe.setAccessible(true);
+            unsafe = (Unsafe) theUnsafe.get(null);
+        } catch (Exception e) {
+            throw new RuntimeException("Unable to access Unsafe", e);
+        }
+    }
 
     static {
         NULL_UNPACKING_TABLE = new boolean[256][];
@@ -232,9 +254,9 @@ public class VastPageBuilder
             }
             else {
                 // NOTE: TIMESTAMP(6) has the same representation in Trino & Arrow
-                long[] values = new long[positions];
-                copyDataBuffers(Slices.wrappedLongArray(values), vectors);
-                return new LongArrayBlock(positions, compactedIsNull, values);
+                byte[] values = new byte[SIZE_OF_LONG * positions];
+                copyDataBuffers(Slices.wrappedBuffer(values), vectors);
+                return new LongArrayBlock(positions, compactedIsNull, byteArrayAsLongArray(values));
             }
         }
         else if (DOUBLE.equals(type)) {
@@ -244,9 +266,9 @@ public class VastPageBuilder
                 return builder.build();
             }
             else {
-                long[] values = new long[positions];
-                copyDataBuffers(Slices.wrappedLongArray(values), vectors);
-                return new LongArrayBlock(positions, compactedIsNull, values);
+                byte[] values = new byte[SIZE_OF_LONG * positions];
+                copyDataBuffers(Slices.wrappedBuffer(values), vectors);
+                return new LongArrayBlock(positions, compactedIsNull, byteArrayAsLongArray(values));
             }
         }
         else if (type instanceof CharType) {
@@ -281,9 +303,9 @@ public class VastPageBuilder
                 return builder.build();
             }
             else {
-                short[] values = new short[positions];
-                copyDataBuffers(Slices.wrappedShortArray(values), vectors);
-                return new ShortArrayBlock(positions, compactedIsNull, values);
+                byte[] values = new byte[SIZE_OF_SHORT * positions];
+                copyDataBuffers(Slices.wrappedBuffer(values), vectors);
+                return new ShortArrayBlock(positions, compactedIsNull, byteArrayAsShortArray(values));
             }
         }
         else if (INTEGER.equals(type) || DATE.equals(type)) {
@@ -293,9 +315,9 @@ public class VastPageBuilder
                 return builder.build();
             }
             else {
-                int[] values = new int[positions];
-                copyDataBuffers(Slices.wrappedIntArray(values), vectors);
-                return new IntArrayBlock(positions, compactedIsNull, values);
+                byte[] values = new byte[SIZE_OF_INT * positions];
+                copyDataBuffers(Slices.wrappedBuffer(values), vectors);
+                return new IntArrayBlock(positions, compactedIsNull, byteArrayAsIntArray(values));
             }
         }
         else if (REAL.equals(type)) {
@@ -305,9 +327,9 @@ public class VastPageBuilder
                 return builder.build();
             }
             else {
-                int[] values = new int[positions];
-                copyDataBuffers(Slices.wrappedIntArray(values), vectors);
-                return new IntArrayBlock(positions, compactedIsNull, values);
+                byte[] values = new byte[SIZE_OF_INT * positions];
+                copyDataBuffers(Slices.wrappedBuffer(values), vectors);
+                return new IntArrayBlock(positions, compactedIsNull, byteArrayAsIntArray(values));
             }
         }
         else if (BOOLEAN.equals(type)) {
@@ -451,6 +473,30 @@ public class VastPageBuilder
         throw new UnsupportedOperationException(format("QueryData(%s) unsupported %s type: %s", traceStr, type, vectors));
     }
 
+    private short[] byteArrayAsShortArray(byte[] byteArray)
+    {
+        int shortCount = byteArray.length / Short.BYTES;
+        short[] shortArray = new short[shortCount];
+        unsafe.copyMemory(byteArray, Unsafe.ARRAY_BYTE_BASE_OFFSET, shortArray, Unsafe.ARRAY_SHORT_BASE_OFFSET, shortCount * Short.BYTES);
+        return shortArray;
+    }
+
+    private int[] byteArrayAsIntArray(byte[] byteArray)
+    {
+        int intCount = byteArray.length / Integer.BYTES;
+        int[] intArray = new int[intCount];
+        unsafe.copyMemory(byteArray, Unsafe.ARRAY_BYTE_BASE_OFFSET, intArray, Unsafe.ARRAY_INT_BASE_OFFSET, intCount * Integer.BYTES);
+        return intArray;
+    }
+
+    private long[] byteArrayAsLongArray(byte[] byteArray)
+    {
+        int longCount = byteArray.length / Long.BYTES;
+        long[] longArray = new long[longCount];
+        unsafe.copyMemory(byteArray, Unsafe.ARRAY_BYTE_BASE_OFFSET, longArray, Unsafe.ARRAY_LONG_BASE_OFFSET, longCount * Long.BYTES);
+        return longArray;
+    }
+
     private int[] buildOffsetsUsingParentNullsVector(List<FieldVector> vectors, boolean[] parentNulls)
     {
         int[] offsets = new int[parentNulls.length + 1];
@@ -523,11 +569,19 @@ public class VastPageBuilder
             if (data.readableBytes() == 0) {
                 continue; // 0-sized Slices are not supported
             }
-            Slice dataSlice = Slices.wrappedBuffer(data.nioBuffer());
+            //TODO: don't copy and allocate if unneeded ORION-156020
+            Slice dataSlice = Slices.wrappedBuffer(byteBufferToArray(data.nioBuffer()));
             dst.setBytes(offset, dataSlice);
             offset += dataSlice.length();
         }
         verify(offset == dst.length(), "total data size (%s) doesn't match slice size (%s)", offset, dst.length());
+    }
+
+    private byte[] byteBufferToArray(ByteBuffer byteBuffer)
+    {
+        byte[] br = new byte[byteBuffer.remaining()];
+        byteBuffer.get(br);
+        return br;
     }
 
     private static void copyTimeNanos(int count, FieldReader reader, BlockBuilder builder, Optional<boolean[]> optionalParentVectorIsNull)
@@ -538,8 +592,7 @@ public class VastPageBuilder
                 if (reader.isSet()) {
                     long micros = reader.readLong();
                     long picos = micros * 1_000L;
-                    builder.writeLong(picos);
-                    builder.closeEntry();
+                    ((LongArrayBlockBuilder) builder).writeLong(picos);
                 }
                 else {
                     builder.appendNull();
@@ -555,8 +608,7 @@ public class VastPageBuilder
                     if (reader.isSet()) {
                         long micros = reader.readLong();
                         long picos = micros * 1_000L;
-                        builder.writeLong(picos);
-                        builder.closeEntry();
+                        ((LongArrayBlockBuilder) builder).writeLong(picos);
                     }
                     else {
                         builder.appendNull();
@@ -574,8 +626,7 @@ public class VastPageBuilder
                 if (reader.isSet()) {
                     long micros = reader.readLong();
                     long picos = micros * 1_000_000L;
-                    builder.writeLong(picos);
-                    builder.closeEntry();
+                    ((LongArrayBlockBuilder) builder).writeLong(picos);
                 }
                 else {
                     builder.appendNull();
@@ -591,8 +642,7 @@ public class VastPageBuilder
                     if (reader.isSet()) {
                         long micros = reader.readLong();
                         long picos = micros * 1_000_000L;
-                        builder.writeLong(picos);
-                        builder.closeEntry();
+                        ((LongArrayBlockBuilder) builder).writeLong(picos);
                     }
                     else {
                         builder.appendNull();
@@ -609,8 +659,7 @@ public class VastPageBuilder
                 if (vector.isSet(i) != 0) {
                     int millis = vector.get(i);
                     long picos = millis * 1_000_000_000L;
-                    builder.writeLong(picos);
-                    builder.closeEntry();
+                    ((LongArrayBlockBuilder) builder).writeLong(picos);
                 }
                 else {
                     builder.appendNull();
@@ -625,8 +674,7 @@ public class VastPageBuilder
                     if (vector.isSet(i) != 0) {
                         int millis = vector.get(i);
                         long picos = millis * 1_000_000_000L;
-                        builder.writeLong(picos);
-                        builder.closeEntry();
+                        ((LongArrayBlockBuilder) builder).writeLong(picos);
                     }
                     else {
                         builder.appendNull();
@@ -644,8 +692,7 @@ public class VastPageBuilder
                 if (reader.isSet()) {
                     int seconds = reader.readInteger();
                     long picos = seconds * 1_000_000_000_000L;
-                    builder.writeLong(picos);
-                    builder.closeEntry();
+                    ((LongArrayBlockBuilder) builder).writeLong(picos);
                 }
                 else {
                     builder.appendNull();
@@ -661,8 +708,7 @@ public class VastPageBuilder
                     if (reader.isSet()) {
                         int seconds = reader.readInteger();
                         long picos = seconds * 1_000_000_000_000L;
-                        builder.writeLong(picos);
-                        builder.closeEntry();
+                        ((LongArrayBlockBuilder) builder).writeLong(picos);
                     }
                     else {
                         builder.appendNull();
@@ -679,8 +725,7 @@ public class VastPageBuilder
                 reader.setPosition(i);
                 if (reader.isSet()) {
                     long micros = reader.readLong() * microsInUnit;
-                    builder.writeLong(micros);
-                    builder.closeEntry();
+                    ((LongArrayBlockBuilder) builder).writeLong(micros);
                 }
                 else {
                     builder.appendNull();
@@ -695,8 +740,7 @@ public class VastPageBuilder
                 if (!parentNullsBitmap[i + builderPosition]) {
                     if (reader.isSet()) {
                         long micros = reader.readLong() * microsInUnit;
-                        builder.writeLong(micros);
-                        builder.closeEntry();
+                        ((LongArrayBlockBuilder) builder).writeLong(micros);
                     }
                     else {
                         builder.appendNull();
@@ -714,9 +758,7 @@ public class VastPageBuilder
                 if (reader.isSet()) {
                     long nanos = reader.readLong();
                     Object[] objects = TypeUtils.convertLongNanoToTwoValues(nanos);
-                    builder.writeLong((long) objects[0]);
-                    builder.writeInt((int) objects[1]);
-                    builder.closeEntry();
+                    ((Fixed12BlockBuilder) builder).writeFixed12((long) objects[0], (int) objects[1]);
                 }
                 else {
                     builder.appendNull();
@@ -732,9 +774,7 @@ public class VastPageBuilder
                     if (reader.isSet()) {
                         long nanos = reader.readLong();
                         Object[] objects = TypeUtils.convertLongNanoToTwoValues(nanos);
-                        builder.writeLong((long) objects[0]);
-                        builder.writeInt((int) objects[1]);
-                        builder.closeEntry();
+                        ((Fixed12BlockBuilder) builder).writeFixed12((long) objects[0], (int) objects[1]);
                     }
                     else {
                         builder.appendNull();
@@ -751,8 +791,7 @@ public class VastPageBuilder
             if (reader.isSet()) {
                 byte[] bytes = reader.readByteArray();
                 Slice slice = trimTrailingSpaces(Slices.wrappedBuffer(bytes));
-                builder.writeBytes(slice, 0, slice.length());
-                builder.closeEntry();
+                ((VariableWidthBlockBuilder) builder).writeEntry(slice);
             }
             else {
                 builder.appendNull();
@@ -769,8 +808,7 @@ public class VastPageBuilder
                 if (reader.isSet()) {
                     byte[] bytes = reader.readByteArray();
                     Slice slice = trimTrailingSpaces(Slices.wrappedBuffer(bytes));
-                    builder.writeBytes(slice, 0, slice.length());
-                    builder.closeEntry();
+                    ((VariableWidthBlockBuilder) builder).writeEntry(slice);
                 }
                 else {
                     builder.appendNull();
@@ -784,7 +822,7 @@ public class VastPageBuilder
         for (int i = 0; i < count; ++i) {
             reader.setPosition(i);
             if (reader.isSet()) {
-                builder.writeLong(reader.readBigDecimal().unscaledValue().longValueExact());
+                ((LongArrayBlockBuilder) builder).writeLong(reader.readBigDecimal().unscaledValue().longValueExact());
             }
             else {
                 builder.appendNull();
@@ -799,7 +837,7 @@ public class VastPageBuilder
             reader.setPosition(i);
             if (!parentNullsBitmap[i + builderPosition]) {
                 if (reader.isSet()) {
-                    builder.writeLong(reader.readBigDecimal().unscaledValue().longValueExact());
+                    ((LongArrayBlockBuilder) builder).writeLong(reader.readBigDecimal().unscaledValue().longValueExact());
                 }
                 else {
                     builder.appendNull();
@@ -844,7 +882,7 @@ public class VastPageBuilder
             reader.setPosition(i);
             if (!parentNullsBitmap[i + builderPosition]) {
                 if (reader.isSet()) {
-                    builder.writeInt(floatToIntBits(reader.readFloat())).closeEntry();
+                    ((IntArrayBlockBuilder) builder).writeInt(floatToIntBits(reader.readFloat()));
                 }
                 else {
                     builder.appendNull();
@@ -860,7 +898,7 @@ public class VastPageBuilder
             reader.setPosition(i);
             if (!parentNullsBitmap[i + builderPosition]) {
                 if (reader.isSet()) {
-                    builder.writeLong(doubleToLongBits(reader.readDouble())).closeEntry();
+                    ((LongArrayBlockBuilder) builder).writeLong(doubleToLongBits(reader.readDouble()));
                 }
                 else {
                     builder.appendNull();
@@ -876,7 +914,7 @@ public class VastPageBuilder
             reader.setPosition(i);
             if (!parentNullsBitmap[i + builderPosition]) {
                 if (reader.isSet()) {
-                    builder.writeLong(reader.readLong()).closeEntry();
+                    ((LongArrayBlockBuilder) builder).writeLong(reader.readLong());
                 }
                 else {
                     builder.appendNull();
@@ -892,7 +930,7 @@ public class VastPageBuilder
             reader.setPosition(i);
             if (!parentNullsBitmap[i + builderPosition]) {
                 if (reader.isSet()) {
-                    builder.writeInt(reader.readInteger()).closeEntry();
+                    ((IntArrayBlockBuilder) builder).writeInt(reader.readInteger());
                 }
                 else {
                     builder.appendNull();
@@ -908,7 +946,7 @@ public class VastPageBuilder
             reader.setPosition(i);
             if (!parentNullsBitmap[i + builderPosition]) {
                 if (reader.isSet()) {
-                    builder.writeShort(reader.readShort()).closeEntry();
+                    ((ShortArrayBlockBuilder) builder).writeShort(reader.readShort());
                 }
                 else {
                     builder.appendNull();
@@ -924,7 +962,7 @@ public class VastPageBuilder
             reader.setPosition(i);
             if (!parentNullsBitmap[i + builderPosition]) {
                 if (reader.isSet()) {
-                    builder.writeByte(reader.readByte()).closeEntry();
+                    ((ByteArrayBlockBuilder) builder).writeByte(reader.readByte());
                 }
                 else {
                     builder.appendNull();
@@ -938,7 +976,8 @@ public class VastPageBuilder
         for (int i = 0; i < count; ++i) {
             reader.setPosition(i);
             if (reader.isSet()) {
-                builder.writeByte(reader.readBoolean() ? 1 : 0).closeEntry();
+                int readBoolean = reader.readBoolean() ? 1 : 0;
+                ((ByteArrayBlockBuilder) builder).writeByte((byte) readBoolean);
             }
             else {
                 builder.appendNull();
@@ -953,7 +992,8 @@ public class VastPageBuilder
             reader.setPosition(i);
             if (!parentNullsBitmap[i + builderPosition]) {
                 if (reader.isSet()) {
-                    builder.writeByte(reader.readBoolean() ? 1 : 0).closeEntry();
+                    int readBoolean = reader.readBoolean() ? 1 : 0;
+                    ((ByteArrayBlockBuilder) builder).writeByte((byte) readBoolean);
                 }
                 else {
                     builder.appendNull();

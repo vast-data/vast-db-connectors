@@ -21,7 +21,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Multimap;
-import com.google.flatbuffers.FlatBufferBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Provider;
 import com.vastdata.client.error.VastConflictException;
@@ -50,10 +49,6 @@ import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.HttpStatus;
 import io.airlift.http.client.Request;
 import io.airlift.log.Logger;
-import org.apache.arrow.computeir.flatbuf.Project;
-import org.apache.arrow.computeir.flatbuf.Relation;
-import org.apache.arrow.computeir.flatbuf.RelationImpl;
-import org.apache.arrow.computeir.flatbuf.Source;
 import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.types.pojo.Field;
@@ -83,6 +78,7 @@ import java.util.Optional;
 import java.util.Stack;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -115,7 +111,7 @@ public class VastClient
 
     private static final RootAllocator allocator = new RootAllocator();
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private final ArrowSchemaUtils arrowSchemaUtils = new ArrowSchemaUtils();
+    private final ArrowSchemaUtils arrowSchemaUtils;
     private final VastConfig config;
     @VisibleForTesting
     protected final HttpClient httpClient;
@@ -196,12 +192,20 @@ public class VastClient
     @Inject
     public VastClient(@ForVast HttpClient httpClient, VastConfig config, VastDependenciesFactory dependenciesFactory)
     {
+        this(httpClient, config, dependenciesFactory, new ArrowSchemaUtils());
+    }
+
+    @VisibleForTesting
+    protected VastClient(HttpClient httpClient, VastConfig config, VastDependenciesFactory dependenciesFactory,
+            ArrowSchemaUtils arrowSchemaUtils)
+    {
         this.config = config;
         this.httpClient = httpClient;
         this.dependenciesFactory = dependenciesFactory;
         this.schemaSerializer = VastPayloadSerializer.getInstanceForSchema();
         this.recordBatchSerializer = VastPayloadSerializer.getInstanceForRecordBatch();
         this.splitter = new RecordBatchSplitter(config.getMaxRequestBodySize(), recordBatchSerializer);
+        this.arrowSchemaUtils = arrowSchemaUtils;
     }
 
     public List<String> listBuckets(boolean includeHidden)
@@ -360,7 +364,7 @@ public class VastClient
             }
             Consumer<ListSchemasResponse> resultConsumer = (r) -> IntStream.range(0, r.schemasLength())
                     .mapToObj(r::schemas)
-                    .map(obj -> String.format("%s/%s", parentPath, obj.name()))
+                    .map(obj -> format("%s/%s", parentPath, obj.name()))
                     .forEachOrdered(searchStack::add);
             try {
                 pagedObjectsFetch(transaction, VastClient::parseListSchemasResponse, resultConsumer, Requests.LIST_SCHEMA, BASE + parentPath, pageSize);
@@ -590,13 +594,19 @@ public class VastClient
     }
 
     public void queryData(
-            VastTransaction transaction, VastTraceToken traceToken, String schemaName, String tableName, Schema schema, FlatBufferSerializer projections, FlatBufferSerializer predicate,
+            VastTransaction transaction, VastTraceToken traceToken, String schemaName, String tableName, Schema schema,
+            FlatBufferSerializer projections, FlatBufferSerializer predicate,
             Supplier<QueryDataResponseHandler> handlerSupplier, AtomicReference<URI> usedDataEndpoint,
-            VastSplitContext split, VastSchedulingInfo schedulingInfo, List<URI> dataEndpoints, VastRetryConfig retryConfig, Optional<Integer> limit,
+            VastSplitContext split, VastSchedulingInfo schedulingInfo, List<URI> dataEndpoints,
+            VastRetryConfig retryConfig, Optional<Integer> limit,
             Optional<String> bigCatalogSearchPath, QueryDataPagination pagination, boolean enableSortedProjections)
     {
         String path = format("/%s/%s", schemaName, tableName);
-        byte[] body = serializeQueryDataRequestBody(path, schema, projections, predicate);
+        LOG.debug("Serializing query-data request for table %s: %s", path, schema);
+        byte[] body = arrowSchemaUtils.serializeQueryDataRequestBody(path, schema, projections, predicate);
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("QueryData request body for table %s: %s", path, Hex.encodeHexString(body));
+        }
         Multimap<String, String> headers = dependenciesFactory.getHeadersFactory()
                 .withTransaction(transaction)
                 .withContentLength(body.length)
@@ -616,18 +626,22 @@ public class VastClient
         limit.ifPresent(value -> headers.put("tabular-limit-rows", Integer.toString(value)));
         bigCatalogSearchPath.ifPresent(value -> headers.put("tabular-bc-search-path", value));
 
+        AtomicInteger currAttempt = new AtomicInteger(0);
         for (int i = 0; i <= retryConfig.getMaxRetries(); ++i) {
             // TODO: currently, we do a round-robin between configured endpoints - in the future, we should get them by querying Vast.
-            URI dataEndpoint = dataEndpoints.get(getEndpointIndex(tableName, split, i, dataEndpoints.size()));
-            LOG.debug("QueryData(%s) %s (retry %d/%d) is sent to %s", traceToken, split, i, retryConfig.getMaxRetries(), dataEndpoint);
-            Request request = new VastRequestBuilder(dataEndpoint, config, GET, path, Requests.QUERY_DATA.getRequestParam())
-                    .addHeaders(headers)
-                    .addHeader("tabular-retry-count", Integer.toString(i))
-                    .setBody(Optional.of(body))
-                    .build();
-            usedDataEndpoint.set(dataEndpoint);
+            //            usedDataEndpoint.set(dataEndpoint);
+            Supplier<Request> requestSupplier = () -> {
+                int attemptIndex = currAttempt.getAndIncrement();
+                URI uri = dataEndpoints.get(getEndpointIndex(tableName, split, attemptIndex, dataEndpoints.size()));
+                LOG.debug("QueryData(%s) %s (retry %d/%d) is sent to %s", traceToken, split, attemptIndex, retryConfig.getMaxRetries(), uri);
+                return new VastRequestBuilder(uri, config, GET, path, Requests.QUERY_DATA.getRequestParam())
+                        .addHeaders(headers)
+                        .addHeader("tabular-retry-count", Integer.toString(attemptIndex))
+                        .setBody(Optional.of(body))
+                        .build();
+            };
             // QueryData is an idempotent RPC (parser is re-created on retry, pagination is set only on success)
-            VastResponse queryDataResponse = retryIOErrorsAndTimeouts(() -> httpClient.execute(request, handlerSupplier.get()));
+            VastResponse queryDataResponse = retryIOErrorsAndTimeouts(() -> httpClient.execute(requestSupplier.get(), handlerSupplier.get()));
             HttpStatus statusCode = HttpStatus.fromStatusCode(queryDataResponse.getStatus());
             if (statusCode == OK) {
                 return;
@@ -842,37 +856,6 @@ public class VastClient
         }
     }
 
-    private byte[] serializeQueryDataRequestBody(String tablePath, Schema schema, FlatBufferSerializer projections, FlatBufferSerializer predicate)
-    {
-        LOG.debug("Serializing query-data request for table %s: %s", tablePath, schema);
-
-        FlatBufferBuilder builder = new FlatBufferBuilder(128);
-        int nameOffset = builder.createString(tablePath);
-        int schemaOffset = schema.getSchema(builder); // serialize the schema
-        int filterOffset = predicate.serialize(builder);
-
-        Source.startSource(builder);
-        Source.addName(builder, nameOffset);
-        Source.addSchema(builder, schemaOffset);
-        Source.addFilter(builder, filterOffset);
-        int sourceOffset = Source.endSource(builder);
-        int childRel = Relation.createRelation(builder, RelationImpl.Source, sourceOffset);
-
-        int expressionsOffset = projections.serialize(builder);
-        Project.startProject(builder);
-        Project.addRel(builder, childRel);
-        Project.addExpressions(builder, expressionsOffset);
-        int projectOffset = Project.endProject(builder);
-
-        int relationOffset = Relation.createRelation(builder, RelationImpl.Project, projectOffset);
-        builder.finish(relationOffset);
-        byte[] result = builder.sizedByteArray(); // TODO: don't copy the data
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("QueryData request body for table %s: %s", tablePath, Hex.encodeHexString(result));
-        }
-        return result;
-    }
-
     public VastResponse importData(VastTransaction transaction, VastTraceToken traceToken, ImportDataContext ctx, Consumer<InputStream> importDataResponseConsumer, URI dataEndpoint)
     {
         LOG.info("ImportData(%s): sending request to VAST URI: %s", traceToken, dataEndpoint);
@@ -961,7 +944,7 @@ public class VastClient
         Request req = new VastRequestBuilder(config, GET, path, Requests.GET_SCHEDULING_INFO.getRequestParam())
                 .addHeaders(headers)
                 .build();
-        VastResponse response = retryConnectionErrors(() -> httpClient.execute(req, VastResponseHandler.createVastResponseHandler()));
+        VastResponse response = retryIOErrorsAndTimeouts(() -> httpClient.execute(req, VastResponseHandler.createVastResponseHandler()));
         return VastSchedulingInfo.create(response);
     }
 
@@ -993,6 +976,7 @@ public class VastClient
 
     private <T> T retryIfNeeded(Provider<T> call, Consumer<RuntimeException> ignore)
     {
+        RuntimeException lastException = null;
         for (int i = 0; i <= config.getRetryMaxCount(); ++i) {
             try {
                 return call.get();
@@ -1005,9 +989,12 @@ public class VastClient
                 catch (InterruptedException ie) {
                     throw toRuntime(ie);
                 }
+                lastException = e;
             }
         }
-        throw toRuntime(serverException(format("Request failed after %d retries", config.getRetryMaxCount())));
+        String message = format("Request failed after %d retries: %s", config.getRetryMaxCount(), lastException);
+        LOG.error(lastException, message);
+        throw toRuntime(serverException(message, lastException));
     }
 
     private static void ignoreAwsSdkError(RuntimeException e)
@@ -1018,6 +1005,7 @@ public class VastClient
                 cause = cause.getCause();
             }
             if (cause instanceof ConnectException || cause instanceof UnknownHostException) {
+                LOG.warn(e, "retrying due to AWS SDK connection failure");
                 return;
             }
         }

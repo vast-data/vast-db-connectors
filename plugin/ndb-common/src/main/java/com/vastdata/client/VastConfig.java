@@ -51,6 +51,8 @@ public class VastConfig
     private long queryDataRowsPerSplit = 4 * 1000 * 1000; // allow dynamic splits (256 splits per 1B rows)
     private int queryDataRowsPerPage = 128 * 1024; // should be a multiple of a row group size (2 ** 16 rows)
     private long maxRequestBodySize = 5 * 1024 * 1024; // must be <= Mooktze largest buffer size (see `src/plasma/execution/silo.cpp`)
+    private long advisoryPartitionSize = 256 *1024 * 1024;
+    private boolean adaptivePartitioning = true;
 
     private int retryMaxCount = 600; // 10 minutes of retries in case we can't connect to VAST
     private int retrySleepDuration = 1000;
@@ -63,6 +65,7 @@ public class VastConfig
 
     private String engineVersion = "NA";
 
+    private boolean enablePredicatePushdown = true;
     private boolean matchSubstringPushdown = true;
     private boolean complexPredicatePushdown = false;
     private boolean expressionProjectionPushdown = false;
@@ -78,6 +81,10 @@ public class VastConfig
     private boolean keepFilterAfterPushdown = true;
     private boolean vastTransactionKeepAliveEnabled = TX_KEEP_ALIVE_ENABLED_DEFAULT;
     private int vastTransactionKeepAliveIntervalSeconds = TX_KEEP_ALIVE_INTERVAL_DEFAULT;
+    private boolean estimateSplitsFromRowIdPredicate = false;
+
+    private Long seedForShufflingEndpoints = null;
+    private boolean useColumnHistogram = true; // Relevant for spark only
 
     public URI getEndpoint()
     {
@@ -245,6 +252,30 @@ public class VastConfig
         return this;
     }
 
+    public long getAdvisoryPartitionSize()
+    {
+        return this.adaptivePartitioning? this.advisoryPartitionSize : -1;
+    }
+
+    @Config("advisory_partition_size")
+    public VastConfig setAdvisoryPartitionSize(long advisoryPartitionSize)
+    {
+        this.advisoryPartitionSize = advisoryPartitionSize;
+        return this;
+    }
+
+    public boolean getAdaptivePartitioning()
+    {
+        return this.adaptivePartitioning;
+    }
+
+    @Config("adaptive_partitioning")
+    public VastConfig setAdaptivePartitioning(boolean adaptivePartitioning)
+    {
+        this.adaptivePartitioning = adaptivePartitioning;
+        return this;
+    }
+
     @Min(0)
     public int getRetryMaxCount()
     {
@@ -341,6 +372,18 @@ public class VastConfig
     public VastConfig setEngineVersion(String engineVersion)
     {
         this.engineVersion = engineVersion;
+        return this;
+    }
+
+    public boolean isPredicatePushdownEnabled()
+    {
+        return enablePredicatePushdown;
+    }
+
+    @Config("enable_predicate_pushdown")
+    public VastConfig setPredicatePushdownEnabled(boolean enablePredicatePushdown)
+    {
+        this.enablePredicatePushdown = enablePredicatePushdown;
         return this;
     }
 
@@ -487,6 +530,42 @@ public class VastConfig
     public VastConfig setVastTransactionKeepAliveIntervalSeconds(int vastTransactionKeepAliveIntervalSeconds)
     {
         this.vastTransactionKeepAliveIntervalSeconds = vastTransactionKeepAliveIntervalSeconds;
+        return this;
+    }
+
+    public boolean getEstimateSplitsFromRowIdPredicate()
+    {
+        return estimateSplitsFromRowIdPredicate;
+    }
+
+    @Config("estimate_splits_from_row_id_predicate")
+    public VastConfig setEstimateSplitsFromRowIdPredicate(boolean estimateSplitsFromRowIdPredicate)
+    {
+        this.estimateSplitsFromRowIdPredicate = estimateSplitsFromRowIdPredicate;
+        return this;
+    }
+
+    public Long getSeedForShufflingEndpoints()
+    {
+        return seedForShufflingEndpoints;
+    }
+
+    @Config("seed_for_shuffling_endpoints")
+    public VastConfig setSeedForShufflingEndpoints(Long seed)
+    {
+        this.seedForShufflingEndpoints = seed;
+        return this;
+    }
+
+    public boolean getUseColumnHistogram()
+    {
+        return this.useColumnHistogram;
+    }
+
+    @Config("use_column_histogram")
+    public VastConfig setUseColumnHistogram(boolean useColumnHistogram)
+    {
+        this.useColumnHistogram = useColumnHistogram;
         return this;
     }
 }

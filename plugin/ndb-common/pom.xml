@@ -12,12 +12,12 @@
     <parent>
         <groupId>ndb</groupId>
         <artifactId>ndb-root</artifactId>
-        <version>5.0.0</version>
+        <version>5.1.0</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
     <artifactId>ndb-common</artifactId>
-    <version>5.0.0</version>
+    <version>5.1.0</version>
     <description>VAST Connector - Common</description>
     <packaging>jar</packaging>
 
@@ -239,6 +239,22 @@
                         -XX:+ExitOnOutOfMemoryError
                         -XX:+HeapDumpOnOutOfMemoryError
                         -XX:-OmitStackTraceInFastThrow
+                        --add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED
+                        --add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED
+                        --add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED
+                        --add-exports=jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED
+                        --add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED
+                        --add-exports=jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED
+                        --add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED
+                        --add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED
+                        --add-opens=java.base/java.io=ALL-UNNAMED
+                        --add-opens=java.base/java.lang=ALL-UNNAMED
+                        --add-opens=java.base/java.nio=ALL-UNNAMED
+                        --add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED
+                        --add-opens=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED
+                        --add-opens=java.base/java.nio=ALL-UNNAMED
+                        --add-opens=java.base/java.lang=ALL-UNNAMED
+                        --add-exports=java.base/sun.nio.ch=ALL-UNNAMED
                     </argLine>
                 </configuration>
             </plugin>

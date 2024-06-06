@@ -54,7 +54,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
-import java.util.*;
+import java.util.Iterator;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -89,6 +89,7 @@ public class VastMetadata
         LOG.info("Class file version of this vm: {}", classFileVersion);
     }
     private static final String INFORMATION_SCHEMA_NAME = "information_schema";
+    private static final String SYSTEM_SCHEMA_NAME = "system_schema";
 
     private final VastClient client;
     private final VastTransactionHandle transactionHandle;
@@ -182,13 +183,14 @@ public class VastMetadata
     }
 
     @Override
-    public ConnectorTableHandle getTableHandle(ConnectorSession session, SchemaTableName schemaTableName)
+    public ConnectorTableHandle getTableHandle(ConnectorSession session, SchemaTableName schemaTableName, Optional<ConnectorTableVersion> startVersion, Optional<ConnectorTableVersion> endVersion)
     {
         schemaTableName = toVastSchemaTableName(session, schemaTableName);
         LOG.debug("tx %s: getTableHandle(%s)", transactionHandle, schemaTableName);
         Optional<String> bigCatalogSearchPath = getBigCatalogSearchPath(schemaTableName.getSchemaName(), schemaTableName.getTableName());
         if (bigCatalogSearchPath.isPresent()) {
-            VastTableHandle tableHandle = (VastTableHandle) getTableHandle(session, new SchemaTableName(schemaTableName.getSchemaName(), BIG_CATALOG_TABLE_NAME));
+            LOG.debug("tx %s: getTableHandle name=%s start=%s end=%s", transactionHandle, schemaTableName, startVersion, endVersion);
+            VastTableHandle tableHandle = (VastTableHandle) getTableHandle(session, new SchemaTableName(schemaTableName.getSchemaName(), BIG_CATALOG_TABLE_NAME), startVersion, endVersion);
             if (tableHandle != null) {
                 return tableHandle.withBigCatalogSearchPath(bigCatalogSearchPath.orElseThrow());
             }
@@ -284,6 +286,10 @@ public class VastMetadata
                     String vastSchemaName = toVastSchemaName(session, trinoSchemaName);
                     if (vastSchemaName.equalsIgnoreCase(INFORMATION_SCHEMA_NAME)) {
                         // TODO https://github.com/trinodb/trino/issues/1559 this should be filtered out in engine.
+                        return Stream.<SchemaTableName>of();
+                    }
+                    if (vastSchemaName.equalsIgnoreCase(SYSTEM_SCHEMA_NAME)) {
+                        // TODO: workaround for ORION-154485
                         return Stream.<SchemaTableName>of();
                     }
                     try {
@@ -447,8 +453,10 @@ public class VastMetadata
     }
 
     @Override
-    public void dropSchema(ConnectorSession session, String schemaName)
+    public void dropSchema(ConnectorSession session, String schemaName, boolean cascade)
     {
+        // TODO Add support for DROP SCHEMA CASCADE/RESTRICT
+        // https://vastdata.atlassian.net/browse/ORION-151959
         schemaName = toVastSchemaName(session, schemaName);
         LOG.debug("Dropping schema %s", schemaName);
         try {
@@ -489,7 +497,7 @@ public class VastMetadata
             throw new TrinoException(GENERIC_USER_ERROR, format("Illegal table name for create table: %s", tableName));
         }
         if (ignoreExisting) {
-            ConnectorTableHandle table = getTableHandle(session, tableMetadata.getTable());
+            ConnectorTableHandle table = getTableHandle(session, tableMetadata.getTable(), Optional.empty(), Optional.empty());
             if (nonNull(table)) {
                 LOG.info("Table %s already exists", table);
                 return;
@@ -515,7 +523,7 @@ public class VastMetadata
         LOG.debug("tx %s: beginCreateTable(%s, %s, %s, %s)", transactionHandle, tableMetadata, layout, retryMode, clientPageSize);
         try {
             createTable(session, tableMetadata, false);
-            VastTableHandle table = (VastTableHandle) getTableHandle(session, tableMetadata.getTable());
+            VastTableHandle table = (VastTableHandle) getTableHandle(session, tableMetadata.getTable(), Optional.empty(), Optional.empty());
             if (table != null) {
                 String schemaName = table.getSchemaName();
                 String tableName = table.getTableName();
@@ -929,10 +937,19 @@ public class VastMetadata
     @Override
     public RowChangeParadigm getRowChangeParadigm(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
-        return RowChangeParadigm.UPDATE_PARTIAL_COLUMNS;
+        return RowChangeParadigm.CHANGE_ONLY_UPDATED_COLUMNS;
     }
 
     @Override
+    public ConnectorMergeTableHandle beginMerge(ConnectorSession session, ConnectorTableHandle tableHandle, RetryMode retryMode)
+    {
+        requireNonNull(tableHandle, "tableHandle is null");
+        LOG.debug("tx %s: beginMerge(%s, %s)", transactionHandle, tableHandle, retryMode);
+        VastTableHandle table = ((VastTableHandle) tableHandle);
+        VastTableHandle resultTable = table.forMerge(table.getColumnHandlesCache());
+        return new VastMergeTableHandle(resultTable, resultTable.getColumnHandlesCache());
+    }
+
     public ConnectorMergeTableHandle beginMerge(ConnectorSession session, ConnectorTableHandle tableHandle, RetryMode retryMode, List<ColumnHandle> updatedColumns)
     {
         requireNonNull(tableHandle, "!!!Can't do merge table handle is null!!!");

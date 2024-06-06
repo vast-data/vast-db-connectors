@@ -7,9 +7,9 @@ package com.vastdata.client;
 public class VastVersion
 {
     public final static int MAJOR = 5;
-    public final static int MINOR = 0;
+    public final static int MINOR = 1;
     public final static int PATCH = 0;
-    public final static int PROTOCOL = 14;
-    public final static String SYS_VERSION = "5.0.0.14";
-    public final static String HASH = "66e76f4b3674a37c81dba1f654b5c767b9e00739";
+    public final static int PROTOCOL = 131;
+    public final static String SYS_VERSION = "5.1.0.131";
+    public final static String HASH = "eaf60f49181621b053e1e885226e2e3cb715eea3";
 }

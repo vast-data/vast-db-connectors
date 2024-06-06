@@ -15,9 +15,11 @@ import io.trino.spi.session.PropertyMetadata;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
-
+import java.util.List;
+import java.util.Optional;
 import static com.vastdata.client.VastConfig.MAX_SUB_SPLITS;
 import static com.vastdata.client.VastConfig.MIN_SUB_SPLITS;
 import static io.trino.spi.StandardErrorCode.INVALID_SESSION_PROPERTY;
@@ -60,6 +62,10 @@ public class VastSessionProperties
     private static final String MAX_ROWS_PER_UPDATE = "max_rows_per_update";
     private static final String MAX_ROWS_PER_DELETE = "max_rows_per_delete";
     private static final String IMPORT_CHUNK_LIMIT = "import_chunk_limit";
+
+    private static final String ESTIMATE_SPLITS_FROM_ROW_ID_PREDICATE = "estimate_splits_from_row_id_predicate";
+
+    private static final String SEED_FOR_SHUFFLING_ENDPOINTS = "seed_for_shuffling_endpoints";
 
     private static final Splitter SPLITTER = Splitter.on(',').trimResults().omitEmptyStrings();
 
@@ -197,6 +203,16 @@ public class VastSessionProperties
                         "Number of files' limit per ImportData RPC",
                         config.getImportChunkLimit(),
                         false))
+                .add(booleanProperty(
+                        ESTIMATE_SPLITS_FROM_ROW_ID_PREDICATE,
+                        "Number of splits will be calculated with consideration to the user defined ROW_IDs",
+                        config.getEstimateSplitsFromRowIdPredicate(),
+                        false))
+                .add(longProperty(
+                        SEED_FOR_SHUFFLING_ENDPOINTS,
+                        "Seed for shuffling the data endpoints deterministically",
+                        config.getSeedForShufflingEndpoints(),
+                        true))
                 .build();
     }
 
@@ -250,6 +266,11 @@ public class VastSessionProperties
     public static List<URI> getDataEndpoints(ConnectorSession session)
     {
         return (List<URI>) session.getProperty(DATA_ENDPOINTS, List.class);
+    }
+
+    public static Optional<Long> getSeedForShufflingEndpoints(ConnectorSession session)
+    {
+        return Optional.ofNullable(session.getProperty(SEED_FOR_SHUFFLING_ENDPOINTS, Long.class));
     }
 
     public static boolean getEnableCustomSchemaSeparator(ConnectorSession session)
@@ -335,5 +356,10 @@ public class VastSessionProperties
     public static int getImportChunkLimit(ConnectorSession session)
     {
         return session.getProperty(IMPORT_CHUNK_LIMIT, Integer.class);
+    }
+
+    public static boolean getEstimateSplitsFromRowIdPredicate(ConnectorSession session)
+    {
+        return session.getProperty(ESTIMATE_SPLITS_FROM_ROW_ID_PREDICATE, Boolean.class);
     }
 }

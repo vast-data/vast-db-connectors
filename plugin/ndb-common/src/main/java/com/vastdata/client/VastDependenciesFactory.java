@@ -27,6 +27,7 @@ public interface VastDependenciesFactory
         cfg.setSelectorCount(10);
         cfg.setTimeoutThreads(8);
         cfg.setTimeoutConcurrency(4);
+        cfg.setKeyStorePath(null); // explicit overwrite the keyStorePath (used by jetty sslContextFactory)
     };
 
     Predicate<String> getSchemaNameValidator();

@@ -14,11 +14,16 @@ import io.trino.spi.Page;
 import io.trino.spi.block.ArrayBlock;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
+import io.trino.spi.block.ByteArrayBlockBuilder;
 import io.trino.spi.block.ColumnarArray;
 import io.trino.spi.block.ColumnarMap;
+import io.trino.spi.block.IntArrayBlockBuilder;
+import io.trino.spi.block.LongArrayBlockBuilder;
 import io.trino.spi.block.MapBlock;
 import io.trino.spi.block.PageBuilderStatus;
 import io.trino.spi.block.RowBlock;
+import io.trino.spi.block.ShortArrayBlockBuilder;
+import io.trino.spi.block.VariableWidthBlockBuilder;
 import io.trino.spi.type.DecimalType;
 import io.trino.spi.type.Decimals;
 import io.trino.spi.type.MapType;
@@ -532,19 +537,19 @@ public class QueryDataResponseSchemaConstructor
                 switch (type.getBitWidth()) {
                     case 8:
                         ValueEntryGetter<Byte> byteGetter = ValueEntryFunctionFactory.newGetter(x -> block.getByte(x, 0), block::isNull, x -> parentNullVector[x]);
-                        vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> blockBuilder.writeByte(value), x -> blockBuilder.appendNull()), false, parentPositionCount, byteGetter);
+                        vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> ((ByteArrayBlockBuilder) blockBuilder).writeByte(value), x -> blockBuilder.appendNull()), false, parentPositionCount, byteGetter);
                         return blockBuilder.build();
                     case 16:
                         ValueEntryGetter<Short> shortGetter = ValueEntryFunctionFactory.newGetter(x -> block.getShort(x, 0), block::isNull, x -> parentNullVector[x]);
-                        vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> blockBuilder.writeShort(value), x -> blockBuilder.appendNull()), false, parentPositionCount, shortGetter);
+                        vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> ((ShortArrayBlockBuilder) blockBuilder).writeShort(value), x -> blockBuilder.appendNull()), false, parentPositionCount, shortGetter);
                         return blockBuilder.build();
                     case 32:
                         ValueEntryGetter<Integer> intGetter = ValueEntryFunctionFactory.newGetter(x -> block.getInt(x, 0), block::isNull, x -> parentNullVector[x]);
-                        vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> blockBuilder.writeInt(value), x -> blockBuilder.appendNull()), false, parentPositionCount, intGetter);
+                        vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> ((IntArrayBlockBuilder) blockBuilder).writeInt(value), x -> blockBuilder.appendNull()), false, parentPositionCount, intGetter);
                         return blockBuilder.build();
                     case 64:
                         ValueEntryGetter<Long> longGetter = ValueEntryFunctionFactory.newGetter(x -> block.getLong(x, 0), block::isNull, x -> parentNullVector[x]);
-                        vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> blockBuilder.writeLong(value), x -> blockBuilder.appendNull()), false, parentPositionCount, longGetter);
+                        vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> ((LongArrayBlockBuilder) blockBuilder).writeLong(value), x -> blockBuilder.appendNull()), false, parentPositionCount, longGetter);
                         return blockBuilder.build();
                     default:
                         throw new UnsupportedOperationException("Unsupported integer size: " + type);
@@ -555,11 +560,11 @@ public class QueryDataResponseSchemaConstructor
                 switch (type.getPrecision()) {
                     case SINGLE:
                         ValueEntryGetter<Integer> intGetter = ValueEntryFunctionFactory.newGetter(x -> block.getInt(x, 0), block::isNull, x -> parentNullVector[x]);
-                        vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> blockBuilder.writeInt(value), x -> blockBuilder.appendNull()), false, parentPositionCount, intGetter);
+                        vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> ((IntArrayBlockBuilder) blockBuilder).writeInt(value), x -> blockBuilder.appendNull()), false, parentPositionCount, intGetter);
                         return blockBuilder.build();
                     case DOUBLE:
                         ValueEntryGetter<Long> longGetter = ValueEntryFunctionFactory.newGetter(x -> block.getLong(x, 0), block::isNull, x -> parentNullVector[x]);
-                        vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> blockBuilder.writeLong(value), x -> blockBuilder.appendNull()), false, parentPositionCount, longGetter);
+                        vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> ((LongArrayBlockBuilder) blockBuilder).writeLong(value), x -> blockBuilder.appendNull()), false, parentPositionCount, longGetter);
                         return blockBuilder.build();
                     default:
                         throw new UnsupportedOperationException("Unsupported floating-point precision: " + type);
@@ -573,21 +578,20 @@ public class QueryDataResponseSchemaConstructor
                     return block.getSlice(x, 0, sliceLength);
                 }, block::isNull, x -> parentNullVector[x]);
                 vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, slice) -> {
-                    blockBuilder.writeBytes(slice, 0, slice.length());
-                    blockBuilder.closeEntry();
+                    ((VariableWidthBlockBuilder) blockBuilder).writeEntry(slice);
                 }, x -> blockBuilder.appendNull()), false, parentPositionCount, sliceGetter);
                 return blockBuilder.build();
             }
             case Bool: {
                 ValueEntryGetter<Byte> byteGetter = ValueEntryFunctionFactory.newGetter(x -> block.getByte(x, 0), block::isNull, x -> parentNullVector[x]);
-                vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> blockBuilder.writeByte(value), x -> blockBuilder.appendNull()), false, parentPositionCount, byteGetter);
+                vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> ((ByteArrayBlockBuilder) blockBuilder).writeByte(value), x -> blockBuilder.appendNull()), false, parentPositionCount, byteGetter);
                 return blockBuilder.build();
             }
             case Decimal: {
                 DecimalType decimalType = (DecimalType) trinoType;
                 if (decimalType.isShort()) {
                     ValueEntryGetter<Long> longGetter = ValueEntryFunctionFactory.newGetter(x -> Decimals.readBigDecimal(decimalType, block, x).unscaledValue().longValueExact(), block::isNull, x -> parentNullVector[x]);
-                    vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> blockBuilder.writeLong(value), x -> blockBuilder.appendNull()), false, parentPositionCount, longGetter);
+                    vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> ((LongArrayBlockBuilder) blockBuilder).writeLong(value), x -> blockBuilder.appendNull()), false, parentPositionCount, longGetter);
                 }
                 else {
                     ValueEntryGetter<BigDecimal> bigDecimalGetter = ValueEntryFunctionFactory.newGetter(x -> Decimals.readBigDecimal(decimalType, block, x), block::isNull, x -> parentNullVector[x]);
@@ -597,13 +601,13 @@ public class QueryDataResponseSchemaConstructor
             }
             case Date: {
                 ValueEntryGetter<Integer> intGetter = ValueEntryFunctionFactory.newGetter(x -> block.getInt(x, 0), block::isNull, x -> parentNullVector[x]);
-                vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> blockBuilder.writeInt(value), x -> blockBuilder.appendNull()), false, parentPositionCount, intGetter);
+                vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> ((IntArrayBlockBuilder) blockBuilder).writeInt(value), x -> blockBuilder.appendNull()), false, parentPositionCount, intGetter);
                 return blockBuilder.build();
             }
             case Timestamp:
             case Time: {
                 ValueEntryGetter<Long> longGetter = ValueEntryFunctionFactory.newGetter(x -> block.getLong(x, 0), block::isNull, x -> parentNullVector[x]);
-                vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> blockBuilder.writeLong(value), x -> blockBuilder.appendNull()), false, parentPositionCount, longGetter);
+                vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> ((LongArrayBlockBuilder) blockBuilder).writeLong(value), x -> blockBuilder.appendNull()), false, parentPositionCount, longGetter);
                 return blockBuilder.build();
             }
             default:

@@ -25,6 +25,9 @@ import io.trino.spi.connector.SystemTable;
 import io.trino.spi.procedure.Procedure;
 import io.trino.spi.session.PropertyMetadata;
 import io.trino.spi.transaction.IsolationLevel;
+import org.apache.arrow.memory.ArrowBuf;
+import org.apache.arrow.memory.BufferAllocator;
+import org.apache.arrow.memory.RootAllocator;
 
 import java.util.List;
 import java.util.Set;
@@ -69,6 +72,13 @@ public class VastConnector
         this.sessionProperties = requireNonNull(sessionProperties, "sessionProperties is null").stream()
                 .flatMap(sessionPropertiesProvider -> sessionPropertiesProvider.getSessionProperties().stream())
                 .collect(toImmutableList());
+
+        try (BufferAllocator allocator = new RootAllocator()) {
+            // Fail early if JVM is misconfigured (ORION-158296)
+            ArrowBuf buf = allocator.buffer(1024); // sanity test
+            LOG.debug("Arrow buffer allocated: %s", buf);
+            buf.getReferenceManager().release();
+        }
     }
 
     @Override

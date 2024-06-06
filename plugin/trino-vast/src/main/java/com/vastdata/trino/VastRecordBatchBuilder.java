@@ -72,9 +72,9 @@ import static org.apache.arrow.vector.complex.BaseRepeatedValueVector.OFFSET_WID
 public class VastRecordBatchBuilder
 {
     private static final Logger LOG = Logger.get(VastRecordBatchBuilder.class);
-    private static final BufferAllocator allocator = new RootAllocator();
     private static final Optional<String> PRINTING_RECEIVED_BLOCK_PREFIX = Optional.of("Printing received");
 
+    private final BufferAllocator allocator = new RootAllocator();
     private final Schema schema;
 
     public VastRecordBatchBuilder(Schema schema)

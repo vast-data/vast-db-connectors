@@ -26,16 +26,15 @@ import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 
 import java.net.URI;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.List;
 import java.util.Optional;
+import java.util.List;
+
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
-import static com.vastdata.trino.VastSessionProperties.getDataEndpoints;
 import static com.vastdata.trino.VastSessionProperties.getImportChunkLimit;
 import static com.vastdata.trino.VastSessionProperties.getMaxRowsPerInsert;
 import static com.vastdata.trino.VastSessionProperties.getParallelImport;
@@ -53,14 +52,14 @@ public class VastPageSink
     private final VastRecordBatchBuilder builder;
     private final Schema schema;
     private final ConnectorSession session;
-    private final List<URI> dataEndpoints;
     private final VastTrinoExceptionFactory vastTrinoExceptionFactory = new VastTrinoExceptionFactory();
     private final VastTraceToken traceToken;
     private final int maxRowsPerInsert;
     private final int importChunkLimit;
     private long pageCount;
+    private final List<URI> dataEndpoints;
 
-    public VastPageSink(VastClient client, ConnectorSession session, VastTransactionHandle transaction, VastInsertTableHandle handle)
+    public VastPageSink(VastClient client, ConnectorSession session, VastTransactionHandle transaction, VastInsertTableHandle handle, List<URI> shuffledDataEndpoints)
     {
         this.traceToken = transaction.generateTraceToken(session.getTraceToken());
         this.client = client;
@@ -70,10 +69,10 @@ public class VastPageSink
         List<Field> fields = columns.stream().map(VastColumnHandle::getField).collect(Collectors.toList());
         this.schema = new Schema(fields);
         this.session = session;
-        this.dataEndpoints = new ArrayList<>(getDataEndpoints(session));
         this.builder = new VastRecordBatchBuilder(schema);
         this.maxRowsPerInsert = getMaxRowsPerInsert(session);
         this.importChunkLimit = getImportChunkLimit(session);
+        this.dataEndpoints = shuffledDataEndpoints;
     }
 
     @Override
@@ -109,7 +108,7 @@ public class VastPageSink
                     final int retrySleepDuration = getRetrySleepDuration(session);
                     boolean parallelImport = getParallelImport(session);
                     Supplier<RetryStrategy> retryStrategy = () -> RetryStrategyFactory.fixedSleepBetweenRetries(retryMaxCount, retrySleepDuration);
-                    new ImportDataExecutor<VastTransactionHandle>(client).execute(ctx, transaction, traceToken, getDataEndpoints(session), retryStrategy, parallelImport);
+                    new ImportDataExecutor<VastTransactionHandle>(client).execute(ctx, transaction, traceToken, dataEndpoints, retryStrategy, parallelImport);
                 }
                 catch (VastException e) {
                     throw vastTrinoExceptionFactory.fromVastException(e);
@@ -152,5 +151,10 @@ public class VastPageSink
     public void abort()
     {
         LOG.warn("aborting page sink");
+    }
+
+    public List<URI> getShuffledDataEndpoints()
+    {
+        return this.dataEndpoints;
     }
 }

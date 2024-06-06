@@ -18,6 +18,7 @@ import io.trino.spi.connector.ColumnMetadata;
 import io.trino.spi.connector.ColumnSchema;
 import io.trino.spi.type.Type;
 import org.apache.arrow.vector.types.pojo.Field;
+import org.apache.arrow.vector.types.pojo.FieldType;
 
 import java.util.List;
 import java.util.Objects;
@@ -163,6 +164,14 @@ public final class VastColumnHandle
     private Type getType()
     {
         return convertArrowFieldToTrinoType(getField());
+    }
+
+    public VastColumnHandle stripMetadata()
+    {
+        Field field = this.getField();
+        FieldType originalFieldType = field.getFieldType();
+        FieldType fieldType = new FieldType(originalFieldType.isNullable(), originalFieldType.getType(), originalFieldType.getDictionary());
+        return new VastColumnHandle(new Field(field.getName(), fieldType, field.getChildren()));
     }
 
     @Override

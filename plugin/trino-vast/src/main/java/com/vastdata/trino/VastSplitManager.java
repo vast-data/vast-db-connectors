@@ -42,6 +42,7 @@ import static com.vastdata.trino.VastSessionProperties.getNumOfSplits;
 import static com.vastdata.trino.VastSessionProperties.getNumOfSubSplits;
 import static com.vastdata.trino.VastSessionProperties.getQueryDataRowsPerSplit;
 import static com.vastdata.trino.VastSessionProperties.getRowGroupsPerSubSplit;
+import static com.vastdata.trino.VastSessionProperties.getEstimateSplitsFromRowIdPredicate;
 import static java.lang.String.format;
 
 public class VastSplitManager
@@ -52,6 +53,7 @@ public class VastSplitManager
 
     private final VastClient client;
     private final VastStatisticsManager statisticsManager;
+    private final VastRowsEstimator vastRowsEstimator = new VastRowsEstimator();
 
     @Inject
     public VastSplitManager(VastClient client, VastStatisticsManager statisticsManager)
@@ -73,6 +75,9 @@ public class VastSplitManager
 
         String fullTableName = format("%s/%s", table.getSchemaName(), table.getTableName());
         Estimate rowsEstimate = statisticsManager.getTableStatistics(table).orElse(TableStatistics.empty()).getRowCount();
+        if (getEstimateSplitsFromRowIdPredicate(session)) {
+            rowsEstimate = vastRowsEstimator.getMinimalRowsEstimation(table.getPredicate(), rowsEstimate);
+        }
         int numOfSplits = estimateNumOfSplits(session, rowsEstimate);
         LOG.debug("using %d splits for %s, estimated to have %s rows", numOfSplits, fullTableName, rowsEstimate);
         int numOfSubSplits = getNumOfSubSplits(session);
@@ -131,7 +136,7 @@ public class VastSplitManager
         IntSupplier maxSplitsSupplier = () -> getNumOfSplits(session);
         LongSupplier rowPerSplitSupplier = () -> getQueryDataRowsPerSplit(session);
         Supplier<Optional<Double>> rowsEstimateSupplier = () -> rowsEstimate.isUnknown() ? Optional.empty() : Optional.of(rowsEstimate.getValue());
-        return estimateNumberOfSplits(maxSplitsSupplier, rowPerSplitSupplier, rowsEstimateSupplier);
+        return estimateNumberOfSplits(maxSplitsSupplier, rowPerSplitSupplier, () -> -1L, rowsEstimateSupplier, 0);
     }
 
 

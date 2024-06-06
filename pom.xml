@@ -10,7 +10,7 @@
 
     <groupId>ndb</groupId>
     <artifactId>ndb-root</artifactId>
-    <version>5.0.0</version>
+    <version>5.1.0</version>
 
     <name>ndb-root</name>
     <description>NDB</description>
@@ -43,15 +43,14 @@
         <air.modernizer.java-version>8</air.modernizer.java-version>
         <dep.aws-sdk.version>1.12.172</dep.aws-sdk.version>
         <dep.errorprone.version>2.11.0</dep.errorprone.version>
-        <dep.jackson.version>2.14.2</dep.jackson.version>
+        <dep.jackson.version>2.15.1</dep.jackson.version>
         <dep.testng.version>6.10</dep.testng.version>
-        <dep.arrow.version>11.0.0</dep.arrow.version>
+        <dep.arrow.version>13.0.0</dep.arrow.version>
     </properties>
 
     <modules>
         <module>plugin/ndb-common</module>
-        <module>plugin/spark3</module>
-<!--        <module>plugin/trino-vast</module>-->
+        <module>plugin/trino-vast</module>
     </modules>
 
     <repositories>
@@ -267,7 +266,7 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-enforcer-plugin</artifactId>
                     <configuration>
-                        <fail>false</fail>
+                        <skip>true</skip>
                         <rules>
                             <compound implementation="com.github.ferstl.maven.pomenforcers.CompoundPedanticEnforcer">
                                 <enforcers>POM_SECTION_ORDER,MODULE_ORDER,DEPENDENCY_MANAGEMENT_ORDER,DEPENDENCY_ORDER,DEPENDENCY_ELEMENT</enforcers>
@@ -355,22 +354,6 @@
         </pluginManagement>
 
         <plugins>
-            <plugin>
-                <artifactId>exec-maven-plugin</artifactId>
-                <groupId>org.codehaus.mojo</groupId>
-                <executions>
-                    <execution>
-                        <id>Code Gen</id>
-                        <phase>validate</phase>
-                        <goals>
-                            <goal>exec</goal>
-                        </goals>
-                        <configuration>
-                            <executable>scripts/generate.sh</executable>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
             <plugin>
                 <groupId>io.trino</groupId>
                 <artifactId>trino-maven-plugin</artifactId>

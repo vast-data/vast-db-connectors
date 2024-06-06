@@ -17,17 +17,23 @@ public final class NumOfSplitsEstimator
 
     private NumOfSplitsEstimator() {}
 
-    public static int estimateNumberOfSplits(IntSupplier maxSplitsSupplier, LongSupplier rowPerSplitSupplier, Supplier<Optional<Double>> rowsEstimateSupplier)
+    public static int estimateNumberOfSplits(IntSupplier maxSplitsSupplier, LongSupplier rowPerSplitSupplier,
+                                             LongSupplier advisoryPartitionSizeSupplier,
+                                             Supplier<Optional<Double>> rowsEstimateSupplier,
+                                             long rowSize)
     {
         int maxNumOfSplits = maxSplitsSupplier.getAsInt();
         long rowsPerSplit = rowPerSplitSupplier.getAsLong();
+        long advisoryPartitionSize = advisoryPartitionSizeSupplier.getAsLong();
         Optional<Double> rowsEstimateOpt = rowsEstimateSupplier.get();
-        int estimate = getEstimate(maxNumOfSplits, rowsPerSplit, rowsEstimateOpt);
-        LOG.info("Estimating num of splits: maxNumOfSplits=%d, rowsPerSplit=%d, rowsEstimateOpt=%s. Returning %d", maxNumOfSplits, rowsPerSplit, rowsEstimateOpt, estimate);
+        int estimate = getEstimate(maxNumOfSplits, rowsPerSplit, rowsEstimateOpt, advisoryPartitionSize, rowSize);
+        LOG.info("Estimating num of splits: maxNumOfSplits=%d, rowsPerSplit=%d, rowsEstimateOpt=%s, rowSize=%d, advisoryPartitionSize=%d. Returning %d",
+                 maxNumOfSplits, rowsPerSplit, rowsEstimateOpt, rowSize, advisoryPartitionSize, estimate);
         return estimate;
     }
 
-    private static int getEstimate(int maxNumOfSplits, long rowsPerSplit, Optional<Double> rowsEstimateOpt)
+    private static int getEstimate(int maxNumOfSplits, long rowsPerSplit, Optional<Double> rowsEstimateOpt,
+                                   long advisoryPartitionSize, long rowSize)
     {
         if (rowsPerSplit < 1) {
             return maxNumOfSplits;
@@ -37,7 +43,14 @@ public final class NumOfSplitsEstimator
         }
         else {
             double rows = rowsEstimateOpt.get();
-            double numOfSplits = Math.max(1, Math.ceil(rows / rowsPerSplit));
+            double numOfSplits = maxNumOfSplits;
+            if (advisoryPartitionSize > 0 && rowSize > 0) {
+                double tableSize = rows * rowSize;
+                numOfSplits = Math.max(1, Math.ceil(tableSize / advisoryPartitionSize));
+            }
+            else {
+                numOfSplits = Math.max(1, Math.ceil(rows / rowsPerSplit));
+            }
             return (numOfSplits < maxNumOfSplits) ? (int) numOfSplits : maxNumOfSplits;
         }
     }
