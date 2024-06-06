@@ -7,14 +7,13 @@
 ## Building Trino VAST connector on Ubuntu/Debian
 ```
 sudo apt install openjdk-17-jdk git
-./mvnw -pl ndb:ndb-common,ndb:trino-vast package
+./mvnw -pl ndb:ndb-common,ndb:trino-vast clean package
 ```
 The artifact should be at `plugin/trino-vast/target/trino-vast-*.zip`.
 
 
 ## Building Spark3.4 VAST connector on Ubuntu/Debian
 ```
-To build Spark connector:
 sudo apt install openjdk-11-jdk git
 ./mvnw -pl '!ndb:trino-vast' clean package
 ```
