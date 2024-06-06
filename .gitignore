@@ -28,7 +28,3 @@ product-test-reports
 .vscode/
 /gib-impacted.log
 /trino-server-*/
-/plugin/trino-vast/src/main/java/org/apache/arrow/
-/plugin/trino-vast/src/main/java/vast_flatbuf/tabular/
-/plugin/ndb-common/src/main/java/org/apache/arrow/computeir/flatbuf/
-/plugin/ndb-common/src/main/java/vast_flatbuf/tabular/
