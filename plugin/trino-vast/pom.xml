@@ -37,8 +37,8 @@
         <dep.trino.airlift.version>236</dep.trino.airlift.version>
         <dep.packaging.version>${dep.trino.airlift.version}</dep.packaging.version>
         <dep.arrow.version>13.0.0</dep.arrow.version>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
 
         <dep.docker.images.version>53</dep.docker.images.version>
 
