@@ -56,11 +56,6 @@
 
     <repositories>
         <repository>
-            <id>internal-vast-repository</id>
-            <name>VAST Internal Repo</name>
-            <url>https://artifactory.vastdata.com/artifactory/maven2</url>
-        </repository>
-        <repository>
             <id>local-repo</id>
             <name>Local Repository</name>
             <url>file://${user.home}/.m2/repository</url>
@@ -68,11 +63,6 @@
     </repositories>
 
     <pluginRepositories>
-        <pluginRepository>
-            <id>internal-vast-repository</id>
-            <name>VAST Internal Repo</name>
-            <url>https://artifactory.vastdata.com/artifactory/maven2</url>
-        </pluginRepository>
         <pluginRepository>
             <id>local-repo</id>
             <name>Local Repository</name>
