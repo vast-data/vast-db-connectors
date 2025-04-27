@@ -27,10 +27,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.IntSupplier;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 import static com.vastdata.client.util.NumOfSplitsEstimator.estimateNumberOfSplits;
 import static com.vastdata.spark.statistics.FilterEstimator.estimateSelectivity;
@@ -46,14 +44,13 @@ public class VastBatch
     private static final SecureRandom batchIdProvider = new SecureRandom();
     private static final Logger LOG = LoggerFactory.getLogger(VastBatch.class);
     private final VastTable table;
-    private StructType schema;
+    private final StructType schema;
     private List<List<VastPredicate>> predicates;
     private final String tablePath;
     private final VastConfig vastConfig;
     private final Integer limit;
     private VastPartitionReaderFactory vastPartitionReaderFactory;
     private final int batchID = batchIdProvider.nextInt();
-    private VastInputPartition[] splits;
     private static final AtomicBoolean describeFlag = new AtomicBoolean(false);
     private final boolean verbose = describeFlag.getAndSet(false);
 
@@ -79,34 +76,32 @@ public class VastBatch
         if (verbose) {
             LOG.warn(format("planInputPartitions()for batchID=%s, table=%s", batchID, table.name()), new Exception("VERBOSE BATCH"));
         }
-        if (splits == null) {
-            LOG.info("planInputPartitions() initializing for batchID={}, table={}, predicates={}", batchID, table.name(), predicates);
-            IntSupplier numOfSplitsConfSupplier = vastConfig::getNumOfSplits;
-            LongSupplier rowPerSplitSupplier = vastConfig::getQueryDataRowsPerSplit;
-            LongSupplier advisoryPartitionSizeSupplier = vastConfig::getAdvisoryPartitionSize;
-            Optional<Statistics> statistics = SparkVastStatisticsManager.getInstance().getTableStatistics(table);
-            Supplier<Optional<Double>> rowsEstimateSupplier =
-                () -> statistics.map(s -> s.rowCount().isEmpty() ?
-                                     null :
-                                     (s.rowCount().get().longValue() *
-                                      ((vastConfig.getAdaptivePartitioning() && statistics.isPresent()) ?
-                                       estimateSelectivity(predicates, sparkCatalystStatsToTableStatistics(statistics.get())) : 1.0)));
-            int numOfSplits =
-                estimateNumberOfSplits(numOfSplitsConfSupplier, rowPerSplitSupplier, advisoryPartitionSizeSupplier, rowsEstimateSupplier,
-                                       (vastConfig.getAdvisoryPartitionSize() > 0 && statistics.isPresent())? getSizePerRow(schema, sparkCatalystStatsToTableStatistics(statistics.get())) : 0);
-            int numOfSplitsConf = numOfSplitsConfSupplier.getAsInt();
-            if (numOfSplits < numOfSplitsConf) {
-                LOG.info("Reduced splits number for batchID={}, table={} from {} to {}", batchID, table.name(), numOfSplitsConf, numOfSplits);
-            }
-            splits = IntStream
-                    .range(0, numOfSplits)
-                    .mapToObj(i -> new VastInputPartition(tablePath, i, batchID, numOfSplits))
-                    .toArray(VastInputPartition[]::new);
+        LOG.info("planInputPartitions() initializing for batchID={}, table={}, predicates={}", batchID, table.name(), predicates);
+        final IntSupplier numOfSplitsConfSupplier = vastConfig::getNumOfSplits;
+        final LongSupplier rowPerSplitSupplier = vastConfig::getQueryDataRowsPerSplit;
+        final LongSupplier advisoryPartitionSizeSupplier = vastConfig::getAdvisoryPartitionSize;
+        final Optional<Statistics> statistics = SparkVastStatisticsManager.getInstance().getTableStatistics(table);
+        final double factor = statistics
+                .filter(_stats -> vastConfig.getAdaptivePartitioning())
+                .map(stats -> estimateSelectivity(predicates, sparkCatalystStatsToTableStatistics(stats)))
+                .orElse(1.0);
+        final Supplier<Optional<Double>> rowsEstimateSupplier = () -> statistics
+                        .map(s -> s.rowCount().map(rowCount -> (rowCount.toLong() * factor)))
+                        .flatMap(option -> Optional.ofNullable(option.getOrElse(() -> null)));
+        final long rowSize = statistics
+                .filter(_stats -> vastConfig.getAdvisoryPartitionSize() > 0)
+                .map(stats -> getSizePerRow(schema, sparkCatalystStatsToTableStatistics(stats)))
+                .orElse(0L);
+        final int numOfSplits =
+            estimateNumberOfSplits(numOfSplitsConfSupplier, rowPerSplitSupplier, advisoryPartitionSizeSupplier, rowsEstimateSupplier, rowSize);
+        final int numOfSplitsConf = numOfSplitsConfSupplier.getAsInt();
+        if (numOfSplits < numOfSplitsConf) {
+            LOG.info("Reduced splits number for batchID={}, table={} from {} to {}", batchID, table.name(), numOfSplitsConf, numOfSplits);
         }
-        else {
-            LOG.info("planInputPartitions() returning ready splits for batchID={}, table={}, predicates={}", batchID, table.name(), predicates);
-        }
-        return splits;
+        return IntStream
+               .range(0, numOfSplits)
+               .mapToObj(i -> new VastInputPartition(tablePath, i, batchID, numOfSplits))
+               .toArray(VastInputPartition[]::new);
     }
 
     @Override
@@ -139,15 +134,6 @@ public class VastBatch
         }
     }
 
-    public void updateProjections(StructType schema)
-    {
-        LOG.info("updateProjections VastBatch: batchID={}, table={}, projections={}", batchID, table.name(), schema);
-        this.schema = schema;
-        if (vastPartitionReaderFactory != null) {
-            vastPartitionReaderFactory.updateProjections(schema);
-        }
-    }
-
     void updatePushdownPredicates(List<List<VastPredicate>> pushDownPredicates)
     {
         LOG.info("updatePushdownPredicates VastBatch: batchID={}, table={}, predicates={}", batchID, table.name(), pushDownPredicates);
@@ -155,7 +141,6 @@ public class VastBatch
         if (vastPartitionReaderFactory != null) {
             vastPartitionReaderFactory.updatePushdownPredicates(this.predicates);
         }
-        splits = null;
     }
 
     public VastTable getTable()
@@ -163,34 +148,10 @@ public class VastBatch
         return table;
     }
 
-    private List<List<String>> formatPredicates()
-    {
-        return this.predicates
-                .stream()
-                .map(vpList ->
-                        vpList
-                                .stream()
-                                .map(VastPredicate::toString)
-                                .collect(Collectors.toList())
-                )
-                .collect(Collectors.toList());
-    }
-
-    private String description() {
-        return toStringHelper(this)
-                .add("table_name", this.table.name())
-                .add("schema", this.schema.toString())
-                .add("pushed_down_limit", this.limit)
-                .add("pushed_down_predicates", this.formatPredicates())
-                .toString();
-    }
-
-
     @Override
     public int hashCode()
     {
-        int hc = hash(table.name(), schema, predicates, limit);
-        return hc;
+        return hash(table.name(), schema, predicates, limit);
     }
 
     @Override
@@ -200,8 +161,7 @@ public class VastBatch
             return false;
         }
         VastBatch other = (VastBatch)o;
-        boolean rv = table.name().equals(other.table.name()) && schema.equals(other.schema) && predicates.equals(other.predicates) &&
+        return table.name().equals(other.table.name()) && schema.equals(other.schema) && predicates.equals(other.predicates) &&
             ((limit == null && other.limit == null) || (limit != null && other.limit != null && limit.equals(other.limit)));
-        return rv;
     }
 }

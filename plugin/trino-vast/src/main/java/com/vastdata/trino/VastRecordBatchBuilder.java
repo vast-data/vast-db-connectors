@@ -8,6 +8,13 @@ import com.google.common.base.CharMatcher;
 import com.vastdata.ValueEntryFunctionFactory;
 import com.vastdata.ValueEntryGetter;
 import com.vastdata.ValueEntrySetter;
+import com.vastdata.trino.block.BlockApiFactory;
+import com.vastdata.trino.block.ByteBlockApi;
+import com.vastdata.trino.block.Fixed12BlockApi;
+import com.vastdata.trino.block.IntBlockApi;
+import com.vastdata.trino.block.LongBlockApi;
+import com.vastdata.trino.block.ShortBlockApi;
+import com.vastdata.trino.block.SliceBlock;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
 import io.trino.spi.Page;
@@ -15,17 +22,23 @@ import io.trino.spi.block.Block;
 import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.block.ColumnarArray;
 import io.trino.spi.block.ColumnarMap;
-import io.trino.spi.block.ColumnarRow;
 import io.trino.spi.block.DictionaryBlock;
 import io.trino.spi.block.MapBlock;
+import io.trino.spi.block.RowBlock;
 import io.trino.spi.block.RunLengthEncodedBlock;
+import io.trino.spi.block.SqlMap;
+import io.trino.spi.block.ValueBlock;
+import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.CharType;
 import io.trino.spi.type.DecimalType;
 import io.trino.spi.type.Decimals;
+import io.trino.spi.type.MapType;
 import io.trino.spi.type.Type;
 import org.apache.arrow.memory.ArrowBuf;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
+import org.apache.arrow.vector.BaseFixedWidthVector;
+import org.apache.arrow.vector.BaseVariableWidthVector;
 import org.apache.arrow.vector.BigIntVector;
 import org.apache.arrow.vector.BitVector;
 import org.apache.arrow.vector.BitVectorHelper;
@@ -44,8 +57,6 @@ import org.apache.arrow.vector.TimeSecVector;
 import org.apache.arrow.vector.TimeStampVector;
 import org.apache.arrow.vector.TinyIntVector;
 import org.apache.arrow.vector.UInt8Vector;
-import org.apache.arrow.vector.VarBinaryVector;
-import org.apache.arrow.vector.VarCharVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.complex.ListVector;
 import org.apache.arrow.vector.complex.MapVector;
@@ -56,10 +67,11 @@ import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 
-import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BiConsumer;
+import java.util.function.IntFunction;
 import java.util.stream.IntStream;
 
 import static com.google.common.base.Verify.verify;
@@ -72,7 +84,6 @@ import static org.apache.arrow.vector.complex.BaseRepeatedValueVector.OFFSET_WID
 public class VastRecordBatchBuilder
 {
     private static final Logger LOG = Logger.get(VastRecordBatchBuilder.class);
-    private static final Optional<String> PRINTING_RECEIVED_BLOCK_PREFIX = Optional.of("Printing received");
 
     private final BufferAllocator allocator = new RootAllocator();
     private final Schema schema;
@@ -87,11 +98,6 @@ public class VastRecordBatchBuilder
         verify(allocator.getAllocatedMemory() == 0, "%s leaked", allocator);
     }
 
-    private void printBlock(Block block)
-    {
-        TypeUtils.printBlock(block, PRINTING_RECEIVED_BLOCK_PREFIX);
-    }
-
     public VectorSchemaRoot build(Page page)
     {
         int rows = page.getPositionCount();
@@ -103,7 +109,7 @@ public class VastRecordBatchBuilder
             Block block = page.getBlock(c);
             FieldVector vector = root.getVector(c);
             if (LOG.isDebugEnabled()) {
-                LOG.debug("copying %s (%d positions, %d bytes) into %s", block, block.getPositionCount(), block.getSizeInBytes(), vector);
+                LOG.debug("copying %s (%d positions, %d bytes) into %s", block, block.getPositionCount(), block.getSizeInBytes(), vector.getClass());
             }
             copyData(Optional.empty(), block, vector);
         });
@@ -113,11 +119,14 @@ public class VastRecordBatchBuilder
 
     private void copyData(Optional<Block> optionalParent, Block block, FieldVector vector)
     {
+        if (block instanceof DictionaryBlock dictionaryBlock) {
+            LOG.info("copyData Got DictionaryBlock, child block: %s", dictionaryBlock.getDictionary());
+        }
         Field field = vector.getField();
         ArrowType arrowType = field.getType();
         Type trinoType = TypeUtils.convertArrowFieldToTrinoType(field);
         Block parentBlock = optionalParent.orElse(block);
-        boolean nestedIsParent = parentBlock.equals(block);
+        boolean nestedIsParent = true;
         int positionCount = parentBlock.getPositionCount();
         switch (arrowType.getTypeID()) {
             case Int: {
@@ -129,38 +138,40 @@ public class VastRecordBatchBuilder
                     case 8:
                         TinyIntVector tinyIntVector = (TinyIntVector) vector;
                         tinyIntVector.allocateNew(parentBlock.getPositionCount());
-                        ValueEntryGetter<Byte> byteGetter = ValueEntryFunctionFactory.newGetter(x -> block.getByte(x, 0), block::isNull, parentBlock::isNull);
+                        ByteBlockApi byteApi = BlockApiFactory.getByteApiInstance(block);
+                        ValueEntryGetter<Byte> byteGetter = ValueEntryFunctionFactory.newGetter(byteApi::getByte, block::isNull, parentBlock::isNull);
                         copyTypeValues(ValueEntryFunctionFactory.newSetter(tinyIntVector::set, tinyIntVector::setNull), nestedIsParent, positionCount, byteGetter);
                         vector.setValueCount(positionCount);
                         return;
                     case 16:
                         SmallIntVector smallIntVector = (SmallIntVector) vector;
                         smallIntVector.allocateNew(parentBlock.getPositionCount());
-                        ValueEntryGetter<Short> shortGetter = ValueEntryFunctionFactory.newGetter(x -> block.getShort(x, 0), block::isNull, parentBlock::isNull);
+                        ShortBlockApi shortApi = BlockApiFactory.getShortApiInstance(block);
+                        ValueEntryGetter<Short> shortGetter = ValueEntryFunctionFactory.newGetter(shortApi::getShort, block::isNull, parentBlock::isNull);
                         copyTypeValues(ValueEntryFunctionFactory.newSetter(smallIntVector::set, smallIntVector::setNull), nestedIsParent, positionCount, shortGetter);
                         vector.setValueCount(positionCount);
                         return;
                     case 32:
-                        IntVector intVector = (IntVector) vector;
-                        intVector.allocateNew(parentBlock.getPositionCount());
-                        ValueEntryGetter<Integer> intGetter = ValueEntryFunctionFactory.newGetter(x -> block.getInt(x, 0), block::isNull, parentBlock::isNull);
-                        copyTypeValues(ValueEntryFunctionFactory.newSetter(intVector::set, intVector::setNull), nestedIsParent, positionCount, intGetter);
-                        vector.setValueCount(positionCount);
+                        IntVector baseIntVector = (IntVector) vector;
+                        IntBlockApi intApi = BlockApiFactory.getIntApiInstance(block);
+                        copyFixedWidthVector(block, baseIntVector, parentBlock, nestedIsParent, positionCount, baseIntVector::set, intApi::getInt);
                         return;
                     case 64:
-                        ValueEntryGetter<Long> longGetter = ValueEntryFunctionFactory.newGetter(x -> block.getLong(x, 0), block::isNull, parentBlock::isNull);
+                        LongBlockApi longApi = BlockApiFactory.getLongApiInstance(block);
+                        BaseFixedWidthVector baseFixedWidthVector;
+                        BiConsumer<Integer, Long> indexedSetter;
                         if (type.getIsSigned()) {
                             BigIntVector bigIntVector = (BigIntVector) vector;
-                            bigIntVector.allocateNew(parentBlock.getPositionCount());
-                            copyTypeValues(ValueEntryFunctionFactory.newSetter(bigIntVector::set, bigIntVector::setNull), nestedIsParent, positionCount, longGetter);
-                            vector.setValueCount(positionCount);
+                            indexedSetter = bigIntVector::set;
+                            baseFixedWidthVector = bigIntVector;
                         }
                         else {
                             UInt8Vector uInt8Vector = (UInt8Vector) vector;
-                            uInt8Vector.allocateNew(parentBlock.getPositionCount());
-                            copyTypeValues(ValueEntryFunctionFactory.newSetter(uInt8Vector::set, uInt8Vector::setNull), nestedIsParent, positionCount, longGetter);
-                            vector.setValueCount(positionCount);
+                            indexedSetter = uInt8Vector::set;
+                            baseFixedWidthVector = uInt8Vector;
                         }
+                        copyFixedWidthVector(block, baseFixedWidthVector, parentBlock, nestedIsParent, positionCount,
+                                indexedSetter, longApi::getLong);
                         return;
                     default:
                         throw new UnsupportedOperationException("Unsupported integer size: " + type);
@@ -171,66 +182,39 @@ public class VastRecordBatchBuilder
                 switch (type.getPrecision()) {
                     case SINGLE:
                         Float4Vector float4Vector = (Float4Vector) vector;
-                        float4Vector.allocateNew(parentBlock.getPositionCount());
-                        ValueEntryGetter<Float> floatGetter = ValueEntryFunctionFactory.newGetter(x -> intBitsToFloat(block.getInt(x, 0)), block::isNull, parentBlock::isNull);
-                        copyTypeValues(ValueEntryFunctionFactory.newSetter(float4Vector::set, float4Vector::setNull), nestedIsParent, positionCount, floatGetter);
-                        vector.setValueCount(positionCount);
+                        IntBlockApi intApi = BlockApiFactory.getIntApiInstance(block);
+                        copyFixedWidthVector(block, float4Vector, parentBlock, nestedIsParent, positionCount,
+                                float4Vector::set, x1 -> intBitsToFloat(intApi.getInt(x1)));
                         return;
                     case DOUBLE:
                         Float8Vector float8Vector = (Float8Vector) vector;
-                        float8Vector.allocateNew(parentBlock.getPositionCount());
-                        ValueEntryGetter<Double> doubleGetter = ValueEntryFunctionFactory.newGetter(x -> longBitsToDouble(block.getLong(x, 0)), block::isNull, parentBlock::isNull);
-                        copyTypeValues(ValueEntryFunctionFactory.newSetter(float8Vector::set, float8Vector::setNull), nestedIsParent, positionCount, doubleGetter);
-                        vector.setValueCount(positionCount);
+                        LongBlockApi longApi = BlockApiFactory.getLongApiInstance(block);
+                        copyFixedWidthVector(block, float8Vector, parentBlock, nestedIsParent, positionCount, float8Vector::set, x -> longBitsToDouble(longApi.getLong(x)));
                         return;
                     default:
                         throw new UnsupportedOperationException("Unsupported floating-point precision: " + type);
                 }
             }
-            case Utf8: {
-                VarCharVector varCharVector = (VarCharVector) vector;
-                int totalBytes = IntStream.range(0, block.getPositionCount()).map(block::getSliceLength).sum();
-                varCharVector.allocateNew(totalBytes, parentBlock.getPositionCount());
-                ValueEntrySetter<byte[]> byteArraySetter = ValueEntryFunctionFactory.newSetter(varCharVector::set, varCharVector::setNull);
-                ValueEntryGetter<byte[]> byteArrayGetter = ValueEntryFunctionFactory.newGetter(x -> {
-                    int length = block.getSliceLength(x);
-                    return block.getSlice(x, 0, length).getBytes();
-                }, block::isNull, parentBlock::isNull);
-                copyTypeValues(byteArraySetter, nestedIsParent, positionCount, byteArrayGetter);
-                vector.setValueCount(positionCount);
+            case Utf8:
+            case Binary: {
+                SliceBlock sliceApi = BlockApiFactory.getSliceApiInstance(block);
+                BaseVariableWidthVector varWidthVector = (BaseVariableWidthVector) vector;
+                int totalBytes = IntStream.range(0, block.getPositionCount()).map(sliceApi::getSliceLength).sum();
+                copyVarWidthVector(block, varWidthVector, totalBytes, parentBlock, nestedIsParent, positionCount, varWidthVector::set, x -> sliceApi.getSlice(x).getBytes());
                 return;
             }
-            case FixedSizeBinary:
+            case FixedSizeBinary: {
+                SliceBlock sliceApi = BlockApiFactory.getSliceApiInstance(block);
                 FixedSizeBinaryVector charVector = (FixedSizeBinaryVector) vector;
-                charVector.allocateNew(parentBlock.getPositionCount());
-                CharType charType = (CharType) trinoType;
-                int typeLength = charType.getLength();
-                ValueEntrySetter<byte[]> byteArraySetter = ValueEntryFunctionFactory.newSetter(charVector::set, charVector::setNull);
-                ValueEntryGetter<byte[]> rightPaddedSliceByteArrayGetter = ValueEntryFunctionFactory.newGetter(x -> {
-                    Slice slice = block.getSlice(x, 0, block.getSliceLength(x));
-                    String charsAsPaddedString = TypeUtils.rightPadSpaces(slice.toStringUtf8(), typeLength);
-                    verify(CharMatcher.ascii().matchesAllOf(charsAsPaddedString), "CHAR type supports only ASCII charset");
-                    return charsAsPaddedString.getBytes(StandardCharsets.UTF_8);
-                }, block::isNull, parentBlock::isNull);
-                copyTypeValues(byteArraySetter, nestedIsParent, positionCount, rightPaddedSliceByteArrayGetter);
-                vector.setValueCount(positionCount);
-                return;
-            case Binary: {
-                VarBinaryVector varBinaryVector = (VarBinaryVector) vector;
-                int totalBytes = IntStream.range(0, block.getPositionCount()).map(block::getSliceLength).sum();
-                varBinaryVector.allocateNew(totalBytes, parentBlock.getPositionCount());
-                ValueEntryGetter<byte[]> byteArrayGetter = ValueEntryFunctionFactory.newGetter(x -> {
-                    int length = block.getSliceLength(x);
-                    return block.getSlice(x, 0, length).getBytes();
-                }, block::isNull, parentBlock::isNull);
-                copyTypeValues(ValueEntryFunctionFactory.newSetter(varBinaryVector::set, varBinaryVector::setNull), nestedIsParent, positionCount, byteArrayGetter);
-                vector.setValueCount(positionCount);
+                IntFunction<byte[]> indexedGetter = getIndexFixedSizeByteArrayGetter((CharType) trinoType, sliceApi);
+                copyFixedWidthVector(block, charVector, parentBlock, nestedIsParent, positionCount, charVector::set, indexedGetter);
                 return;
             }
             case Bool: {
+                ByteBlockApi byteApi = BlockApiFactory.getByteApiInstance(block);
                 BitVector bitVector = (BitVector) vector;
                 bitVector.allocateNew(parentBlock.getPositionCount());
-                ValueEntryGetter<Byte> byteGetter = ValueEntryFunctionFactory.newGetter(x -> block.getByte(x, 0), block::isNull, parentBlock::isNull);
+                ValueEntryGetter<Byte> byteGetter = ValueEntryFunctionFactory.newGetter(byteApi::getByte, block::isNull, parentBlock::isNull);
                 copyTypeValues(ValueEntryFunctionFactory.newSetter(bitVector::set, bitVector::setNull), nestedIsParent, positionCount, byteGetter);
                 vector.setValueCount(positionCount);
                 return;
@@ -238,20 +222,15 @@ public class VastRecordBatchBuilder
             case Decimal: {
                 DecimalType decimalType = (DecimalType) trinoType;
                 DecimalVector decimalVector = (DecimalVector) vector;
-                decimalVector.allocateNew(parentBlock.getPositionCount());
-                ValueEntrySetter<BigDecimal> bigDecimalSetter = ValueEntryFunctionFactory.newSetter(decimalVector::set, decimalVector::setNull);
-                ValueEntryGetter<BigDecimal> bigDecimalGetter = ValueEntryFunctionFactory.newGetter(x -> Decimals.readBigDecimal(decimalType, block, x), block::isNull, parentBlock::isNull);
-                copyTypeValues(bigDecimalSetter, nestedIsParent, positionCount, bigDecimalGetter);
-                vector.setValueCount(positionCount);
+                copyFixedWidthVector(block, decimalVector, parentBlock, nestedIsParent, positionCount,
+                        decimalVector::set, x -> Decimals.readBigDecimal(decimalType, block, x));
                 return;
             }
             case Date: {
-                DateDayVector dateDayVector = (DateDayVector) vector;
-                dateDayVector.allocateNew(parentBlock.getPositionCount());
-                ValueEntrySetter<Integer> intSetter = ValueEntryFunctionFactory.newSetter(dateDayVector::set, dateDayVector::setNull);
-                ValueEntryGetter<Integer> intGetter = ValueEntryFunctionFactory.newGetter(x -> block.getInt(x, 0), block::isNull, parentBlock::isNull);
-                copyTypeValues(intSetter, nestedIsParent, positionCount, intGetter);
-                vector.setValueCount(positionCount);
+                DateDayVector baseIntVector = (DateDayVector) vector;
+                IntBlockApi intApi = BlockApiFactory.getIntApiInstance(block);
+                copyFixedWidthVector(block, baseIntVector, parentBlock, nestedIsParent, positionCount,
+                        baseIntVector::set, intApi::getInt);
                 return;
             }
             case Timestamp: {
@@ -259,69 +238,73 @@ public class VastRecordBatchBuilder
                 TimeUnit unit = timestampType.getUnit();
                 long microsInUnit = TypeUtils.timeUnitToPicos(unit) / 1_000_000L;
                 TimeStampVector timeStampVector = (TimeStampVector) vector;
-                timeStampVector.allocateNew(parentBlock.getPositionCount());
-                ValueEntrySetter<Long> longSetter = ValueEntryFunctionFactory.newSetter(timeStampVector::set, timeStampVector::setNull);
-                ValueEntryGetter<Long> timestampAsLongGetter = ValueEntryFunctionFactory.newGetter(x -> {
-                    if (unit == TimeUnit.NANOSECOND) {
+                IntFunction<Long> longSupplier;
+                if (unit == TimeUnit.NANOSECOND) {
+                    Fixed12BlockApi fixed12Api = BlockApiFactory.getFixed12ApiInstance(block);
+                    longSupplier = x -> {
                         // See LongTimestampType docs
-                        long micros = block.getLong(x, 0);
-                        int picos = block.getInt(x, 8);
-                        return TypeUtils.convertTwoValuesNanoToLong(micros, picos); // as nanoseconds
-                    }
-                    else {
-                        long valueMicros = block.getLong(x, 0); // as microseconds
+                        long micros = fixed12Api.getFixed12First(x);
+                        int picos = fixed12Api.getFixed12Second(x);
+                        return TypeUtils.convertTwoValuesNanoToLong(micros, picos);
+                    };
+                }
+                else {
+                    LongBlockApi longApi = BlockApiFactory.getLongApiInstance(block);
+                    longSupplier = x -> {
+                        long valueMicros = longApi.getLong(x); // as microseconds
                         if (valueMicros % microsInUnit != 0) {
                             throw new IllegalArgumentException(format("%s value %d be a multiple of %d", unit, valueMicros, microsInUnit));
                         }
                         return valueMicros / microsInUnit; // rescale to use the correct time unit (for Arrow)
-                    }
-                }, block::isNull, parentBlock::isNull);
-                copyTypeValues(longSetter, nestedIsParent, positionCount, timestampAsLongGetter);
+                    };
+                }
+                copyFixedWidthVector(block, timeStampVector, parentBlock, nestedIsParent, positionCount,
+                        timeStampVector::set, longSupplier);
                 return;
             }
             case Time: {
                 TimeUnit unit = ((ArrowType.Time) arrowType).getUnit();
+                LongBlockApi longApi = BlockApiFactory.getLongApiInstance(block);
+                BaseFixedWidthVector baseFixedWidthVector = (BaseFixedWidthVector) vector;
                 switch (unit) {
                     case SECOND: {
                         TimeSecVector v = (TimeSecVector) vector;
-                        v.allocateNew(parentBlock.getPositionCount());
-                        ValueEntryGetter<Integer> secondsIntGetter = ValueEntryFunctionFactory.newGetter(x -> {
-                            long picos = block.getLong(x, 0);
+                        IntFunction<Integer> indexedGetter = x -> {
+                            long picos = longApi.getLong(x);
                             long seconds = picos / 1_000_000_000_000L;
                             return toIntExact(seconds);
-                        }, block::isNull, parentBlock::isNull);
-                        copyTypeValues(ValueEntryFunctionFactory.newSetter(v::set, v::setNull), nestedIsParent, positionCount, secondsIntGetter);
+                        };
+                        copyFixedWidthVector(block, baseFixedWidthVector, parentBlock, nestedIsParent, positionCount, v::set, indexedGetter);
                         return;
                     }
                     case MILLISECOND: {
                         TimeMilliVector v = (TimeMilliVector) vector;
-                        v.allocateNew(parentBlock.getPositionCount());
-                        ValueEntryGetter<Integer> msIntGetter = ValueEntryFunctionFactory.newGetter(x -> {
-                            long picos = block.getLong(x, 0);
+                        IntFunction<Integer> indexedGetter = x -> {
+                            long picos = longApi.getLong(x);
                             long seconds = picos / 1_000_000_000L;
                             return toIntExact(seconds);
-                        }, block::isNull, parentBlock::isNull);
-                        copyTypeValues(ValueEntryFunctionFactory.newSetter(v::set, v::setNull), nestedIsParent, positionCount, msIntGetter);
+                        };
+                        copyFixedWidthVector(block, baseFixedWidthVector, parentBlock, nestedIsParent, positionCount, v::set, indexedGetter);
+
                         return;
                     }
                     case MICROSECOND: {
                         TimeMicroVector v = (TimeMicroVector) vector;
-                        v.allocateNew(parentBlock.getPositionCount());
-                        ValueEntryGetter<Long> microsecondLongGetter = ValueEntryFunctionFactory.newGetter(x -> {
-                            long picos = block.getLong(x, 0);
+                        IntFunction<Long> longIntFunction = x -> {
+                            long picos = longApi.getLong(x);
                             return picos / 1_000_000L;
-                        }, block::isNull, parentBlock::isNull);
-                        copyTypeValues(ValueEntryFunctionFactory.newSetter(v::set, v::setNull), nestedIsParent, positionCount, microsecondLongGetter);
+                        };
+                        copyFixedWidthVector(block, baseFixedWidthVector, parentBlock, nestedIsParent, positionCount, v::set, longIntFunction);
                         return;
                     }
                     case NANOSECOND: {
                         TimeNanoVector v = (TimeNanoVector) vector;
-                        v.allocateNew(parentBlock.getPositionCount());
-                        ValueEntryGetter<Long> microsecondLongGetter = ValueEntryFunctionFactory.newGetter(x -> {
-                            long picos = block.getLong(x, 0);
+                        IntFunction<Long> longIntFunction = x -> {
+                            long picos = longApi.getLong(x);
                             return picos / 1_000L;
-                        }, block::isNull, parentBlock::isNull);
-                        copyTypeValues(ValueEntryFunctionFactory.newSetter(v::set, v::setNull), nestedIsParent, positionCount, microsecondLongGetter);
+                        };
+                        copyFixedWidthVector(block, baseFixedWidthVector, parentBlock, nestedIsParent, positionCount, v::set, longIntFunction);
+
                         return;
                     }
                     default:
@@ -338,7 +321,7 @@ public class VastRecordBatchBuilder
                 return;
             }
             case List: {
-                copyList(block, (ListVector) vector);
+                copyList(trinoType, block, (ListVector) vector);
                 return;
             }
             default:
@@ -346,122 +329,167 @@ public class VastRecordBatchBuilder
         }
     }
 
+    private static IntFunction<byte[]> getIndexFixedSizeByteArrayGetter(CharType trinoType, SliceBlock sliceApi)
+    {
+        int typeLength = trinoType.getLength();
+        return x -> {
+            Slice slice = sliceApi.getSlice(x);
+            String charsAsPaddedString = TypeUtils.rightPadSpaces(slice.toStringUtf8(), typeLength);
+            verify(CharMatcher.ascii().matchesAllOf(charsAsPaddedString), "CHAR type supports only ASCII charset");
+            return charsAsPaddedString.getBytes(StandardCharsets.UTF_8);
+        };
+    }
+
     private void copyMap(Type trinoType, Block parentBlock, Block nestedBlock, MapVector vector)
     {
-        if (nestedBlock instanceof MapBlock) {
-            MapBlock mapBlock = (MapBlock) nestedBlock;
-            // based on the arrow map vector structure: map(struct(key, value)))
-            List<Block> children = mapBlock.getChildren();
-            Block keyBlock = children.get(0);
-            Block valueBlock = children.get(1);
+        LOG.debug("copyMap trinoType=%s, parentBlock=%s, nestedBlock=%s", trinoType, parentBlock.getClass(), nestedBlock.getClass());
 
-            StructVector structChildVector = (StructVector) vector.getChildrenFromFields().get(0);
-            copyData(Optional.of(keyBlock), keyBlock, structChildVector.getChildrenFromFields().get(0));
-            copyData(Optional.of(valueBlock), valueBlock, structChildVector.getChildrenFromFields().get(1));
+        switch (nestedBlock) {
+            case Block b when (b instanceof MapBlock || b instanceof RunLengthEncodedBlock) -> {
+                int parentPositionCount = parentBlock.getPositionCount();
+                // based on the arrow map vector structure: map(struct(key, value)))
+                StructVector structChildVector = (StructVector) vector.getChildrenFromFields().getFirst();
+                int structPositionCount;
+                if (b.getPositionCount() > 0) {
+                    switch (b) {
+                        case MapBlock mapBlock -> {
+                            SqlMap sqlMap = mapBlock.getMap(0);
+                            Block keyBlock = sqlMap.getRawKeyBlock();
+                            Block valueBlock = sqlMap.getRawValueBlock();
 
-            int structPositionCount = keyBlock.getPositionCount();
-            structChildVector.setValueCount(structPositionCount);
-            int validityBufferSize = BitVectorHelper.getValidityBufferSize(structPositionCount);
-            try (ArrowBuf validityBuffer = allocator.buffer(validityBufferSize)) {
-                validityBuffer.setOne(0, validityBufferSize);
-                ArrowFieldNode node = new ArrowFieldNode(structPositionCount, 0);
-                structChildVector.loadFieldBuffers(node, List.of(validityBuffer));
-            }
+                            copyData(Optional.of(keyBlock), keyBlock, structChildVector.getChildrenFromFields().get(0));
+                            copyData(Optional.of(valueBlock), valueBlock, structChildVector.getChildrenFromFields().get(1));
 
-            ColumnarMap columnarMap = ColumnarMap.toColumnarMap(nestedBlock);
-            int nestedPosition = 0;
-            boolean nestedIsParent = parentBlock.equals(nestedBlock);
-            int parentPositionCount = parentBlock.getPositionCount();
-            try (
-                    ArrowBuf validity = allocator.buffer(BitVectorHelper.getValidityBufferSize(parentPositionCount));
-                    ArrowBuf offsets = allocator.buffer((long) (parentPositionCount + 1) * OFFSET_WIDTH)) {
-                int nullCount = 0;
-                int offset = 0;
-                offsets.setInt(0, offset);
-                for (int i = 0; i < parentPositionCount; ++i) {
-                    int offsetIndex = (i + 1) * OFFSET_WIDTH;
-                    if (parentBlock.isNull(i)) {
-                        BitVectorHelper.unsetBit(validity, i);
-                        offsets.setInt(offsetIndex, offset);
-                        if (nestedIsParent) {
+                            structPositionCount = keyBlock.getPositionCount();
+                        }
+                        case RunLengthEncodedBlock rle -> {
+                            MapBlock mapBlock = (MapBlock) rle.getValue();
+                            if (!mapBlock.isNull(0)) {
+                                SqlMap sqlMap = mapBlock.getMap(0);
+                                Block keyBlock = sqlMap.getRawKeyBlock();
+                                Block valueBlock = sqlMap.getRawValueBlock();
+                                Block keyRLE = RunLengthEncodedBlock.create(keyBlock, parentPositionCount);
+                                Block valRLE = RunLengthEncodedBlock.create(valueBlock, parentPositionCount);
+                                copyData(Optional.of(keyRLE), keyRLE, structChildVector.getChildrenFromFields().get(0));
+                                copyData(Optional.of(valRLE), valRLE, structChildVector.getChildrenFromFields().get(1));
+                            }
+                            else {
+                                MapType mapType = (MapType) trinoType;
+                                Type keyType = mapType.getKeyType();
+                                Type valueType = mapType.getValueType();
+                                BlockBuilder keyBuilder = keyType.createBlockBuilder(null, parentBlock.getPositionCount());
+                                BlockBuilder valueBuilder = valueType.createBlockBuilder(null, parentBlock.getPositionCount());
+                                for (int i = 0; i < parentPositionCount; i++) {
+                                    keyBuilder.appendNull();
+                                    valueBuilder.appendNull();
+                                }
+                                Block newKeyBlock = keyBuilder.build();
+                                Block newValBlock = valueBuilder.build();
+                                copyData(Optional.of(newKeyBlock), newKeyBlock, structChildVector.getChildrenFromFields().get(0));
+                                copyData(Optional.of(newValBlock), newValBlock, structChildVector.getChildrenFromFields().get(1));
+                            }
+                            structPositionCount = parentPositionCount;
+                        }
+                        case null, default -> throw new IllegalStateException(format("Unexpected nested block for map type: %s", nestedBlock));
+                    }
+                }
+                else {
+                    structChildVector.getChildrenFromFields().get(0).setValueCount(0);
+                    structChildVector.getChildrenFromFields().get(1).setValueCount(0);
+                    structPositionCount = 0;
+                }
+                structChildVector.setValueCount(structPositionCount);
+                int validityBufferSize = BitVectorHelper.getValidityBufferSize(structPositionCount);
+                try (ArrowBuf validityBuffer = allocator.buffer(validityBufferSize)) {
+                    validityBuffer.setOne(0L, validityBufferSize);
+                    ArrowFieldNode node = new ArrowFieldNode(structPositionCount, 0);
+                    structChildVector.loadFieldBuffers(node, List.of(validityBuffer));
+                }
+
+                ColumnarMap columnarMap = ColumnarMap.toColumnarMap(nestedBlock);
+                int nestedPosition = 0;
+                boolean nestedIsParent = parentBlock.equals(nestedBlock);
+                try (
+                        ArrowBuf validity = allocator.buffer(BitVectorHelper.getValidityBufferSize(parentPositionCount));
+                        ArrowBuf offsets = allocator.buffer((long) (parentPositionCount + 1) * OFFSET_WIDTH)) {
+                    int nullCount = 0;
+                    int offset = 0;
+                    offsets.setInt(0, offset);
+                    for (int i = 0; i < parentPositionCount; ++i) {
+                        int offsetIndex = (i + 1) * OFFSET_WIDTH;
+                        if (parentBlock.isNull(i)) {
+                            BitVectorHelper.unsetBit(validity, i);
+                            offsets.setInt(offsetIndex, offset);
+                            if (nestedIsParent) {
+                                nestedPosition++;
+                            }
+                        }
+                        else {
+                            if (columnarMap.isNull(nestedPosition)) {
+                                nullCount += 1;
+                                BitVectorHelper.unsetBit(validity, i);
+                            }
+                            else {
+                                BitVectorHelper.setBit(validity, i);
+                                offset = columnarMap.getOffset(nestedPosition + 1);
+                            }
+                            offsets.setInt(offsetIndex, offset);
                             nestedPosition++;
                         }
                     }
-                    else {
-                        if (columnarMap.isNull(nestedPosition)) {
-                            nullCount += 1;
-                            BitVectorHelper.unsetBit(validity, i);
-                        }
-                        else {
-                            BitVectorHelper.setBit(validity, i);
-                            offset = columnarMap.getOffset(nestedPosition + 1);
-                        }
-                        offsets.setInt(offsetIndex, offset);
-                        nestedPosition++;
-                    }
+                    ArrowFieldNode node = new ArrowFieldNode(parentPositionCount, nullCount);
+                    vector.loadFieldBuffers(node, List.of(validity, offsets));
+                    vector.setValueCount(parentPositionCount);
                 }
-                ArrowFieldNode node = new ArrowFieldNode(parentPositionCount, nullCount);
-                vector.loadFieldBuffers(node, List.of(validity, offsets));
-                vector.setValueCount(parentPositionCount);
             }
-        }
-        else if (nestedBlock instanceof RunLengthEncodedBlock) {
-            BlockBuilder blockBuilder = trinoType.createBlockBuilder(null, parentBlock.getPositionCount());
-            MapBlock mapValueBlock = (MapBlock) ((RunLengthEncodedBlock) nestedBlock).getValue();
-            for (int i = 0; i < parentBlock.getPositionCount(); i++) {
-                trinoType.appendTo(mapValueBlock, 0, blockBuilder);
+            case DictionaryBlock dictionaryBlock -> {
+                BlockBuilder blockBuilder = trinoType.createBlockBuilder(null, parentBlock.getPositionCount());
+                MapBlock mapValueBlock = (MapBlock) dictionaryBlock.getDictionary();
+                for (int i = 0; i < dictionaryBlock.getPositionCount(); i++) {
+                    int position = dictionaryBlock.getId(i);
+                    trinoType.appendTo(mapValueBlock, position, blockBuilder);
+                }
+                copyMap(trinoType, parentBlock, blockBuilder.build(), vector);
             }
-            copyMap(trinoType, parentBlock, blockBuilder.build(), vector);
-        }
-        else if (nestedBlock instanceof DictionaryBlock) {
-            BlockBuilder blockBuilder = trinoType.createBlockBuilder(null, parentBlock.getPositionCount());
-            DictionaryBlock dictionaryBlock = (DictionaryBlock) nestedBlock;
-            MapBlock mapValueBlock = (MapBlock) dictionaryBlock.getDictionary();
-            for (int i = 0; i < dictionaryBlock.getPositionCount(); i++) {
-                int position = dictionaryBlock.getId(i);
-                trinoType.appendTo(mapValueBlock, position, blockBuilder);
-            }
-            copyMap(trinoType, parentBlock, blockBuilder.build(), vector);
-        }
-        else {
-            throw new UnsupportedOperationException(format("Unexpected block for map type: %s", nestedBlock));
+            case null, default -> throw new UnsupportedOperationException(format("Unexpected block for map type: %s", nestedBlock));
         }
     }
 
     private void copyStruct(Block parentBlock, Block nestedBlock, StructVector sv)
     {
-        boolean nestedIsParent = parentBlock.equals(nestedBlock);
+        RowBlock nestedRowBlock;
+        IntFunction<Block> structFieldBlockFunction;
+        if (nestedBlock instanceof DictionaryBlock dict) {
+            LOG.debug("copyStruct got DictionaryBlock");
+            nestedRowBlock = (RowBlock) dict.getDictionary();
+            structFieldBlockFunction = i -> {
+                int[] rawIds = dict.getRawIds();
+                return nestedRowBlock.getFieldBlock(i).getPositions(rawIds, 0, dict.getPositionCount());
+            };
+        }
+        else {
+            nestedRowBlock = (RowBlock) nestedBlock;
+            structFieldBlockFunction = nestedRowBlock::getFieldBlock;
+        }
         List<FieldVector> subVectors = sv.getChildrenFromFields();
-        ColumnarRow columnarRow = ColumnarRow.toColumnarRow(nestedBlock);
-        int fieldCount = columnarRow.getFieldCount();
+        int fieldCount = nestedRowBlock.getFieldBlocks().size();
         int subVectorsSize = subVectors.size();
         verify(subVectorsSize == fieldCount, format("Nested types vectors count do not match: %s/%s", subVectorsSize, fieldCount));
         for (int i = 0; i < fieldCount; i++) {
             FieldVector subVector = subVectors.get(i);
-            Block rowField = columnarRow.getField(i);
+            Block rowField = structFieldBlockFunction.apply(i);
             copyData(Optional.of(parentBlock), rowField, subVector);
         }
         int positionCount = parentBlock.getPositionCount();
         try (ArrowBuf validityBuffer = allocator.buffer(BitVectorHelper.getValidityBufferSize(positionCount))) {
             int nulls = 0;
-            int nestedPosition = 0;
             for (int i = 0; i < positionCount; i++) {
-                if (parentBlock.isNull(i)) {
+                if (nestedBlock.isNull(i)) {
                     BitVectorHelper.unsetBit(validityBuffer, i);
                     nulls++;
-                    if (nestedIsParent) {
-                        nestedPosition++;
-                    }
                 }
                 else {
-                    if (nestedBlock.isNull(nestedPosition)) {
-                        BitVectorHelper.unsetBit(validityBuffer, i);
-                        nulls++;
-                    }
-                    else {
-                        BitVectorHelper.setBit(validityBuffer, i);
-                    }
-                    nestedPosition++;
+                    BitVectorHelper.setBit(validityBuffer, i);
                 }
             }
             ArrowFieldNode node = new ArrowFieldNode(positionCount, nulls);
@@ -470,11 +498,37 @@ public class VastRecordBatchBuilder
         }
     }
 
-    private void copyList(Block block, ListVector listVector)
+    private void copyList(Type trinoType, Block block, ListVector listVector)
     {
-        FieldVector childVector = listVector.getChildrenFromFields().get(0);
+        FieldVector childVector = listVector.getChildrenFromFields().getFirst();
         ColumnarArray columnarArray = ColumnarArray.toColumnarArray(block);
-        copyData(Optional.empty(), columnarArray.getElementsBlock(), childVector);
+        if (block instanceof RunLengthEncodedBlock rleBlock) {
+            int rleBlockPositionCount = rleBlock.getPositionCount();
+            if (rleBlockPositionCount > 0) {
+                boolean isNullValue = rleBlock.isNull(0);
+                if (!isNullValue) {
+                    ValueBlock value = rleBlock.getValue();
+                    ArrayType arrayType = (ArrayType) trinoType;
+                    BlockBuilder blockBuilder = arrayType.createBlockBuilder(null, rleBlockPositionCount);
+                    for (int i = 0; i < rleBlockPositionCount; i++) {
+                        arrayType.appendTo(value, 0, blockBuilder);
+                    }
+                    Block expandedArrayBlock = blockBuilder.build();
+                    LOG.info("Array block for type %s is RLE. Copying expanded data block: %s", trinoType, expandedArrayBlock);
+                    copyList(trinoType, expandedArrayBlock, listVector);
+                    return; // this is a copyData over an extended Array block. Array data has been copied, no need to proceed
+                }
+                else {
+                    LOG.info("Array block for type %s is RLE of null value", trinoType);
+                    for (int i = 0; i < rleBlockPositionCount; i++) {
+                        childVector.setNull(i);
+                    }
+                }
+            } // else means empty child vector. No data copy
+        }
+        else {
+            copyData(Optional.empty(), columnarArray.getElementsBlock(), childVector);
+        }
 
         int positionCount = columnarArray.getPositionCount();
         try (
@@ -500,7 +554,7 @@ public class VastRecordBatchBuilder
         }
     }
 
-    <T> void copyTypeValues(ValueEntrySetter<T> typeSetter, boolean nestedIsParent, int positionCount, ValueEntryGetter<T> typeGetter)
+    private <T> void copyTypeValues(ValueEntrySetter<T> typeSetter, boolean nestedIsParent, int positionCount, ValueEntryGetter<T> typeGetter)
     {
         int nestedPosition = 0;
         for (int i = 0; i < positionCount; ++i) {
@@ -520,5 +574,29 @@ public class VastRecordBatchBuilder
                 nestedPosition++;
             }
         }
+    }
+
+    private <T> void copyFixedWidthVector(Block block, BaseFixedWidthVector baseFixedWidthVector, Block parentBlock,
+            boolean nestedIsParent, int positionCount,
+            BiConsumer<Integer, T> indexValueSetter, IntFunction<T> indexValueGetter)
+    {
+        baseFixedWidthVector.allocateNew(parentBlock.getPositionCount());
+        copyVector(block, baseFixedWidthVector, parentBlock, nestedIsParent, positionCount, indexValueSetter, indexValueGetter);
+    }
+
+    private <T> void copyVarWidthVector(Block block, BaseVariableWidthVector varWidthVector, long totalBytes,
+            Block parentBlock, boolean nestedIsParent, int positionCount,
+            BiConsumer<Integer, T> indexValueSetter, IntFunction<T> indexValueGetter)
+    {
+        varWidthVector.allocateNew(totalBytes, positionCount);
+        copyVector(block, varWidthVector, parentBlock, nestedIsParent, positionCount, indexValueSetter, indexValueGetter);
+    }
+
+    private <T> void copyVector(Block block, FieldVector varWidthVector, Block parentBlock, boolean nestedIsParent, int positionCount, BiConsumer<Integer, T> indexValueSetter, IntFunction<T> indexValueGetter)
+    {
+        ValueEntryGetter<T> intGetter = ValueEntryFunctionFactory.newGetter(indexValueGetter, block::isNull, parentBlock::isNull);
+        ValueEntrySetter<T> intSetter = ValueEntryFunctionFactory.newSetter(indexValueSetter, varWidthVector::setNull);
+        copyTypeValues(intSetter, nestedIsParent, positionCount, intGetter);
+        varWidthVector.setValueCount(positionCount);
     }
 }

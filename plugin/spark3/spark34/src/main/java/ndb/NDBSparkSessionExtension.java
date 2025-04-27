@@ -4,6 +4,7 @@
 
 package ndb;
 
+import ndb.view.NDBViewsResolutionRule;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.SparkSessionExtensions;
 import org.apache.spark.sql.execution.SparkStrategy;
@@ -15,18 +16,18 @@ import scala.Unit;
 public class NDBSparkSessionExtension
         implements Function1<SparkSessionExtensions, Unit>
 {
-    private static final Logger LOG = LoggerFactory.getLogger(NDBSparkSessionExtension.class);
     public NDBSparkSessionExtension()
     {
     }
     private static final Function1<SparkSession, SparkStrategy> STRATEGY_INJECTOR =
-            session -> new NDBStrategy();
+            NDBStrategy::new;
 
     @Override
     public Unit apply(SparkSessionExtensions sparkSessionExtensions)
     {
-        LOG.debug("apply(): Trying to override spark table-scan classes");
         sparkSessionExtensions.injectPlannerStrategy(STRATEGY_INJECTOR);
+        sparkSessionExtensions.injectResolutionRule(NDBViewsResolutionRule::new);
+        sparkSessionExtensions.injectParser(NDBParser::new);
         return null;
     }
 }

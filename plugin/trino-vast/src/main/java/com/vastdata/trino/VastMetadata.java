@@ -17,19 +17,51 @@ import com.vastdata.client.schema.AlterSchemaContext;
 import com.vastdata.client.schema.AlterTableContext;
 import com.vastdata.client.schema.CreateTableContext;
 import com.vastdata.client.schema.DropTableContext;
+import com.vastdata.client.schema.DropViewContext;
 import com.vastdata.client.schema.TableColumnLifecycleContext;
 import com.vastdata.client.schema.VastMetadataUtils;
+import com.vastdata.client.schema.VastViewMetadata;
+import com.vastdata.trino.expression.VastExpression;
+import com.vastdata.trino.expression.VastProjectionPushdown;
 import com.vastdata.trino.predicate.ComplexPredicate;
 import com.vastdata.trino.predicate.VastConnectorExpressionPushdown;
-import com.vastdata.trino.expression.VastProjectionPushdown;
-import com.vastdata.trino.expression.VastExpression;
 import com.vastdata.trino.statistics.VastStatisticsManager;
 import com.vastdata.trino.tx.VastTransactionHandle;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
 import io.trino.plugin.base.expression.ConnectorExpressions;
+import io.trino.spi.Page;
 import io.trino.spi.TrinoException;
-import io.trino.spi.connector.*;
+import io.trino.spi.connector.Assignment;
+import io.trino.spi.connector.ColumnHandle;
+import io.trino.spi.connector.ColumnMetadata;
+import io.trino.spi.connector.ColumnSchema;
+import io.trino.spi.connector.ConnectorAnalyzeMetadata;
+import io.trino.spi.connector.ConnectorInsertTableHandle;
+import io.trino.spi.connector.ConnectorMergeTableHandle;
+import io.trino.spi.connector.ConnectorMetadata;
+import io.trino.spi.connector.ConnectorOutputMetadata;
+import io.trino.spi.connector.ConnectorOutputTableHandle;
+import io.trino.spi.connector.ConnectorSession;
+import io.trino.spi.connector.ConnectorTableHandle;
+import io.trino.spi.connector.ConnectorTableLayout;
+import io.trino.spi.connector.ConnectorTableMetadata;
+import io.trino.spi.connector.ConnectorTableProperties;
+import io.trino.spi.connector.ConnectorTableSchema;
+import io.trino.spi.connector.ConnectorTableVersion;
+import io.trino.spi.connector.ConnectorViewDefinition;
+import io.trino.spi.connector.Constraint;
+import io.trino.spi.connector.ConstraintApplicationResult;
+import io.trino.spi.connector.LimitApplicationResult;
+import io.trino.spi.connector.ProjectionApplicationResult;
+import io.trino.spi.connector.RetryMode;
+import io.trino.spi.connector.RowChangeParadigm;
+import io.trino.spi.connector.SaveMode;
+import io.trino.spi.connector.SchemaNotFoundException;
+import io.trino.spi.connector.SchemaTableName;
+import io.trino.spi.connector.SchemaTablePrefix;
+import io.trino.spi.connector.TableColumnsMetadata;
+import io.trino.spi.connector.ViewNotFoundException;
 import io.trino.spi.expression.Call;
 import io.trino.spi.expression.ConnectorExpression;
 import io.trino.spi.expression.Constant;
@@ -41,25 +73,27 @@ import io.trino.spi.security.TrinoPrincipal;
 import io.trino.spi.statistics.ComputedStatistics;
 import io.trino.spi.statistics.TableStatistics;
 import io.trino.spi.type.Type;
-import net.bytebuddy.ClassFileVersion;
 import org.apache.arrow.vector.types.pojo.Field;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-
-import java.util.Iterator;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static com.vastdata.client.ParsedURL.PATH_SEPERATOR;
+import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 import static com.vastdata.client.importdata.VastImportDataMetadataUtils.BIG_CATALOG_TABLE_NAME;
 import static com.vastdata.client.importdata.VastImportDataMetadataUtils.IMPORT_DATA_HIDDEN_COLUMN_NAME;
 import static com.vastdata.client.importdata.VastImportDataMetadataUtils.IMPORT_DATA_HIDDEN_FIELD;
@@ -70,9 +104,13 @@ import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_FIELD;
 import static com.vastdata.trino.VastSessionProperties.getComplexPredicatePushdown;
 import static com.vastdata.trino.VastSessionProperties.getExpressionProjectionPushdown;
 import static com.vastdata.trino.VastSessionProperties.getMatchSubstringPushdown;
+import static com.vastdata.trino.ViewDefinitionHelpers.getVastViewMetadata;
+import static com.vastdata.trino.ViewDefinitionHelpers.pageToViewDefinition;
+import static com.vastdata.trino.ViewDefinitionHelpers.viewPageSource;
 import static com.vastdata.trino.expression.VastProjectionPushdown.forVariableChildren;
 import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static io.trino.spi.StandardErrorCode.GENERIC_USER_ERROR;
+import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
 import static io.trino.spi.StandardErrorCode.TABLE_NOT_FOUND;
 import static io.trino.spi.expression.StandardFunctions.LIKE_FUNCTION_NAME;
 import static java.lang.String.format;
@@ -84,10 +122,7 @@ public class VastMetadata
 {
     public static final VastColumnHandle IMPORT_DATA_HIDDEN_COLUMN_HANDLE = new VastColumnHandle(IMPORT_DATA_HIDDEN_FIELD);
     private static final Logger LOG = Logger.get(VastMetadata.class);
-    static {
-        ClassFileVersion classFileVersion = ClassFileVersion.ofThisVm();
-        LOG.info("Class file version of this vm: {}", classFileVersion);
-    }
+
     private static final String INFORMATION_SCHEMA_NAME = "information_schema";
     private static final String SYSTEM_SCHEMA_NAME = "system_schema";
 
@@ -113,7 +148,7 @@ public class VastMetadata
     private static String toVastSchemaName(ConnectorSession session, String schemaName)
     {
         if (VastSessionProperties.getEnableCustomSchemaSeparator(session)) {
-            return schemaName.replace(VastSessionProperties.getCustomSchemaSeparator(session), "/");
+            return schemaName.replace(VastSessionProperties.getCustomSchemaSeparator(session), PATH_SEPERATOR);
         }
         else {
             return schemaName;
@@ -123,7 +158,7 @@ public class VastMetadata
     private static String fromVastSchemaName(ConnectorSession session, String schemaName)
     {
         if (VastSessionProperties.getEnableCustomSchemaSeparator(session)) {
-            return schemaName.replace("/", VastSessionProperties.getCustomSchemaSeparator(session));
+            return schemaName.replace(PATH_SEPERATOR, VastSessionProperties.getCustomSchemaSeparator(session));
         }
         else {
             return schemaName;
@@ -154,6 +189,14 @@ public class VastMetadata
         try {
             return client
                     .listAllSchemas(transactionHandle, clientPageSize)
+                    // TODO https://github.com/trinodb/trino/issues/1559 this should be filtered out in engine.
+                    .filter(schemaName -> {
+                        if (INFORMATION_SCHEMA_NAME.equalsIgnoreCase(schemaName)) {
+                            LOG.warn(new RuntimeException(format("Got internal schema name: \"%s\" - skipping", schemaName)), "schemaName equalsIgnoreCase %s - skipping", SYSTEM_SCHEMA_NAME);
+                            return false;
+                        }
+                        return true;
+                    })
                     .map(schemaName -> fromVastSchemaName(session, schemaName))
                     .collect(Collectors.toList());
         }
@@ -186,7 +229,7 @@ public class VastMetadata
     public ConnectorTableHandle getTableHandle(ConnectorSession session, SchemaTableName schemaTableName, Optional<ConnectorTableVersion> startVersion, Optional<ConnectorTableVersion> endVersion)
     {
         schemaTableName = toVastSchemaTableName(session, schemaTableName);
-        LOG.debug("tx %s: getTableHandle(%s)", transactionHandle, schemaTableName);
+        LOG.debug("getTableHandle schemaTableName: %s, tx: %s", schemaTableName, transactionHandle);
         Optional<String> bigCatalogSearchPath = getBigCatalogSearchPath(schemaTableName.getSchemaName(), schemaTableName.getTableName());
         if (bigCatalogSearchPath.isPresent()) {
             LOG.debug("tx %s: getTableHandle name=%s start=%s end=%s", transactionHandle, schemaTableName, startVersion, endVersion);
@@ -281,21 +324,25 @@ public class VastMetadata
     {
         int clientPageSize = VastSessionProperties.getClientPageSize(session);
         LOG.debug("tx %s: listTables(%s, %s)", transactionHandle, optionalSchemaName, clientPageSize);
-        return optionalSchemaName
-                .map(trinoSchemaName -> {
-                    String vastSchemaName = toVastSchemaName(session, trinoSchemaName);
+        final List<SchemaTableName> tables = optionalSchemaName
+                .map(Stream::of)
+                .orElseGet(() -> listSchemaNames(session).stream())
+                .flatMap(schemaName -> {
+                    String vastSchemaName = toVastSchemaName(session, schemaName);
                     if (vastSchemaName.equalsIgnoreCase(INFORMATION_SCHEMA_NAME)) {
                         // TODO https://github.com/trinodb/trino/issues/1559 this should be filtered out in engine.
-                        return Stream.<SchemaTableName>of();
+                        LOG.warn(new RuntimeException(format("Got internal schema name: \"%s\" - skipping", schemaName)), "schemaName equalsIgnoreCase %s - skipping", INFORMATION_SCHEMA_NAME);
+                        return Stream.empty();
                     }
                     if (vastSchemaName.equalsIgnoreCase(SYSTEM_SCHEMA_NAME)) {
                         // TODO: workaround for ORION-154485
-                        return Stream.<SchemaTableName>of();
+                        LOG.warn(new RuntimeException(format("Got internal schema name: \"%s\" - skipping", schemaName)), "schemaName equalsIgnoreCase %s - skipping", SYSTEM_SCHEMA_NAME);
+                        return Stream.empty();
                     }
                     try {
                         return client
                                 .listTables(transactionHandle, vastSchemaName, clientPageSize)
-                                .map(tableName -> new SchemaTableName(trinoSchemaName, tableName));
+                                .map(tableName -> new SchemaTableName(schemaName, tableName));
                     }
                     catch (VastServerException e) {
                         throw new TrinoException(GENERIC_INTERNAL_ERROR, e);
@@ -304,12 +351,12 @@ public class VastMetadata
                         throw new TrinoException(GENERIC_USER_ERROR, e);
                     }
                 })
-                .orElseGet(() -> {
-                    // TODO: support listing all tables
-                    LOG.warn("cannot list tables without specifying schema");
-                    return Stream.empty();
-                })
-                .collect(Collectors.toList());
+                .toList();
+        final List<SchemaTableName> views = listViews(session, optionalSchemaName);
+        final List<SchemaTableName> tablesAndViews = new ArrayList<>(tables.size() + views.size());
+        tablesAndViews.addAll(tables);
+        tablesAndViews.addAll(views);
+        return tablesAndViews;
     }
 
     @Override
@@ -354,7 +401,7 @@ public class VastMetadata
         }
         LOG.debug("tx %s: listTableColumns(%s/%s)", transactionHandle, schemaName, tableName);
         String tableNameForAPI = getTableNameForAPI(tableName);
-        List<Field> fields = client.listColumns(transactionHandle, schemaName, tableNameForAPI, pageSize);
+        List<Field> fields = client.listColumns(transactionHandle, schemaName, tableNameForAPI, pageSize, Collections.emptyMap());
         return fields.stream().map(VastColumnHandle::fromField).collect(Collectors.toList());
     }
 
@@ -488,23 +535,26 @@ public class VastMetadata
     }
 
     @Override
-    public void createTable(ConnectorSession session, ConnectorTableMetadata tableMetadata, boolean ignoreExisting)
+    public void createTable(final ConnectorSession session, final ConnectorTableMetadata tableMetadata, final SaveMode saveMode)
     {
-        tableMetadata = toVastConnectorTableMetadata(session, tableMetadata);
-        LOG.debug("tx %s: createTable(%s, ignoreExisting=%s)", transactionHandle, tableMetadata, ignoreExisting);
-        String tableName = tableMetadata.getTable().getTableName();
+        if (saveMode == SaveMode.REPLACE) {
+            throw new TrinoException(NOT_SUPPORTED, "VAST connector does not support replacing tables");
+        }
+        final ConnectorTableMetadata vastTableMetadata = toVastConnectorTableMetadata(session, tableMetadata);
+        LOG.debug("tx %s: createTable(%s, saveMode=%s)", transactionHandle, vastTableMetadata, saveMode);
+        String tableName = vastTableMetadata.getTable().getTableName();
         if (isImportDataTableName(tableName)) {
             throw new TrinoException(GENERIC_USER_ERROR, format("Illegal table name for create table: %s", tableName));
         }
-        if (ignoreExisting) {
-            ConnectorTableHandle table = getTableHandle(session, tableMetadata.getTable(), Optional.empty(), Optional.empty());
+        if (saveMode == SaveMode.IGNORE) {
+            ConnectorTableHandle table = getTableHandle(session, vastTableMetadata.getTable(), Optional.empty(), Optional.empty());
             if (nonNull(table)) {
                 LOG.info("Table %s already exists", table);
                 return;
             }
         }
         try {
-            CreateTableContext ctx = new VastTrinoSchemaAdaptor().adaptForCreateTable(tableMetadata);
+            CreateTableContext ctx = new VastTrinoSchemaAdaptor().adaptForCreateTable(vastTableMetadata);
             client.createTable(transactionHandle, ctx);
         }
         catch (VastException e) {
@@ -516,14 +566,18 @@ public class VastMetadata
     }
 
     @Override
-    public ConnectorOutputTableHandle beginCreateTable(ConnectorSession session, ConnectorTableMetadata tableMetadata, Optional<ConnectorTableLayout> layout, RetryMode retryMode)
+    public ConnectorOutputTableHandle beginCreateTable(final ConnectorSession session,
+                                                       final ConnectorTableMetadata tableMetadata,
+                                                       final Optional<ConnectorTableLayout> layout,
+                                                       final RetryMode retryMode,
+                                                       final boolean replace)
     {
-        tableMetadata = toVastConnectorTableMetadata(session, tableMetadata);
-        int clientPageSize = VastSessionProperties.getClientPageSize(session);
-        LOG.debug("tx %s: beginCreateTable(%s, %s, %s, %s)", transactionHandle, tableMetadata, layout, retryMode, clientPageSize);
+        final ConnectorTableMetadata vastTableMetadata = toVastConnectorTableMetadata(session, tableMetadata);
+        final int clientPageSize = VastSessionProperties.getClientPageSize(session);
+        LOG.debug("tx %s: beginCreateTable(%s, %s, %s, %s)", transactionHandle, vastTableMetadata, layout, retryMode, clientPageSize);
         try {
-            createTable(session, tableMetadata, false);
-            VastTableHandle table = (VastTableHandle) getTableHandle(session, tableMetadata.getTable(), Optional.empty(), Optional.empty());
+            createTable(session, vastTableMetadata, SaveMode.FAIL);
+            VastTableHandle table = (VastTableHandle) getTableHandle(session, vastTableMetadata.getTable(), Optional.empty(), Optional.empty());
             if (table != null) {
                 String schemaName = table.getSchemaName();
                 String tableName = table.getTableName();
@@ -532,7 +586,7 @@ public class VastMetadata
                 return new VastInsertTableHandle(table, columns, true, false); // used for `CREATE TABLE t AS SELECT ...`
             }
             else {
-                throw new TrinoException(TABLE_NOT_FOUND, format("Table doesn't exist: %s", tableMetadata));
+                throw new TrinoException(TABLE_NOT_FOUND, format("Table doesn't exist: %s", vastTableMetadata));
             }
         }
         catch (VastException e) {
@@ -549,6 +603,179 @@ public class VastMetadata
     }
 
     @Override
+    public List<SchemaTableName> listViews(final ConnectorSession session, final Optional<String> schemaName_)
+    {
+        final int clientPageSize = VastSessionProperties.getClientPageSize(session);
+        LOG.debug("tx %s: listTables(%s, %s)", transactionHandle, schemaName_, clientPageSize);
+        return schemaName_
+                .map(Stream::of)
+                .orElseGet(() -> listSchemaNames(session).stream())
+                .flatMap(schemaName -> {
+                    final String vastSchemaName = toVastSchemaName(session, schemaName);
+                    if (vastSchemaName.equalsIgnoreCase(INFORMATION_SCHEMA_NAME)) {
+                        // TODO https://github.com/trinodb/trino/issues/1559 this should be filtered out in engine.
+                        LOG.warn(new RuntimeException(format("Got internal schema name: \"%s\" - skipping", schemaName)), "schemaName equalsIgnoreCase %s - skipping", INFORMATION_SCHEMA_NAME);
+                        return Stream.empty();
+                    }
+                    if (vastSchemaName.equalsIgnoreCase(SYSTEM_SCHEMA_NAME)) {
+                        // TODO: workaround for ORION-154485
+                        LOG.warn(new RuntimeException(format("Got internal schema name: \"%s\" - skipping", schemaName)), "schemaName equalsIgnoreCase %s - skipping", SYSTEM_SCHEMA_NAME);
+                        return Stream.empty();
+                    }
+                    try {
+                        return client
+                                .listViews(transactionHandle, vastSchemaName, clientPageSize)
+                                .map(viewName -> new SchemaTableName(schemaName, viewName));
+                    }
+                    catch (final VastServerException error) {
+                        throw new TrinoException(GENERIC_INTERNAL_ERROR, error);
+                    }
+                    catch (VastUserException error) {
+                        throw new TrinoException(GENERIC_USER_ERROR, error);
+                    }
+                })
+                .toList();
+    }
+
+    @Override
+    public Optional<ConnectorViewDefinition> getView(final ConnectorSession session, final SchemaTableName viewName_)
+    {
+        final SchemaTableName viewName = toVastSchemaTableName(session, viewName_);
+        try {
+            if (client.schemaExists(transactionHandle, viewName.getSchemaName())) {
+                if (client.viewExists(transactionHandle, viewName.getSchemaName(), viewName.getTableName())) {
+                    try (final VastPageSource source = viewPageSource(viewName, transactionHandle, client, session)) {
+                        final Page page = source.getNextPage();
+                        LOG.debug("VastMetadata#getView page = %s", page);
+                        final List<Field> underlyingColumns = client.listColumns(transactionHandle, viewName.getSchemaName(), viewName.getTableName(), 1000, Collections.emptyMap());
+                        LOG.debug("VastMetadata#getView underlyingColumns = %s", underlyingColumns);
+                        return Optional.of(pageToViewDefinition(page, underlyingColumns, viewName.getSchemaName()));
+                    }
+                }
+                else {
+                    LOG.debug("getView(%s, %s) but there's no such view in this schema", session, viewName);
+                    return Optional.empty();
+                }
+            }
+            else {
+                LOG.debug("getView(%s, %s) but there's no such schema", session, viewName);
+                return Optional.empty();
+            }
+        } catch (final VastException error) {
+            LOG.error(error, "tx %s: listViews(%s, %s)", transactionHandle, session, viewName);
+            throw new RuntimeException(error);
+        }
+    }
+
+    @Override
+    public void createView(final ConnectorSession session, final SchemaTableName viewName_,
+            final ConnectorViewDefinition definition, final Map<String, Object> viewProperties, final boolean replace)
+    {
+        final SchemaTableName viewName = toVastSchemaTableName(session, viewName_);
+        if (!definition.getPath().isEmpty()) {
+            throw new IllegalStateException(format("path expected to be empty but path = %s", definition.getPath()));
+        }
+        final VastViewMetadata context = getVastViewMetadata(definition, viewProperties, viewName);
+        LOG.debug("VastMetadata#createView %s definition=%s, tx %s", definition, viewName, transactionHandle);
+        try {
+            if (client.schemaExists(transactionHandle, viewName.getSchemaName())) {
+                if (!client.viewExists(transactionHandle, viewName.getSchemaName(), viewName.getTableName())) {
+                    client.createView(transactionHandle, context);
+                    LOG.debug("createView - new view %s was created, tx: %s", viewName, transactionHandle);
+                } else {
+                    if (replace) {
+                        client.dropView(transactionHandle, new DropViewContext(viewName.getSchemaName(), viewName.getTableName()));
+                        LOG.debug("createView - existing view %s was dropped, tx %s", viewName, transactionHandle);
+                        client.createView(transactionHandle, context);
+                        LOG.debug("createView - new view %s was recreated, tx %s", viewName, transactionHandle);
+                    } else {
+                        final RuntimeException error = new ViewAlreadyExistsException(viewName_);
+                        LOG.error(error, format("Failed creating view %s - already exists, tx %s", viewName.getSchemaName(), transactionHandle));
+                        throw error;
+                    }
+                }
+            }
+            else {
+                final RuntimeException error = new SchemaNotFoundException(viewName_.getSchemaName());
+                LOG.error(error, format("Failed creating view %s - schema not found, tx %s", viewName.getSchemaName(), transactionHandle));
+                throw error;
+            }
+        } catch (final VastException e) {
+            LOG.error(e, format("Failed creating view %s, tx %s", viewName.getSchemaName(), transactionHandle));
+            throw toRuntime(e);
+        }
+    }
+
+    @Override
+    public void renameView(final ConnectorSession session, final SchemaTableName source_, final SchemaTableName target_)
+    {
+        final SchemaTableName source = toVastSchemaTableName(session, source_);
+        final SchemaTableName target = toVastSchemaTableName(session, target_);
+        try {
+            if (!client.schemaExists(transactionHandle, source.getSchemaName())) {
+                final RuntimeException error = new SchemaNotFoundException(source.getSchemaName());
+                LOG.debug(error, "VastMetadata#renameTable end no source schema");
+                throw error;
+            }
+            else if (!client.viewExists(transactionHandle, source.getSchemaName(), source.getTableName())) {
+                final RuntimeException error = new ViewNotFoundException(source);
+                LOG.debug(error, "VastMetadata#renameTable end no source view");
+                throw error;
+            }
+            if (!client.schemaExists(transactionHandle, target.getSchemaName())) {
+                final RuntimeException error = new SchemaNotFoundException(target.getSchemaName());
+                LOG.debug(error, "VastMetadata#renameTable end no target schema");
+                throw error;
+            }
+            else if (client.viewExists(transactionHandle, target.getSchemaName(), target.getTableName())) {
+                final RuntimeException error = new ViewAlreadyExistsException(target);
+                LOG.debug(error, "VastMetadata#renameTable end target view already exists");
+                throw error;
+            }
+            else if (client.viewExists(transactionHandle, target.getSchemaName(), target.getTableName())) {
+                final RuntimeException error = new TableAlreadyExistsException(target);
+                LOG.debug(error, "VastMetadata#renameTable end target already exists and is a table");
+                throw error;
+            }
+
+            final Optional<ConnectorViewDefinition> view = getView(session, source);
+            final ConnectorViewDefinition definition = view.orElseThrow(() -> {
+                final RuntimeException error = new IllegalStateException(format("Cannot rename missing view: view '%s' not found", source));
+                LOG.error(error, "tx %s: renameView(%s, %s, %s)", transactionHandle, session, source, target);
+                return error;
+            });
+            final Map<String, String> vastProperties = definition instanceof VastConnectorViewDefinition vast ? vast.getProperties() : new HashMap<>();
+            final Map<String, Object> properties = new HashMap<>(vastProperties.size());
+            properties.putAll(vastProperties);
+            createView(session, target, definition, properties, false);
+            dropView(session, source);
+        } catch (final VastException internal) {
+            final RuntimeException error = new RuntimeException(internal);
+            LOG.debug(error, "VastMetadata#renameTable end rethrow VastException");
+            throw error;
+        }
+    }
+
+    @Override
+    public void dropView(final ConnectorSession session, final SchemaTableName viewName_)
+    {
+        final SchemaTableName viewName = toVastSchemaTableName(session, viewName_);
+        try {
+            if (client.viewExists(transactionHandle, viewName.getSchemaName(), viewName.getTableName())) {
+                LOG.debug("tx %s: dropView(%s, %s) view exists, will be dropped", transactionHandle, session, viewName);
+                client.dropView(transactionHandle, new DropViewContext(viewName.getSchemaName(), viewName.getTableName()));
+            }
+            else {
+                LOG.debug("tx %s: dropView(%s, %s) view does not exist, will not be dropped", transactionHandle, session, viewName);
+            }
+        }
+        catch (final VastException error) {
+            LOG.error(error, "tx %s: dropView(%s, %s)", transactionHandle, session, viewName);
+            throw new RuntimeException(error);
+        }
+    }
+
+    @Override
     public ConnectorInsertTableHandle beginInsert(ConnectorSession session, ConnectorTableHandle tableHandle, List<ColumnHandle> columns, RetryMode retryMode)
     {
         LOG.debug("tx %s: beginInsert(%s, %s, %s)", transactionHandle, tableHandle, columns, retryMode);
@@ -559,8 +786,9 @@ public class VastMetadata
     }
 
     @Override
-    public Optional<ConnectorOutputMetadata> finishInsert(ConnectorSession session, ConnectorInsertTableHandle insertHandle, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics)
-    {
+    public Optional<ConnectorOutputMetadata> finishInsert(ConnectorSession session, ConnectorInsertTableHandle insertHandle,
+            List<ConnectorTableHandle> sourceTableHandles, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics)
+{
         LOG.debug("tx %s: finishInsert(%s, %s, %s)", transactionHandle, insertHandle, fragments, computedStatistics);
         return Optional.empty();
     }
@@ -623,12 +851,15 @@ public class VastMetadata
         Set<VastSubstringMatch> substringMatches = new LinkedHashSet<>(table.getSubstringMatches());
         substringMatches.addAll(substringMatchBuilder.build());
         LOG.debug("substringMatches: %s", substringMatches);
-        if (table.getPredicate().equals(enforcedPredicate) && Objects.equals(table.getComplexPredicate(), complexPredicate) && table.getSubstringMatches().equals(substringMatches)) {
+        if (table.getPredicate().equals(enforcedPredicate) &&
+                Objects.equals(Optional.ofNullable(table.getComplexPredicate()), complexPredicate) &&
+                new HashSet<>(table.getSubstringMatches()).equals(substringMatches)) {
             return Optional.empty(); // no need to update current table handle
         }
         TupleDomain<VastColumnHandle> unenforcedPredicate = summary.filter(isEnforcedFilterPushdown.negate());
 
-        LOG.debug("pushed-down predicate: enforced=%s, complex=%s, unenforced=%s matches=%s", enforcedPredicate, complexPredicate, unenforcedPredicate, substringMatches);
+        LOG.debug("pushed-down predicate: enforced=%s, complex=%s, unenforced=%s, matches=%s, unsupportedExpressions=%s",
+                enforcedPredicate, complexPredicate, unenforcedPredicate, substringMatches, unsupportedExpressions);
         VastTableHandle newTable = table.withPredicate(enforcedPredicate, complexPredicate, List.copyOf(substringMatches));
         return Optional.of(new ConstraintApplicationResult<>(
                 newTable,
@@ -639,10 +870,9 @@ public class VastMetadata
 
     static Optional<VastSubstringMatch> tryParseSubstringMatch(ConnectorExpression conjunct, Set<String> pushedDownColumnNames, Map<String, ColumnHandle> assignments)
     {
-        if (!(conjunct instanceof Call)) {
+        if (!(conjunct instanceof Call call)) {
             return Optional.empty();
         }
-        Call call = (Call) conjunct;
         if (!call.getFunctionName().equals(LIKE_FUNCTION_NAME)) {
             return Optional.empty();
         }
@@ -650,10 +880,9 @@ public class VastMetadata
         if (args.size() != 2) {
             return Optional.empty();  // no support for escaped LIKE expression
         }
-        if (!(args.get(0) instanceof Variable)) {
+        if (!(args.getFirst() instanceof Variable variable)) {
             return Optional.empty(); // projection pushdown should handle `substring_match` over nested columns
         }
-        Variable variable = (Variable) args.get(0);
         if (pushedDownColumnNames.contains(variable.getName())) {
             return Optional.empty(); // no support for AND between TupleDomain and ConnectorExpression on the same column
         }
@@ -701,7 +930,7 @@ public class VastMetadata
                     if (newVariables.add(name)) {
                         Assignment newAssignment = new Assignment(name, column, type);
                         assignmentBuilder.add(newAssignment);
-                        LOG.debug("applyProjection: new variable=%s, assignment=%s", name, newAssignment);
+                        LOG.debug("applyProjection.expressionPushdownResult: new variable=%s, assignment=%s", name, newAssignment);
                     }
                 }
                 projectionsBuilder.add(result.getRemaining());
@@ -711,13 +940,11 @@ public class VastMetadata
             // only variables and field dereferences are supported
             ImmutableList.Builder<Integer> reversedPath = ImmutableList.builder();
             Type projectionType = projection.getType();
-            while (projection instanceof FieldDereference) {
-                FieldDereference dereference = (FieldDereference) projection;
+            while (projection instanceof FieldDereference dereference) {
                 projection = dereference.getTarget();
                 reversedPath.add(dereference.getField()); // the last index corresponds to top-most projection
             }
-            if (projection instanceof Variable) {
-                Variable variable = (Variable) projection;
+            if (projection instanceof Variable variable) {
                 List<Integer> projectionPath = reversedPath.build().reverse();
                 VastColumnHandle column = (VastColumnHandle) requireNonNull(assignments.get(variable.getName()), () -> format("Missing %s in %s", variable, assignments));
 
@@ -728,7 +955,7 @@ public class VastMetadata
                     VastColumnHandle newColumn = column.withProjectionPath(projectionPath); // create a new "synthetic" column handle to represent the projection
                     Assignment newAssignment = new Assignment(newName, newColumn, projectionType);
                     assignmentBuilder.add(newAssignment);
-                    LOG.debug("applyProjection: new variable=%s, assignment=%s", newVariable, newAssignment);
+                    LOG.debug("applyProjection.variable: new variable=%s, assignment=%s", newVariable, newAssignment);
                 }
                 continue;
             }
@@ -748,6 +975,7 @@ public class VastMetadata
                 forVariableChildren(projection, variable -> {
                     if (newVariables.add(variable.getName())) {
                         ColumnHandle column = requireNonNull(assignments.get(variable.getName()), () -> format("Missing %s in %s", variable, assignments));
+                        LOG.debug("Call projection new variable column: %s", column);
                         assignmentBuilder.add(new Assignment(variable.getName(), column, variable.getType()));
                     }
                 });
@@ -811,15 +1039,15 @@ public class VastMetadata
         int clientPageSize = VastSessionProperties.getClientPageSize(session);
         LOG.debug("tx %s: finishStatisticsCollection for table %s, %s. clientPageSize: %s", transactionHandle, tableHandle, session, clientPageSize);
         VastTableHandle vastTableHandle = (VastTableHandle) tableHandle;
-        System.out.println("VastTableHandle" + vastTableHandle);
         String tableName = vastTableHandle.getTableName();
         String schemaName = vastTableHandle.getSchemaName();
         try {
-            List<Field> tableColumnFields = client.listColumns(this.transactionHandle, schemaName, tableName, clientPageSize);
+            List<Field> tableColumnFields = client.listColumns(this.transactionHandle, schemaName, tableName, clientPageSize, Collections.emptyMap());
             ComputedStatistics allTableStatistics = Iterables.getOnlyElement(computedStatistics); // there is only one per table
             this.statisticsManager.applyTableStatistics(vastTableHandle, tableColumnFields, allTableStatistics);
         }
         catch (VastException e) {
+            LOG.error(e, "tx %s: finishStatisticsCollection(%s, %s, %s)", transactionHandle, session, tableHandle, computedStatistics);
             throw vastTrinoExceptionFactory.fromVastException(e);
         }
     }
@@ -836,6 +1064,7 @@ public class VastMetadata
             client.alterSchema(transactionHandle, source, ctx);
         }
         catch (VastException e) {
+            LOG.error(e, "tx %s: renameSchema(%s, %s, %s)", transactionHandle, session, source, fullSchemaPath);
             throw vastTrinoExceptionFactory.fromVastException(e);
         }
     }
@@ -854,7 +1083,9 @@ public class VastMetadata
         String[] split = newFullSchemaNameStr.split("/", 2);
         String newBucketName = split[0];
         if (!oldBucketName.equalsIgnoreCase(newBucketName)) {
-            throw new TrinoException(GENERIC_USER_ERROR, "Changing bucket name is not supported");
+            final TrinoException error = new TrinoException(GENERIC_USER_ERROR, "Changing bucket name is not supported");
+            LOG.error(error, "tx %s: renameTable(%s, %s, %s)", transactionHandle, session, tableHandle, newTableName);
+            throw error;
         }
         String newSchemaName = split[1];
         String newTablePath = format("%s/%s", newSchemaName, newTableNameStr);
@@ -863,9 +1094,11 @@ public class VastMetadata
             client.alterTable(transactionHandle, schemaName, tableName, ctx);
         }
         catch (VastException e) {
+            LOG.error(e, "tx %s: renameTable(%s, %s, %s)", transactionHandle, session, tableHandle, newTableName);
             throw vastTrinoExceptionFactory.fromVastException(e);
         }
         catch (VastRuntimeException re) {
+            LOG.error(re, "tx %s: renameTable(%s, %s, %s)", transactionHandle, session, tableHandle, newTableName);
             throw vastTrinoExceptionFactory.fromVastRuntimeException(re);
         }
     }
@@ -884,9 +1117,11 @@ public class VastMetadata
             client.alterColumn(transactionHandle, schemaName, tableName, ctx);
         }
         catch (VastException e) {
+            LOG.error(e, "tx %s: renameColumn(%s, %s, %s, %s)", transactionHandle, session, tableHandle, source, target);
             throw vastTrinoExceptionFactory.fromVastException(e);
         }
         catch (VastRuntimeException re) {
+            LOG.error(re, "tx %s: renameColumn(%s, %s, %s, %s)", transactionHandle, session, tableHandle, source, target);
             throw vastTrinoExceptionFactory.fromVastRuntimeException(re);
         }
     }
@@ -918,9 +1153,11 @@ public class VastMetadata
             client.alterTable(transactionHandle, schemaName, tableName, ctx);
         }
         catch (VastException e) {
+            LOG.error(e, format("tx %s: setTableProperties(%s, %s, %s)", transactionHandle, session, tableHandle, properties));
             throw vastTrinoExceptionFactory.fromVastException(e);
         }
         catch (VastRuntimeException re) {
+            LOG.error(re, format("tx %s: setTableProperties(%s, %s, %s)", transactionHandle, session, tableHandle, properties));
             throw vastTrinoExceptionFactory.fromVastRuntimeException(re);
         }
     }
@@ -950,17 +1187,8 @@ public class VastMetadata
         return new VastMergeTableHandle(resultTable, resultTable.getColumnHandlesCache());
     }
 
-    public ConnectorMergeTableHandle beginMerge(ConnectorSession session, ConnectorTableHandle tableHandle, RetryMode retryMode, List<ColumnHandle> updatedColumns)
-    {
-        requireNonNull(tableHandle, "!!!Can't do merge table handle is null!!!");
-        LOG.debug("tx %s: beginMerge(%s, %s, %s)", transactionHandle, tableHandle, updatedColumns, retryMode);
-        VastTableHandle table = ((VastTableHandle) tableHandle);
-        List<VastColumnHandle> vastMergableColumns = updatedColumns.stream().map(VastColumnHandle.class::cast).collect(Collectors.toList());
-        VastTableHandle resultTable = table.forMerge(vastMergableColumns);
-        LOG.debug("tx %s: beginMerge result: table=%s, columns=%s", transactionHandle, tableHandle, vastMergableColumns);
-        return new VastMergeTableHandle(resultTable, vastMergableColumns);
-    }
-
     @Override
-    public void finishMerge(ConnectorSession session, ConnectorMergeTableHandle mergeTableHandle, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics) {}
+    public void finishMerge(ConnectorSession session, ConnectorMergeTableHandle mergeTableHandle, List<ConnectorTableHandle> sourceTableHandles, Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics)
+    {
+    }
 }

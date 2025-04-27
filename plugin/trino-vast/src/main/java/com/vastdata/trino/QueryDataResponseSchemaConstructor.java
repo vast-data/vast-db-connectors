@@ -5,34 +5,21 @@
 package com.vastdata.trino;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.Iterables;
-import com.vastdata.ValueEntryFunctionFactory;
-import com.vastdata.ValueEntryGetter;
 import io.airlift.log.Logger;
-import io.airlift.slice.Slice;
 import io.trino.spi.Page;
 import io.trino.spi.block.ArrayBlock;
 import io.trino.spi.block.Block;
-import io.trino.spi.block.BlockBuilder;
-import io.trino.spi.block.ByteArrayBlockBuilder;
 import io.trino.spi.block.ColumnarArray;
-import io.trino.spi.block.ColumnarMap;
-import io.trino.spi.block.IntArrayBlockBuilder;
-import io.trino.spi.block.LongArrayBlockBuilder;
 import io.trino.spi.block.MapBlock;
-import io.trino.spi.block.PageBuilderStatus;
 import io.trino.spi.block.RowBlock;
-import io.trino.spi.block.ShortArrayBlockBuilder;
-import io.trino.spi.block.VariableWidthBlockBuilder;
-import io.trino.spi.type.DecimalType;
-import io.trino.spi.type.Decimals;
 import io.trino.spi.type.MapType;
 import io.trino.spi.type.Type;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 
-import java.math.BigDecimal;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -50,9 +37,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.IntFunction;
 import java.util.function.UnaryOperator;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.google.common.base.Verify.verify;
@@ -143,8 +128,8 @@ public class QueryDataResponseSchemaConstructor
         if (childIndexes.size() > 1000) {
             LOG.debug("QueryData(%s) Sorting nested projections of size %s might be time consuming", traceStr, childIndexes.size());
         }
-        List<Integer> sortedChildrenIndexList = childIndexes.stream().sorted().collect(Collectors.toList());
-        int anyChildIndex = sortedChildrenIndexList.get(0);
+        List<Integer> sortedChildrenIndexList = childIndexes.stream().sorted().toList();
+        int anyChildIndex = sortedChildrenIndexList.getFirst();
         int nestingLevel = getNestingLevel(anyChildIndex);
 
         Field parentField = getParentSchemaType(anyChildIndex, nestingLevel);
@@ -156,7 +141,7 @@ public class QueryDataResponseSchemaConstructor
                 Integer blockIndex = reverseProjection.get(childIndex);
                 Block block = blocks[blockIndex];
                 for (int i = nestingLevel; i > 0; i--) {
-                    block = block.getChildren().get(0);
+                    block = getChildBlockByIndex(block, 0);
                 }
                 LOG.debug("QueryData(%s) Projected field %s (received block index %s): %s is added to child list as child no. %s", traceStr, childIndex, blockIndex, block, nextBlock);
                 nestedBlocks[nextBlock] = block;
@@ -200,7 +185,7 @@ public class QueryDataResponseSchemaConstructor
             }
             LOG.debug("QueryData(%s) Parent type is a row - returning new row from nestedBlocks=%s with positionCount=%s, nulls=%s",
                     traceStr, Arrays.asList(nestedBlocks), parentPositionCount, Arrays.toString(nulls));
-            return RowBlock.fromFieldBlocks(parentPositionCount, Optional.of(nulls), nestedBlocks);
+            return RowBlock.fromNotNullSuppressedFieldBlocks(parentPositionCount, Optional.of(nulls), nestedBlocks);
         }
         else if (parentField.getType() instanceof ArrowType.Map) { // Map block is passed as two separate Array blocks - keys/values
             verify(nestedBlocks.length == 1,
@@ -232,13 +217,14 @@ public class QueryDataResponseSchemaConstructor
 
     private MapBlock mapBlock(Field parentField, Block parentBlock, int parentPositionCount, Block nestedRowBlock)
     {
-        Block mapKeysBlock = nestedRowBlock.getChildren().get(0);
-        Block mapValuesBlock = nestedRowBlock.getChildren().get(1);
+        RowBlock nestedRowBlockAsRowBlock = (RowBlock) nestedRowBlock;
+        Block mapKeysBlock = nestedRowBlockAsRowBlock.getFieldBlock(0);
+        Block mapValuesBlock = nestedRowBlockAsRowBlock.getFieldBlock(1);
 
         ColumnarArray parentAsColumnarArrayBlock = ColumnarArray.toColumnarArray(parentBlock);
 
-        Type keyType = convertArrowFieldToTrinoType(parentField.getChildren().get(0).getChildren().get(0));
-        Type valueType = convertArrowFieldToTrinoType(parentField.getChildren().get(0).getChildren().get(1));
+        Type keyType = convertArrowFieldToTrinoType(parentField.getChildren().getFirst().getChildren().get(0));
+        Type valueType = convertArrowFieldToTrinoType(parentField.getChildren().getFirst().getChildren().get(1));
         boolean[] mapNulls = new boolean[parentPositionCount];
         int[] mapOffsets = new int[parentPositionCount + 1];
         mapOffsets[0] = 0;
@@ -264,7 +250,7 @@ public class QueryDataResponseSchemaConstructor
         Field field = flatSchema.get(anyChildIndex);
         parentSubTree.add(field);
         while (!field.getChildren().isEmpty()) {
-            field = field.getChildren().get(0); // TODO - test list of struct
+            field = field.getChildren().getFirst(); // TODO - test list of struct
             parentSubTree.add(field);
         }
         // There are at least two objects in the Q, so polling two times won't return null
@@ -297,7 +283,7 @@ public class QueryDataResponseSchemaConstructor
         }
         requireNonNull(parentBlock);
         while (nestingLevel-- > 1) {
-            parentBlock = parentBlock.getChildren().get(0);
+            parentBlock = getChildBlockByIndex(parentBlock, 0);
         }
         return parentBlock;
     }
@@ -388,9 +374,6 @@ public class QueryDataResponseSchemaConstructor
                 .filter(Objects::nonNull).toArray(Block[]::new));
         Page page = new Page(rows, projectedBlocks);
         LOG.debug("QueryData(%s) Constructed page: %s", traceStr, page);
-        for (Block b : projectedBlocks) {
-            LOG.debug("QueryData(%s) Constructed page block: %s, of type=%s, with children=%s", traceStr, b, b.getClass(), b.getChildren());
-        }
         return page; //TODO - more validations on returned page
     }
 
@@ -413,14 +396,14 @@ public class QueryDataResponseSchemaConstructor
 
             // nested projected paths might not be matching schema order, need to sort children paths for correct resulted block traversal for projections extraction
             // comparator will sort paths by nesting level & in-level children index order
-            List<List<Integer>> projectionPathsSortedByNestedPaths = projectionPaths.keySet().stream().sorted(PROJECTION_PATH_COMPARATOR).collect(Collectors.toList());
+            List<List<Integer>> projectionPathsSortedByNestedPaths = projectionPaths.keySet().stream().sorted(PROJECTION_PATH_COMPARATOR).toList();
             projectionPathsSortedByNestedPaths.forEach(path -> {
                 Integer integer = projectionPaths.get(path);
                 sortedProjectionPaths.put(path, integer);
             });
             sortedProjectionPaths.forEach((path, index) -> {
                 LOG.debug("QueryData(%s) applyProjections for path: %s", traceStr, path);
-                if (path.size() == 0) {
+                if (path.isEmpty()) {
                     rootLevelProjection.set(true);
                 }
                 else {
@@ -453,220 +436,49 @@ public class QueryDataResponseSchemaConstructor
 
     private Block traverseBlockProjectionPath(Block block, Optional<boolean[]> parentNullVector, Field field, LinkedList<LinkedHashMap<Integer, Integer>> absoluteFieldProjections, List<Integer> path, int searchDepth)
     {
-        LOG.debug("QueryData(%s) traverseBlockProjectionPath for block=%s, field=%s, path=%s, searchDepth=%s, children=%s", traceStr, block, field, path, searchDepth, block.getChildren());
+        LOG.debug("QueryData(%s) traverseBlockProjectionPath for block=%s, field=%s, path=%s, searchDepth=%s", traceStr, block, field, path, searchDepth);
         if (searchDepth == path.size()) {
-            if (searchDepth == 0) {
-                return block;
-            }
-            else {
-                return rebuildBlockWithParentNulls(block, descendFieldChildPath(field, path), parentNullVector);
-            }
+            return block;
         }
         Integer projectionSubIndex = path.get(searchDepth);
         Integer blockChildIndex = absoluteFieldProjections.get(searchDepth).get(projectionSubIndex);
         Optional<boolean[]> nullsForChild = getNullVector(block, parentNullVector);
         LOG.debug("QueryData(%s) traverseBlockProjectionPath projectionSubIndex=%s, blockChildIndex=%s, nullsForChild=%s", traceStr, projectionSubIndex, blockChildIndex, nullsForChild.map(Arrays::toString).orElse("empty"));
-        Block child = block.getChildren().get(blockChildIndex);
+
+        Block child = getChildBlockByIndex(block, blockChildIndex);
         return traverseBlockProjectionPath(child, nullsForChild, field, absoluteFieldProjections, path, searchDepth + 1);
     }
 
-    private Block rebuildBlockWithParentNulls(Block block, Field field, Optional<boolean[]> parentNullVector)
+    private static Block getChildBlockByIndex(Block block, Integer blockChildIndex)
     {
-        boolean haveNullsFromParent = parentNullVector.isPresent();
-        int parentPositionCount = haveNullsFromParent ? parentNullVector.orElseThrow().length : block.getPositionCount();
-        if (field.getType().equals(ArrowType.List.INSTANCE)) {
-            LOG.debug("QueryData(%s) rebuildBlockWithParentNulls ARRAY block=%s, field=%s", traceStr, block, field);
-            ColumnarArray asColumnarBlock = ColumnarArray.toColumnarArray(block);
-            int[] offsets = haveNullsFromParent ?
-                    buildOffsetsConsideringParentNulls(asColumnarBlock::getOffset, parentNullVector.orElseThrow()) :
-                    getOffsets(asColumnarBlock.getPositionCount(), asColumnarBlock::getOffset);
-            Optional<boolean[]> nulls = haveNullsFromParent ? Optional.of(buildNullsConsideringParentNulls(asColumnarBlock::isNull, parentNullVector.orElseThrow())) :
-                    parentNullVector;
-            Block arrayBlock = ArrayBlock.fromElementBlock(parentPositionCount, nulls, offsets, Iterables.getOnlyElement(block.getChildren()));
-            LOG.debug("QueryData(%s) rebuildBlockWithParentNulls ARRAY returning block=%s, offsets=%s, nulls=%s", traceStr, arrayBlock, Arrays.toString(offsets), nulls.map(Arrays::toString).orElse("empty"));
-            return arrayBlock;
+        if (block instanceof RowBlock rowBlock) {
+            return rowBlock.getFieldBlock(blockChildIndex);
         }
-        else if (field.getType().equals(ArrowType.Struct.INSTANCE)) {
-            LOG.debug("QueryData(%s) rebuildBlockWithParentNulls ROW from block=%s, field=%s, nulls=%s", traceStr, block, field, parentNullVector.map(Arrays::toString).orElse("empty"));
-            Optional<boolean[]> nulls = haveNullsFromParent ? Optional.of(buildNullsConsideringParentNulls(block::isNull, parentNullVector.orElseThrow())) :
-                    parentNullVector;
-            Block rowBlock = RowBlock.fromFieldBlocks(parentPositionCount, nulls, block.getChildren().toArray(Block[]::new));
-            LOG.debug("QueryData(%s) rebuildBlockWithParentNulls ROW returning block=%s, nulls=%s", traceStr, rowBlock, nulls.map(Arrays::toString).orElse("empty"));
-            return rowBlock;
-        }
-        else if (field.getType() instanceof ArrowType.Map) {
-            LOG.debug("QueryData(%s) rebuildBlockWithParentNulls MAP block=%s, field=%s", traceStr, block, field);
-            ColumnarMap columnarMap = ColumnarMap.toColumnarMap(block);
-            Block keysBlock = columnarMap.getKeysBlock();
-            Block valuesBlock = columnarMap.getValuesBlock();
-            Type keyType = convertArrowFieldToTrinoType(field.getChildren().get(0).getChildren().get(0));
-            Type valueType = convertArrowFieldToTrinoType(field.getChildren().get(0).getChildren().get(1));
-            int[] offsets = haveNullsFromParent ?
-                    buildOffsetsConsideringParentNulls(columnarMap::getOffset, parentNullVector.orElseThrow()) :
-                    getOffsets(columnarMap.getPositionCount(), columnarMap::getOffset);
-            Optional<boolean[]> nulls = haveNullsFromParent ? Optional.of(buildNullsConsideringParentNulls(columnarMap::isNull, parentNullVector.orElseThrow())) :
-                    parentNullVector;
-            MapBlock mapBlock = MapBlock.fromKeyValueBlock(nulls, offsets, keysBlock, valuesBlock, new MapType(keyType, valueType, TYPE_OPERATORS));
-            LOG.debug("QueryData(%s) rebuildBlockWithParentNulls MAP returning block=%s, offsets=%s, nulls=%s", traceStr, mapBlock, Arrays.toString(offsets), nulls.map(Arrays::toString).orElse("empty"));
-            return mapBlock;
-        }
-        else {
-            LOG.debug("QueryData(%s) rebuildBlockWithParentNulls OTHER block=%s, field=%s", traceStr, block, field);
-            if (haveNullsFromParent) {
-                return expandNullsToMatchParent(parentNullVector.orElseThrow(), block, field);
+        else if (block instanceof MapBlock mapBlock) {
+            if (blockChildIndex == 0) {
+                return mapBlock.getMap(0).getRawKeyBlock();
+            }
+            else if (blockChildIndex == 1) {
+                return mapBlock.getMap(0).getRawValueBlock();
             }
             else {
-                return block;
+                throw new RuntimeException("Unexpected map block child index: " + blockChildIndex);
             }
         }
-    }
-
-    private Block expandNullsToMatchParent(boolean[] parentNullVector, Block block, Field field)
-    {
-        VastRecordBatchBuilder vastBuilder = new VastRecordBatchBuilder(new Schema(this.flatSchema));
-        ArrowType arrowType = field.getType();
-        Type trinoType = convertArrowFieldToTrinoType(field);
-        int parentPositionCount = parentNullVector.length;
-        BlockBuilder blockBuilder = trinoType.createBlockBuilder(new PageBuilderStatus().createBlockBuilderStatus(), parentPositionCount);
-        switch (arrowType.getTypeID()) {
-            case Int: {
-                ArrowType.Int type = (ArrowType.Int) arrowType;
-                if (!type.getIsSigned() && !TypeUtils.isRowId(field)) {
-                    throw new UnsupportedOperationException("Unsupported unsigned integer: " + type);
-                }
-                switch (type.getBitWidth()) {
-                    case 8:
-                        ValueEntryGetter<Byte> byteGetter = ValueEntryFunctionFactory.newGetter(x -> block.getByte(x, 0), block::isNull, x -> parentNullVector[x]);
-                        vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> ((ByteArrayBlockBuilder) blockBuilder).writeByte(value), x -> blockBuilder.appendNull()), false, parentPositionCount, byteGetter);
-                        return blockBuilder.build();
-                    case 16:
-                        ValueEntryGetter<Short> shortGetter = ValueEntryFunctionFactory.newGetter(x -> block.getShort(x, 0), block::isNull, x -> parentNullVector[x]);
-                        vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> ((ShortArrayBlockBuilder) blockBuilder).writeShort(value), x -> blockBuilder.appendNull()), false, parentPositionCount, shortGetter);
-                        return blockBuilder.build();
-                    case 32:
-                        ValueEntryGetter<Integer> intGetter = ValueEntryFunctionFactory.newGetter(x -> block.getInt(x, 0), block::isNull, x -> parentNullVector[x]);
-                        vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> ((IntArrayBlockBuilder) blockBuilder).writeInt(value), x -> blockBuilder.appendNull()), false, parentPositionCount, intGetter);
-                        return blockBuilder.build();
-                    case 64:
-                        ValueEntryGetter<Long> longGetter = ValueEntryFunctionFactory.newGetter(x -> block.getLong(x, 0), block::isNull, x -> parentNullVector[x]);
-                        vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> ((LongArrayBlockBuilder) blockBuilder).writeLong(value), x -> blockBuilder.appendNull()), false, parentPositionCount, longGetter);
-                        return blockBuilder.build();
-                    default:
-                        throw new UnsupportedOperationException("Unsupported integer size: " + type);
-                }
+        else if (block instanceof ArrayBlock arrayBlock){
+            if (blockChildIndex != 0) {
+                throw new RuntimeException("Unexpected array block child index: " + blockChildIndex);
             }
-            case FloatingPoint: {
-                ArrowType.FloatingPoint type = (ArrowType.FloatingPoint) arrowType;
-                switch (type.getPrecision()) {
-                    case SINGLE:
-                        ValueEntryGetter<Integer> intGetter = ValueEntryFunctionFactory.newGetter(x -> block.getInt(x, 0), block::isNull, x -> parentNullVector[x]);
-                        vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> ((IntArrayBlockBuilder) blockBuilder).writeInt(value), x -> blockBuilder.appendNull()), false, parentPositionCount, intGetter);
-                        return blockBuilder.build();
-                    case DOUBLE:
-                        ValueEntryGetter<Long> longGetter = ValueEntryFunctionFactory.newGetter(x -> block.getLong(x, 0), block::isNull, x -> parentNullVector[x]);
-                        vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> ((LongArrayBlockBuilder) blockBuilder).writeLong(value), x -> blockBuilder.appendNull()), false, parentPositionCount, longGetter);
-                        return blockBuilder.build();
-                    default:
-                        throw new UnsupportedOperationException("Unsupported floating-point precision: " + type);
-                }
+            try {
+                Method getRawElementBlock = ArrayBlock.class.getDeclaredMethod("getRawElementBlock");
+                getRawElementBlock.setAccessible(true);
+                return (Block) getRawElementBlock.invoke(arrayBlock);
             }
-            case Utf8:
-            case FixedSizeBinary:
-            case Binary: {
-                ValueEntryGetter<Slice> sliceGetter = ValueEntryFunctionFactory.newGetter(x -> {
-                    int sliceLength = block.getSliceLength(x);
-                    return block.getSlice(x, 0, sliceLength);
-                }, block::isNull, x -> parentNullVector[x]);
-                vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, slice) -> {
-                    ((VariableWidthBlockBuilder) blockBuilder).writeEntry(slice);
-                }, x -> blockBuilder.appendNull()), false, parentPositionCount, sliceGetter);
-                return blockBuilder.build();
-            }
-            case Bool: {
-                ValueEntryGetter<Byte> byteGetter = ValueEntryFunctionFactory.newGetter(x -> block.getByte(x, 0), block::isNull, x -> parentNullVector[x]);
-                vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> ((ByteArrayBlockBuilder) blockBuilder).writeByte(value), x -> blockBuilder.appendNull()), false, parentPositionCount, byteGetter);
-                return blockBuilder.build();
-            }
-            case Decimal: {
-                DecimalType decimalType = (DecimalType) trinoType;
-                if (decimalType.isShort()) {
-                    ValueEntryGetter<Long> longGetter = ValueEntryFunctionFactory.newGetter(x -> Decimals.readBigDecimal(decimalType, block, x).unscaledValue().longValueExact(), block::isNull, x -> parentNullVector[x]);
-                    vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> ((LongArrayBlockBuilder) blockBuilder).writeLong(value), x -> blockBuilder.appendNull()), false, parentPositionCount, longGetter);
-                }
-                else {
-                    ValueEntryGetter<BigDecimal> bigDecimalGetter = ValueEntryFunctionFactory.newGetter(x -> Decimals.readBigDecimal(decimalType, block, x), block::isNull, x -> parentNullVector[x]);
-                    vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> Decimals.writeBigDecimal(decimalType, blockBuilder, value), x -> blockBuilder.appendNull()), false, parentPositionCount, bigDecimalGetter);
-                }
-                return blockBuilder.build();
-            }
-            case Date: {
-                ValueEntryGetter<Integer> intGetter = ValueEntryFunctionFactory.newGetter(x -> block.getInt(x, 0), block::isNull, x -> parentNullVector[x]);
-                vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> ((IntArrayBlockBuilder) blockBuilder).writeInt(value), x -> blockBuilder.appendNull()), false, parentPositionCount, intGetter);
-                return blockBuilder.build();
-            }
-            case Timestamp:
-            case Time: {
-                ValueEntryGetter<Long> longGetter = ValueEntryFunctionFactory.newGetter(x -> block.getLong(x, 0), block::isNull, x -> parentNullVector[x]);
-                vastBuilder.copyTypeValues(ValueEntryFunctionFactory.newSetter((index, value) -> ((LongArrayBlockBuilder) blockBuilder).writeLong(value), x -> blockBuilder.appendNull()), false, parentPositionCount, longGetter);
-                return blockBuilder.build();
-            }
-            default:
-                throw new UnsupportedOperationException("Unsupported Arrow type: " + arrowType);
-        }
-    }
-
-    private boolean[] buildNullsConsideringParentNulls(IntFunction<Boolean> nullProvider, boolean[] parentNulls)
-    {
-        int positionCount = parentNulls.length;
-        boolean[] nulls = new boolean[positionCount];
-        int nestedPosition = 0;
-        for (int i = 0; i < positionCount; i++) {
-            if (parentNulls[i]) {
-                nulls[i] = true;
-            }
-            else {
-                nulls[i] = nullProvider.apply(nestedPosition);
-                nestedPosition++;
+            catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+                throw new RuntimeException("Failed extracting child block from array block", e);
             }
         }
-        return nulls;
-    }
-
-    private int[] buildOffsetsConsideringParentNulls(IntFunction<Integer> offsetProvider, boolean[] parentNulls)
-    {
-        int positionCount = parentNulls.length;
-        int[] offsets = new int[positionCount + 1];
-        offsets[0] = 0;
-        int origBlockOffsetIndex = 0;
-        for (int i = 0; i < positionCount; i++) {
-            if (parentNulls[i]) {
-                offsets[i + 1] = offsets[i];
-            }
-            else {
-                offsets[i + 1] = offsetProvider.apply(origBlockOffsetIndex + 1);
-                origBlockOffsetIndex++;
-            }
-        }
-        return offsets;
-    }
-
-    private int[] getOffsets(int positionCount, IntFunction<Integer> offsetProvider)
-    {
-        int[] offsets = new int[positionCount + 1];
-        offsets[0] = 0;
-        for (int i = 0; i < positionCount; i++) {
-            offsets[i + 1] = offsetProvider.apply(i + 1);
-        }
-        return offsets;
-    }
-
-    private Field descendFieldChildPath(Field field, List<Integer> path)
-    {
-        Field tmp = field;
-        for (Integer integer : path) {
-            tmp = tmp.getChildren().get(integer);
-        }
-        return tmp;
+        throw new RuntimeException(format("Unexpected block type for child block extraction: %s, blockChildIndex: %s", block.getClass(), blockChildIndex));
     }
 
     private Optional<boolean[]> getNullVector(Block block, Optional<boolean[]> parentNullVector)
@@ -701,7 +513,8 @@ public class QueryDataResponseSchemaConstructor
         }
     }
 
-    static QueryDataResponseSchemaConstructor deconstruct(String traceStr, Schema schema, List<Integer> projections, LinkedHashMap<Field, LinkedHashMap<List<Integer>, Integer>>  baseFieldWithProjections)
+    static QueryDataResponseSchemaConstructor deconstruct(String traceStr, Schema schema, List<Integer> projections,
+            LinkedHashMap<Field, LinkedHashMap<List<Integer>, Integer>>  baseFieldWithProjections)
     {
         LOG.debug("QueryData(%s): Analyzing schema projections: schema=%s, projections=%s, projectionPaths=%s", traceStr, schema, projections, baseFieldWithProjections);
         HashMap<Integer, Integer> reverseFlatMapping = new HashMap<>();

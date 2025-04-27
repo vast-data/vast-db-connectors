@@ -85,20 +85,29 @@ public class GetHandler
             String exactMatch = (exactMatchHeaderValue == null || exactMatchHeaderValue.isEmpty()) ? null : Iterables.getOnlyElement(exactMatchHeaderValue);
             Set<MockMapSchema> mockMapSchemas = schemaMap.get(bucket);
             Optional<MockMapSchema> existingSchema = mockMapSchemas.stream().filter(mockSchema -> mockSchema.getName().equals(schemaName)).findAny();
-            if (query.equals("table")) {
-                if (existingSchema.isPresent()) {
-                    MockMapSchema mockMapSchema = existingSchema.get();
-                    LOG.info("mockMapSchema = %s", mockMapSchema);
-                    FlatBufferBuilder b = MockSchemaUtil.getListTablesReply(bucket, schemaName, mockMapSchema, exactMatch);
-                    respondFlatBuffer(he, b);
-                }
-                else {
-                    respond(format("Schema %s does not exist in bucket %s", schemaName, bucket), he, 404);
-                }
-            }
-            else if (query.equals("schema")) {
-                // probably a nested schema url reply empty schema list
-                replyEmptySchemaList(he);
+            switch (query) {
+                case "table":
+                case "view":
+                    if (existingSchema.isPresent()) {
+                        MockMapSchema mockMapSchema = existingSchema.get();
+                        LOG.info("mockMapSchema = %s", mockMapSchema);
+                        FlatBufferBuilder b;
+                        if (query.equals("table")) {
+                            b = MockSchemaUtil.getListTablesReply(bucket, schemaName, mockMapSchema, exactMatch);
+                        }
+                        else {
+                            b = MockSchemaUtil.getListViewsReply(bucket, schemaName, mockMapSchema, exactMatch);
+                        }
+                        respondFlatBuffer(he, b);
+                    }
+                    else {
+                        respond(format("Schema %s does not exist in bucket %s", schemaName, bucket), he, 404);
+                    }
+                    break;
+                case "schema":
+                    // probably a nested schema url reply empty schema list
+                    replyEmptySchemaList(he);
+                    break;
             }
         }
         else if (parsedURL.hasTable()) {

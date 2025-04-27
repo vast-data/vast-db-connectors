@@ -22,6 +22,7 @@ import java.util.function.Consumer;
 
 import static com.vastdata.client.error.VastExceptionFactory.ioException;
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
+import static java.lang.String.format;
 
 public class VastResponseHandler
         implements ResponseHandler<VastResponse, RuntimeException>
@@ -51,18 +52,27 @@ public class VastResponseHandler
     @Override
     public VastResponse handleException(Request request, Exception exception)
     {
+        if (exception instanceof TimeoutException) {
+            String message = getRequestExceptionTitle(request);
+            LOG.error(exception, message);
+            // Add request information to exception message in case of a timeout (following ORION-110163)
+            String timeOutErrMessage = getRequestExceptionTitle(request, "Request failed due to timeout: %s");
+            LOG.error(exception, timeOutErrMessage);
+            throw new UncheckedIOException(timeOutErrMessage, new IOException(exception));
+        }
         String message = getRequestExceptionTitle(request);
         LOG.error(exception, message);
-        if (exception instanceof TimeoutException) {
-            // Add request information to exception message in case of a timeout (following ORION-110163)
-            throw new UncheckedIOException(message + " due to timeout", new IOException(exception));
-        }
         throw ResponseHandlerUtils.propagate(request, exception);
     }
 
     protected String getRequestExceptionTitle(Request request)
     {
-        return "Request failed: " + request;
+        return getRequestExceptionTitle(request, "Request failed: %s");
+    }
+
+    protected String getRequestExceptionTitle(Request request, String format)
+    {
+        return format(format, request);
     }
 
     @Override

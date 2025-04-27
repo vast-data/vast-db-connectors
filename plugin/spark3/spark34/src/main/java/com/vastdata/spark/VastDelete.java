@@ -21,8 +21,15 @@ import com.vastdata.spark.tx.VastAutocommitTransaction;
 import com.vastdata.spark.tx.VastSimpleTransactionFactory;
 import com.vastdata.spark.tx.VastSparkTransactionsManager;
 import ndb.NDB;
+import ndb.ka.NDBJobsListener;
 import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.spark.scheduler.JobFailed;
+import org.apache.spark.scheduler.JobResult;
+import org.apache.spark.scheduler.SparkListenerInterface;
+import org.apache.spark.scheduler.SparkListenerJobEnd;
+import org.apache.spark.scheduler.SparkListenerJobStart;
+import org.apache.spark.scheduler.StageInfo;
 import org.apache.spark.sql.connector.catalog.SupportsDeleteV2;
 import org.apache.spark.sql.connector.catalog.TableCapability;
 import org.apache.spark.sql.connector.expressions.filter.AlwaysFalse;
@@ -35,6 +42,8 @@ import org.apache.spark.sql.vectorized.ColumnarBatch;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import scala.collection.immutable.Seq;
+import scala.collection.immutable.Seq$;
 import spark.sql.catalog.ndb.TypeUtil;
 
 import java.net.URI;
@@ -47,8 +56,9 @@ import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -180,45 +190,81 @@ public class VastDelete
         }
     }
 
+    private void setErrorIfNotSet(AtomicReference<Throwable> errorHolder, Throwable throwable) {
+        if (errorHolder.get() == null) {
+            setErr(errorHolder, throwable);
+        }
+    }
+
+    private synchronized void setErr(AtomicReference<Throwable> errorHolder, Throwable throwable)
+    {
+        if (errorHolder.get() == null) {
+            errorHolder.set(throwable);
+        }
+    }
+
     private void delete(Predicate[] filters)
             throws Throwable
     {
         VastClient client = clientSupplier.get();
+        SparkListenerInterface sparkListenerInterface = NDBJobsListener.instance(clientSupplier, NDB.getConfig());
         Supplier<URI> endpointsSupplier = getClientsSupplier();
         ForkJoinPool forkJoinPool = new ForkJoinPool(16);
         Set<VastColumnarBatchReader> readersForVerifyAllocation = new HashSet<>();
         LinkedBlockingQueue<FieldVector> pages = new LinkedBlockingQueue<>(1000);
 
+        Optional<VastTraceToken> tokenHolder = Optional.empty();
         VastSparkTransactionsManager transactionsManager = VastSparkTransactionsManager.getInstance(client, new VastSimpleTransactionFactory());
+        AtomicReference<Throwable> errorRef = new AtomicReference<>();
         try (VastAutocommitTransaction tx = getTransaction(client, transactionsManager)) {
+            SparkListenerJobStart jobStart = new SparkListenerJobStart(-1, System.currentTimeMillis(), (Seq<StageInfo>) Seq$.MODULE$.empty(), null);
+            sparkListenerInterface.onJobStart(jobStart);
             VastTraceToken token = tx.generateTraceToken(Optional.empty());
-
+            tokenHolder = Optional.of(token);
             VastBatch batch = (VastBatch) getBatch(filters);
             VastInputPartition[] inputPartitions = (VastInputPartition[]) batch.planInputPartitions();
             VastPartitionReaderFactory readerFactory = (VastPartitionReaderFactory) batch.createReaderFactory(new SimpleVastTransaction(tx.getId(), tx.isReadOnly(), false));
             readerFactory.setForAlter();
-            AtomicBoolean error = new AtomicBoolean(false);
             Function<VastInputPartition, ForkJoinTask<Boolean>> queryDataSplit = inputPartition -> forkJoinPool.submit(() -> {
                 try (VastColumnarBatchReader reader = (VastColumnarBatchReader) readerFactory.createColumnarReader(inputPartition)) {
                     int splitId = inputPartition.getSplitId();
                     readersForVerifyAllocation.add(reader);
                     Thread.currentThread().setName(format("VastDelete-%s-%s", token, splitId));
-                    return iterateReader(pages, token, error, reader, splitId);
+                    return iterateReader(pages, token, () -> errorRef.get() != null, reader, splitId);
                 }
-                catch (Throwable e) {
-                    LOG.error(format("%s caught exception", token), e);
-                    error.set(true);
+                catch (InterruptedException | RuntimeException re) {
+                    LOG.error(format("%s VastDelete query page processor %s caught exception", token, inputPartition.getSplitId()), re);
+                    setErrorIfNotSet(errorRef, re);
                     tx.setCommit(false);
-                    throw toRuntime(e);
+                    throw re instanceof RuntimeException ? (RuntimeException) re : toRuntime(re);
                 }
             });
             List<ForkJoinTask<Boolean>> splits = Arrays.stream(inputPartitions).map(queryDataSplit).collect(Collectors.toList());
             processRowIdPages(client, endpointsSupplier, forkJoinPool, pages, tx, token, splits);
+            SparkListenerJobEnd jobEnd = new SparkListenerJobEnd(-1, System.currentTimeMillis(), null);
+            sparkListenerInterface.onJobEnd(jobEnd);
+        }
+        catch (Exception e) {
+            setErrorIfNotSet(errorRef, e);
+            JobResult res = new JobFailed(e);
+            SparkListenerJobEnd jobEnd = new SparkListenerJobEnd(-1, System.currentTimeMillis(), res);
+            sparkListenerInterface.onJobEnd(jobEnd);
+            throw e;
         }
         finally {
             forkJoinPool.shutdownNow();
             pages.forEach(FieldVector::close);
-            readersForVerifyAllocation.forEach(VastColumnarBatchReader::verifyBufferAllocation);
+            String forAllocationValidation = tokenHolder.map(VastTraceToken::toString).orElse("null");
+            readersForVerifyAllocation.forEach(r -> {
+                IllegalStateException illegalStateException = CommonVastColumnarBatchReader.verifyBufferAllocation(forAllocationValidation, r.getAllocator());
+                if (illegalStateException != null) {
+                    Throwable throwable = errorRef.get();
+                    if (throwable != null) {
+                        illegalStateException.addSuppressed(throwable);
+                    }
+                    throw illegalStateException;
+                }
+            });
         }
     }
 
@@ -244,10 +290,10 @@ public class VastDelete
         }
     }
 
-    private boolean iterateReader(LinkedBlockingQueue<FieldVector> pages, VastTraceToken token, AtomicBoolean error, VastColumnarBatchReader reader, int splitId)
+    private boolean iterateReader(LinkedBlockingQueue<FieldVector> pages, VastTraceToken token, BooleanSupplier error, VastColumnarBatchReader reader, int splitId)
             throws InterruptedException
     {
-        while (!error.get() && reader.next()) {
+        while (!error.getAsBoolean() && reader.next()) {
             LOG.debug("Split {}:{} Fetching next page", token, splitId);
             ColumnarBatch columnarBatch = reader.get();
             LOG.debug("Split {}:{} Fetched next page of {} rows and {} columns",
@@ -259,7 +305,7 @@ public class VastDelete
                 LOG.debug("Split {}:{} Successfully put page to Q: {}", token, splitId, newVector);
             }
         }
-        if (error.get()) {
+        if (error.getAsBoolean()) {
             LOG.warn("Split {}:{} is exiting because of an error in another split", token, splitId);
             return false;
         }

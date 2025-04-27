@@ -9,6 +9,10 @@ import com.google.flatbuffers.FlatBufferBuilder;
 import com.vastdata.client.FlatBufferSerializer;
 import com.vastdata.client.error.VastExceptionFactory;
 import com.vastdata.client.error.VastSerializationException;
+import org.apache.arrow.flatbuf.Message;
+import org.apache.arrow.flatbuf.MessageHeader;
+import org.apache.arrow.memory.ArrowBuf;
+import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.vector.BigIntVector;
 import org.apache.arrow.vector.BitVector;
@@ -19,9 +23,16 @@ import org.apache.arrow.vector.IntVector;
 import org.apache.arrow.vector.SmallIntVector;
 import org.apache.arrow.vector.TinyIntVector;
 import org.apache.arrow.vector.VarCharVector;
+import org.apache.arrow.vector.VectorLoader;
 import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.arrow.vector.compression.NoCompressionCodec;
 import org.apache.arrow.vector.ipc.ArrowStreamReader;
 import org.apache.arrow.vector.ipc.ArrowStreamWriter;
+import org.apache.arrow.vector.ipc.ReadChannel;
+import org.apache.arrow.vector.ipc.message.ArrowRecordBatch;
+import org.apache.arrow.vector.ipc.message.MessageChannelReader;
+import org.apache.arrow.vector.ipc.message.MessageResult;
+import org.apache.arrow.vector.ipc.message.MessageSerializer;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
@@ -29,6 +40,7 @@ import vast_flatbuf.tabular.AlterColumnRequest;
 import vast_flatbuf.tabular.AlterSchemaRequest;
 import vast_flatbuf.tabular.AlterTableRequest;
 import vast_flatbuf.tabular.CreateSchemaRequest;
+import vast_flatbuf.tabular.CreateViewRequest;
 import vast_flatbuf.tabular.ImportDataRequest;
 import vast_flatbuf.tabular.S3File;
 
@@ -37,6 +49,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -48,13 +61,13 @@ import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 
 public class ArrowSchemaUtils
 {
+    public static final String VASTDB_EXTERNAL_ROW_ID_COLUMN_NAME = "vastdb_rowid";
     // Returned by VAST server for DELETE/UPDATE support (see https://trino.io/docs/current/develop/delete-and-update.html)
     public static final Field ROW_ID_FIELD = Field.nullable("$row_id", new ArrowType.Int(64, false));
     public static final Field ROW_ID_FIELD_SIGNED = Field.nullable("$row_id", new ArrowType.Int(64, true));
     // "vastdb_rowid" is part of https://vastdata.atlassian.net/browse/ORION-132013
     // This feature exposes vast’s internal row ID for user defined allocation and efficient queries
-    public static final Field VASTDB_ROW_ID_FIELD = Field.nullable("vastdb_rowid", new ArrowType.Int(64, true));
-
+    public static final Field VASTDB_ROW_ID_FIELD = Field.nullable(VASTDB_EXTERNAL_ROW_ID_COLUMN_NAME, new ArrowType.Int(64, true));
 
     public Schema parseSchema(byte[] buffer, RootAllocator allocator)
             throws IOException
@@ -317,5 +330,74 @@ public class ArrowSchemaUtils
         int relationOffset = org.apache.arrow.computeir.flatbuf.Relation.createRelation(builder, org.apache.arrow.computeir.flatbuf.RelationImpl.Project, projectOffset);
         builder.finish(relationOffset);
         return builder.sizedByteArray(); // TODO: don't copy the data
+    }
+
+    public byte[] serializeCreateViewRequestBody(byte[] serializedSchema, byte[] serializedViewDetails)
+    {
+        FlatBufferBuilder builder = new FlatBufferBuilder(1024);
+        int viewMetadataArrowBufferVectorOffset = CreateViewRequest.createViewMetadataArrowBufferVector(builder, serializedViewDetails);
+        int schemaOffset = CreateViewRequest.createViewDataArrowSchemaVector(builder, serializedSchema);
+        CreateViewRequest.startCreateViewRequest(builder);
+        CreateViewRequest.addViewMetadataArrowBuffer(builder, viewMetadataArrowBufferVectorOffset);
+        CreateViewRequest.addViewDataArrowSchema(builder, schemaOffset);
+        int end = CreateViewRequest.endCreateViewRequest(builder);
+        builder.finish(end);
+        return builder.sizedByteArray();
+    }
+
+    public VectorSchemaRoot deserializeCreateViewRequestBody(byte[] bytes)
+            throws IOException
+    {
+        ByteBuffer wrap = ByteBuffer.wrap(bytes);
+        CreateViewRequest req = CreateViewRequest.getRootAsCreateViewRequest(wrap);
+        int schemaLength = req.viewDataArrowSchemaLength();
+        int mdLength = req.viewMetadataArrowBufferLength();
+
+        byte[] newSchemArr = new byte[schemaLength];
+        byte[] newMDArr = new byte[mdLength];
+        req.viewDataArrowSchemaAsByteBuffer().get(newSchemArr);
+        req.viewMetadataArrowBufferAsByteBuffer().get(newMDArr);
+
+        InputStream input = new ByteArrayInputStream(newSchemArr);
+        BufferAllocator allocator = new RootAllocator(Long.MAX_VALUE);
+        MessageChannelReader messageChannelReader = new MessageChannelReader(new ReadChannel(Channels.newChannel(input)), allocator);
+
+        MessageResult messageResult = messageChannelReader.readNext();
+        if (messageResult == null) {
+            messageChannelReader.readNext();
+        }
+        input = new ByteArrayInputStream(newMDArr);
+        messageChannelReader = new MessageChannelReader(new ReadChannel(Channels.newChannel(input)), allocator);
+        MessageResult result = messageChannelReader.readNext();
+        Message message = result.getMessage();
+        byte headerType = message.headerType();
+        Schema schema2;
+        if (headerType == MessageHeader.Schema) {
+            schema2 = MessageSerializer.deserializeSchema(message);
+        }
+        else {
+            throw new IOException("Unexpected header type. Expected Schema but got: " + headerType);
+        }
+        result = messageChannelReader.readNext();
+        message = result.getMessage();
+        headerType = message.headerType();
+        if (headerType == MessageHeader.RecordBatch) {
+            ArrowBuf bodyBuffer = result.getBodyBuffer();
+
+            // For zero-length batches, need an empty buffer to deserialize the batch
+            if (bodyBuffer == null) {
+                bodyBuffer = allocator.getEmpty();
+            }
+
+            VectorSchemaRoot root = VectorSchemaRoot.create(schema2, allocator);
+            VectorLoader loader = new VectorLoader(root, NoCompressionCodec.Factory.INSTANCE);
+            try (ArrowRecordBatch batch = MessageSerializer.deserializeRecordBatch(message, bodyBuffer)) {
+                loader.load(batch); // load `root` vectors from batch
+            }
+            return root;
+        }
+        else {
+            throw new IOException("Unexpected header type. Expected RecordBatch but got: " + headerType);
+        }
     }
 }

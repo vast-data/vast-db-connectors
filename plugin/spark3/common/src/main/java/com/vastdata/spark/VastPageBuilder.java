@@ -9,6 +9,7 @@ import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.types.pojo.Schema;
+import org.apache.arrow.vector.util.VectorSchemaRootAppender;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -43,19 +44,17 @@ public class VastPageBuilder
     {
         int rowCount = Math.toIntExact(batches.stream().mapToLong(batch -> (long) batch.getRowCount()).sum());
         VectorSchemaRoot result = VectorSchemaRoot.create(requestedSchema, allocator);
-        IntStream.range(0, requestedSchema.getFields().size()).forEach(col -> {
-            FieldVector resultColumn = result.getVector(col);
-            int resultIndex = 0;
-            for (VectorSchemaRoot batch : batches) {
-                FieldVector sourceColumn = batch.getVector(col);
-                for (int i = 0; i < batch.getRowCount(); ++i) {
-                    // TODO: can be optimized for scalar types (ORION-91972)
-                    resultColumn.copyFromSafe(i, resultIndex++, sourceColumn);
-                }
-            }
-        });
+        if (rowCount > 0) {
+            IntStream.range(0, requestedSchema.getFields().size()).forEach(col -> {
+                FieldVector resultColumn = result.getVector(col);
+                resultColumn.setValueCount(rowCount);
+                resultColumn.setInitialCapacity(rowCount);
+                resultColumn.allocateNew();
+            });
+            VectorSchemaRootAppender.append(result, batches.toArray(new VectorSchemaRoot[0]));
+        }
         result.setRowCount(rowCount);
-        return result;
+        return new FullSliceExtractor(requestedSchema).apply(result);
     }
 
     @Override

@@ -4,6 +4,7 @@
 
 package com.vastdata.spark;
 
+import com.vastdata.client.ArrowQueryDataSchemaHelper;
 import com.vastdata.client.BaseQueryDataResponseParser;
 import com.vastdata.client.QueryDataPageBuilder;
 import com.vastdata.client.QueryDataPagination;
@@ -21,6 +22,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static com.google.common.base.Verify.verify;
+import static com.vastdata.spark.SparkArrowVectorUtil.VAST_ROW_ID_TO_SPARK_ROW_ID_VECTOR_ADAPTOR;
 
 public class QueryDataResponseParser
         extends BaseQueryDataResponseParser<VectorSchemaRoot>
@@ -28,12 +30,14 @@ public class QueryDataResponseParser
     private static final Logger LOG = LoggerFactory.getLogger(QueryDataResponseParser.class);
 
     private final BufferAllocator allocator;
+    private final ArrowQueryDataSchemaHelper schemaHelper;
 
     public QueryDataResponseParser(
-            VastTraceToken traceToken, Schema arrowSchema,
+            VastTraceToken traceToken, ArrowQueryDataSchemaHelper schemaHelper,
             VastDebugConfig debugConfig, QueryDataPagination pagination, Optional<Long> limitTotalRows, BufferAllocator allocator)
     {
-        super(traceToken, arrowSchema.getFields(), pagination, limitTotalRows, debugConfig);
+        super(traceToken, schemaHelper.getFields(), pagination, limitTotalRows, debugConfig);
+        this.schemaHelper = schemaHelper;
         this.allocator = allocator;
     }
 
@@ -46,17 +50,19 @@ public class QueryDataResponseParser
     @Override
     protected VectorSchemaRoot joinPages(List<VectorSchemaRoot> pages)
     {
-        verify(pages.size() > 0);
+        verify(!pages.isEmpty());
         int rowCount = pages.get(0).getRowCount();
         List<FieldVector> vectors = pages
                 .stream()
                 .flatMap(page -> page.getFieldVectors().stream())
+                .map(VAST_ROW_ID_TO_SPARK_ROW_ID_VECTOR_ADAPTOR)
                 .collect(Collectors.toList());
-        VectorSchemaRoot result = new VectorSchemaRoot(vectors);
-        result.setRowCount(rowCount);
-        // TODO: handle nested types by merging field vectors correctly
-        totalPositions.addAndGet(result.getRowCount());
-        LOG.debug("{} joined page: rowCount={}, totalPositions={}", traceStr, rowCount, totalPositions.get());
+
+        VectorSchemaRoot result = schemaHelper.construct(vectors, rowCount, allocator);
+        pages.forEach(VectorSchemaRoot::close);
+        vectors.forEach(FieldVector::close);
+        totalPositions.addAndGet(rowCount);
+        LOG.debug("{} joined page: rowCount={}, totalPositions={}, result: {}", traceStr, result.getRowCount(), totalPositions.get(), result.getSchema());
         return result;
     }
 

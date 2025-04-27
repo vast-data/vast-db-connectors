@@ -43,12 +43,11 @@ public class ShowNDBTableColumnsCommand
         genericInternalRow.update(1, structField.dataType());
         genericInternalRow.update(2, structField.nullable());
         genericInternalRow.update(3, structField.metadata());
-        builder.$plus$eq(genericInternalRow);
+        builder.addOne(genericInternalRow);
     };
     private final Seq<Attribute> columns;
     private IndexedSeq<SparkPlan> children = null;
 
-    // private constructor so that copy by reflection will return same instance
     private ShowNDBTableColumnsCommand(Seq<Attribute> attributeSeq) {
         super();
         this.columns = attributeSeq;
@@ -57,7 +56,7 @@ public class ShowNDBTableColumnsCommand
     @Override
     public scala.collection.immutable.Seq<InternalRow> run()
     {
-        Builder<InternalRow, List<InternalRow>> builder = List$.MODULE$.<InternalRow>newBuilder();
+        Builder<InternalRow, List<InternalRow>> builder = List$.MODULE$.newBuilder();
         IntStream.range(0, columns.size())
                 .mapToObj(columns::apply)
                 .map(ATTRIBUTE_STRUCT_FIELD_FUNCTION)

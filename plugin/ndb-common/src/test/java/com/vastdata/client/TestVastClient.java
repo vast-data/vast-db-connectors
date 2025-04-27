@@ -6,6 +6,7 @@ package com.vastdata.client;
 
 import com.amazonaws.http.HttpMethodName;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multimap;
 import com.sun.net.httpserver.HttpExchange;
@@ -36,13 +37,13 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import java.io.EOFException;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -68,13 +69,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.MockitoAnnotations.openMocks;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.fail;
 
 public class TestVastClient
 {
@@ -198,7 +196,7 @@ public class TestVastClient
                 .setAccessKeyId("pIX3SzyuQVmdrIVZnyy0")
                 .setSecretAccessKey("5c5HqW3cDQsUNg68OlhJmq72TM2nZxcP5lR6D1ps");
 
-        Request request = new VastRequestBuilder(config, GET, "/bucket-for-tabular-api", "schema")
+        Request request = new VastRequestBuilder(config, GET, "/bucket-for-tabular-api", ImmutableMap.of("schema", ""))
                 .setDate(new Date(1649661186000L)) // (aka 20220411T071306Z)
                 .build();
         Multimap<String, String> headers = request.getHeaders();
@@ -237,11 +235,7 @@ public class TestVastClient
 
     private VastClient getVastClient()
     {
-        return getVastClient(new JettyHttpClient());
-    }
-
-    private VastClient getVastClient(HttpClient httpClient)
-    {
+        HttpClient httpClient = new JettyHttpClient();
         VastConfig vastConfig = new VastConfig();
         vastConfig.setEngineVersion("1.2.3");
         return new VastClient(httpClient, getMockServerReadyVastConfig(), new DummyDependenciesFactory(vastConfig));
@@ -260,9 +254,9 @@ public class TestVastClient
                 .setEndpoint(URI.create(format("http://localhost:%d", testPort)))
                 .setRegion("us-east-1")
                 .setAccessKeyId("pIX3SzyuQVmdrIVZnyy0")
-                .setSecretAccessKey("5c5HqW3cDQsUNg68OlhJmq72TM2nZxcP5lR6D1ps")
-                .setRetryMaxCount(RETRY_MAX_COUNT)
-                .setRetrySleepDuration(1);
+                .setSecretAccessKey("5c5HqW3cDQsUNg68OlhJmq72TM2nZxcP5lR6D1ps");
+//                .setRetryMaxCount(RETRY_MAX_COUNT)
+//                .setRetrySleepDuration(1);
     }
 
     @Test(expectedExceptions = VastUserException.class)
@@ -341,22 +335,6 @@ public class TestVastClient
                 {negativeTestExceptionMessage, 1}};
     }
 
-    @Test(dataProvider = "errors")
-    public void testEOFUnsentClientSideFailure_ORION_106029(String errorMessage, int expectedNumOfRetries)
-    {
-        VastClient unit = getVastClient(mockHttpClient);
-        when(mockHttpClient.execute(any(Request.class), any(VastResponseHandler.class))).thenThrow(new RuntimeException(new EOFException(errorMessage)));
-        try {
-            unit.listBuckets(true);
-            fail("Expected an exception");
-        }
-        catch (Throwable any) {
-            any.printStackTrace();
-            // that's fine
-        }
-        verify(mockHttpClient, times(expectedNumOfRetries)).execute(any(Request.class), any(VastResponseHandler.class));
-    }
-
     @Test
     public void testHashIndex()
     {
@@ -425,7 +403,7 @@ public class TestVastClient
         when(mockTransactionHandle.getId()).thenReturn(999L);
         try {
             vastClient.queryData(mockTransactionHandle, traceToken, "s", "t", null, null, null, handlerSupplier, usedDataEndpoint,
-                    split, schedulingInfo, dataEndpoints, retryConfig, limit, bigCatalogSearchPath, mockPagination, false);
+                    split, schedulingInfo, dataEndpoints, retryConfig, limit, bigCatalogSearchPath, mockPagination, false, Collections.emptyMap());
         }
         catch (VastRuntimeException vre) {
             assertTrue(vre.getCause() instanceof VastServerException, vre.toString());

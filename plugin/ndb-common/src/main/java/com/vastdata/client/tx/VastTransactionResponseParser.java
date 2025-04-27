@@ -6,23 +6,29 @@ package com.vastdata.client.tx;
 
 import com.vastdata.client.RequestsHeaders;
 import com.vastdata.client.VastResponse;
+import com.vastdata.client.error.VastException;
 import com.vastdata.client.error.VastExceptionFactory;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Multimap;
+import com.vastdata.client.error.VastRuntimeException;
 import io.airlift.http.client.HeaderName;
 import io.airlift.http.client.HttpStatus;
 import io.airlift.log.Logger;
 
 import java.util.Collection;
+import java.util.Optional;
 import java.util.function.Function;
 
+import static com.vastdata.client.error.VastExceptionFactory.checkResponseStatus;
 import static com.vastdata.client.error.VastExceptionFactory.serverException;
+import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 import static java.util.Objects.requireNonNull;
 
 class VastTransactionResponseParser
         implements Function<VastResponse, ParsedStartTransactionResponse>
 {
     private static final Logger LOG = Logger.get(VastTransactionResponseParser.class);
+    private static final VastRuntimeException FAILED_STARTING_TRANSACTION_GENERIC_ERROR = VastExceptionFactory.toRuntime(VastExceptionFactory.serverException("Start transaction failed"));
 
     @Override
     public ParsedStartTransactionResponse apply(VastResponse vastResponse)
@@ -35,8 +41,11 @@ class VastTransactionResponseParser
             return new ParsedStartTransactionResponse(txid);
         }
         else {
-            LOG.error("Start transaction failed: %s", vastResponse);
-            throw VastExceptionFactory.toRuntime(VastExceptionFactory.serverException("Failed starting transaction"));
+            String errMessage = "Failed starting transaction";
+            LOG.error("%s: %s", errMessage, vastResponse);
+            throw checkResponseStatus(vastResponse, errMessage)
+                    .map(VastExceptionFactory::toRuntime)
+                    .orElse(FAILED_STARTING_TRANSACTION_GENERIC_ERROR);
         }
     }
 

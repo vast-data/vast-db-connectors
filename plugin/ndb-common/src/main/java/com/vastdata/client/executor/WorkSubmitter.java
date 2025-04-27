@@ -9,6 +9,7 @@ import io.airlift.log.Logger;
 import java.net.URI;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -21,13 +22,13 @@ class WorkSubmitter<T>
     private static final Logger LOG = Logger.get(WorkSubmitter.class);
     private final Supplier<Function<URI, T>> workSupplier;
     private final Predicate<T> successConsumer;
-    private final Consumer<Throwable> exceptionsHandler;
+    private final BiConsumer<Throwable, URI> exceptionsHandler;
     private final Consumer<WorkExecutor<T>> retryConsumer;
     private final Supplier<RetryStrategy> retryStrategySupplier;
     private final BooleanSupplier circuitBreaker;
     private final LinkedBlockingDeque<WorkExecutor<T>> workQueue;
 
-    WorkSubmitter(Supplier<Function<URI, T>> workSupplier, Predicate<T> successConsumer, Consumer<Throwable> exceptionsHandler,
+    WorkSubmitter(Supplier<Function<URI, T>> workSupplier, Predicate<T> successConsumer, BiConsumer<Throwable, URI> exceptionsHandler,
             Consumer<WorkExecutor<T>> retryConsumer, Supplier<RetryStrategy> retryStrategySupplier,
             BooleanSupplier circuitBreaker, LinkedBlockingDeque<WorkExecutor<T>> workQueue)
     {

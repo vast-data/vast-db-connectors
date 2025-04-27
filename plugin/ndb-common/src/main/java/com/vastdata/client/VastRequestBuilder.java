@@ -10,8 +10,10 @@ import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.auth.internal.SignerConstants;
 import com.amazonaws.http.HttpMethodName;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMultimap;
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Multimap;
 import io.airlift.http.client.HttpUriBuilder;
 import io.airlift.http.client.Request;
@@ -20,7 +22,7 @@ import io.airlift.log.Logger;
 
 import java.io.ByteArrayInputStream;
 import java.net.URI;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.Map;
 import java.util.Optional;
@@ -37,22 +39,27 @@ public class VastRequestBuilder
     private Optional<Date> date;
     private Optional<byte[]> body;
 
-    public VastRequestBuilder(VastConfig config, HttpMethodName method, String path, String... parameters)
+    public VastRequestBuilder(VastConfig config, HttpMethodName method, String path)
+    {
+        this(config.getEndpoint(), config, method, path, EMPTY_KV_PARAMS, Collections.emptyMap());
+    }
+
+    public VastRequestBuilder(VastConfig config, HttpMethodName method, String path, Map<String, String> parameters)
     {
         this(config.getEndpoint(), config, method, path, EMPTY_KV_PARAMS, parameters);
     }
 
-    public VastRequestBuilder(VastConfig config, HttpMethodName method, String path, Optional<Map<String, String>> keyValueParams, String... parameters)
+    public VastRequestBuilder(VastConfig config, HttpMethodName method, String path, Optional<Map<String, String>> keyValueParams, Map<String, String> parameters)
     {
         this(config.getEndpoint(), config, method, path, keyValueParams, parameters);
     }
 
-    public VastRequestBuilder(URI endpoint, VastConfig config, HttpMethodName method, String path, String... parameters)
+    public VastRequestBuilder(URI endpoint, VastConfig config, HttpMethodName method, String path, Map<String, String> parameters)
     {
         this(endpoint, config, method, path, EMPTY_KV_PARAMS, parameters);
     }
 
-    public VastRequestBuilder(URI endpoint, VastConfig config, HttpMethodName method, String path, Optional<Map<String, String>> keyValueParams, String... parameters)
+    public VastRequestBuilder(URI endpoint, VastConfig config, HttpMethodName method, String path, Optional<Map<String, String>> keyValueParams, Map<String, String> parameters)
     {
         // will be signed
         this.awsRequest = new DefaultRequest<>(SERVICE);
@@ -60,7 +67,7 @@ public class VastRequestBuilder
         this.awsRequest.addHeader(SignerConstants.X_AMZ_CONTENT_SHA256, "required");
         this.awsRequest.setHttpMethod(method);
         this.awsRequest.setResourcePath(path);
-        Arrays.stream(parameters).forEach(name -> this.awsRequest.addParameter(name, ""));
+        parameters.forEach(this.awsRequest::addParameter);
         this.date = Optional.empty();
         this.config = config;
         this.body = Optional.empty();
@@ -68,7 +75,14 @@ public class VastRequestBuilder
         // prepare the actual HttpRequest to be sent
         this.builder = new Request.Builder().setMethod(awsRequest.getHttpMethod().name());
         HttpUriBuilder uriBuilder = HttpUriBuilder.uriBuilderFrom(awsRequest.getEndpoint()).appendPath(awsRequest.getResourcePath());
-        this.awsRequest.getParameters().keySet().forEach(uriBuilder::addParameter);
+        this.awsRequest.getParameters().forEach((k, v) -> {
+            if (Iterables.isEmpty(v) || Strings.isNullOrEmpty(Iterables.getOnlyElement(v))) {
+                uriBuilder.addParameter(k);
+            }
+            else {
+                uriBuilder.addParameter(k, v);
+            }
+        });
         keyValueParams.ifPresent(params -> params.forEach((k, v) -> {
             this.awsRequest.addParameter(k, v);
             uriBuilder.addParameter(k, v);

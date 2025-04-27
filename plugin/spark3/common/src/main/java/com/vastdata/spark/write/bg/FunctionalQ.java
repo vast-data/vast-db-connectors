@@ -19,18 +19,20 @@ public class FunctionalQ<T>
         implements Supplier<T>, Consumer<T>, WriteExecutionComponent
 {
     private static final Logger LOG = LoggerFactory.getLogger(FunctionalQ.class);
+    private static final int MAX_TIMEOUT_FACTOR = 50;
+    private static final int TIMEOUT_GROWTH_FACTOR = 2;
     private static final int qOfferTimeoutMs = 10 * 1000;
     private final LinkedBlockingQueue<T> objectsQueue;
     private final int ordinal;
-    private final int qPollTimeout;
+    private final int qInitialPollTimeout;
     private final Predicate<WriteExecutionComponent> noMoreElementsToAccept;
     private final String name;
 
     // typeClass is passed only for logging type class at runtime
-    public FunctionalQ(Class<T> typeClass, String traceToken, int ordinal, int qPollTimeoutMs, int qSize, Predicate<WriteExecutionComponent> noMoreElementsToAccept) {
+    public FunctionalQ(Class<T> typeClass, String traceToken, int ordinal, int qInitialPollTimeoutMs, int qSize, Predicate<WriteExecutionComponent> noMoreElementsToAccept) {
         name = format("FunctionalQ<%s>%s", typeClass.getSimpleName(), traceToken);
         this.ordinal = ordinal;
-        this.qPollTimeout = qPollTimeoutMs;
+        this.qInitialPollTimeout = qInitialPollTimeoutMs;
         objectsQueue = new LinkedBlockingQueue<>(qSize);
         this.noMoreElementsToAccept = noMoreElementsToAccept;
     }
@@ -51,17 +53,19 @@ public class FunctionalQ<T>
     @Override
     public T get()
     {
+        int qPollTimeout = qInitialPollTimeout;
         try {
             T poll;
             do {
                 poll = objectsQueue.poll(qPollTimeout, TimeUnit.MILLISECONDS);
                 if (poll == null) {
                     LOG.info("{} is empty for {} ms, retrying poll", name(), qPollTimeout);
+                    qPollTimeout = Math.min(qPollTimeout * TIMEOUT_GROWTH_FACTOR, qInitialPollTimeout * MAX_TIMEOUT_FACTOR);
                 }
             }
             while (poll == null && !noMoreElementsToAccept.test(this));
             if (noMoreElementsToAccept.test(this) && poll == null) { // once more to make sure the Q is drained in case of race conditions
-                return objectsQueue.poll(qPollTimeout, TimeUnit.MILLISECONDS);
+                return objectsQueue.poll(qInitialPollTimeout, TimeUnit.MILLISECONDS);
             }
             return poll;
         }

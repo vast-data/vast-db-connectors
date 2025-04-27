@@ -71,12 +71,6 @@ public class VastSplit
     }
 
     @Override
-    public Object getInfo()
-    {
-        return this;
-    }
-
-    @Override
     public long getRetainedSizeInBytes()
     {
         return INSTANCE_SIZE

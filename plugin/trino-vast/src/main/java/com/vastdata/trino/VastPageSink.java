@@ -32,7 +32,6 @@ import java.util.List;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 import static com.vastdata.trino.VastSessionProperties.getImportChunkLimit;
@@ -65,8 +64,8 @@ public class VastPageSink
         this.client = client;
         this.transaction = transaction;
         this.handle = handle;
-        List<VastColumnHandle> columns = handle.getColumns();
-        List<Field> fields = columns.stream().map(VastColumnHandle::getField).collect(Collectors.toList());
+        final List<VastColumnHandle> columns = handle.getColumns();
+        final List<Field> fields = columns.stream().map(VastColumnHandle::getField).toList();
         this.schema = new Schema(fields);
         this.session = session;
         this.builder = new VastRecordBatchBuilder(schema);

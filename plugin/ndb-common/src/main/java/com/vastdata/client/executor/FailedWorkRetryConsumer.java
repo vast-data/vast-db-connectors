@@ -6,6 +6,8 @@ package com.vastdata.client.executor;
 
 import com.vastdata.client.error.VastExceptionFactory;
 
+import java.net.URI;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
@@ -14,9 +16,9 @@ public class FailedWorkRetryConsumer<T>
         implements Consumer<WorkExecutor<T>>
 {
     private final Consumer<WorkExecutor<T>> retryAction;
-    private final Consumer<Throwable> exceptionHandler;
+    private final BiConsumer<Throwable, URI> exceptionHandler;
 
-    public FailedWorkRetryConsumer(Consumer<WorkExecutor<T>> retryAction, Consumer<Throwable> exceptionHandler)
+    public FailedWorkRetryConsumer(Consumer<WorkExecutor<T>> retryAction, BiConsumer<Throwable, URI> exceptionHandler)
     {
         this.retryAction = retryAction;
         this.exceptionHandler = exceptionHandler;
@@ -36,7 +38,7 @@ public class FailedWorkRetryConsumer<T>
             retryAction.accept(workExecutor);
         }
         else {
-            exceptionHandler.accept(VastExceptionFactory.maxRetries(retryStrategy.getCurrentRetryCount()));
+            exceptionHandler.accept(VastExceptionFactory.maxRetries(retryStrategy.getCurrentRetryCount()), null);
         }
     }
 }

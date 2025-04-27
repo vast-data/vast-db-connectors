@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static io.trino.spi.expression.StandardFunctions.EQUAL_OPERATOR_FUNCTION_NAME;
-import static io.trino.spi.expression.StandardFunctions.IS_DISTINCT_FROM_OPERATOR_FUNCTION_NAME;
+import static io.trino.spi.expression.StandardFunctions.IDENTICAL_OPERATOR_FUNCTION_NAME;
 import static io.trino.spi.expression.StandardFunctions.IS_NULL_FUNCTION_NAME;
 import static io.trino.spi.expression.StandardFunctions.NOT_FUNCTION_NAME;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
@@ -29,7 +29,7 @@ public class TestVastProjectionPushdown
 
     private static Optional<VastExpression> apply(ConnectorExpression expression)
     {
-        return pushdown.apply(expression).map(result -> result.getPushedDown().get(0));
+        return pushdown.apply(expression).map(result -> result.getPushedDown().getFirst());
     }
 
     @Test
@@ -75,7 +75,7 @@ public class TestVastProjectionPushdown
         assertThat(apply(expression).map(VastExpression::getSymbol))
                 .isEqualTo(Optional.of("equal(s,)"));
 
-        expression = new Call(BOOLEAN, IS_DISTINCT_FROM_OPERATOR_FUNCTION_NAME, List.of(
+        expression = new Call(BOOLEAN, IDENTICAL_OPERATOR_FUNCTION_NAME, List.of(
                 new Variable("x", INTEGER),
                 new Variable("y", INTEGER)));
         assertThat(apply(expression).map(VastExpression::getSymbol))

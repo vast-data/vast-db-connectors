@@ -25,6 +25,7 @@ import org.apache.spark.sql.vectorized.ColumnarBatch;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -37,7 +38,7 @@ public class VastPartitionReaderFactory
     private static final Logger LOG = LoggerFactory.getLogger(VastPartitionReaderFactory.class);
     private final String schemaName;
     private final String tableName;
-    private StructType schema;
+    private final StructType schema;
     private final Integer limit;
     private List<List<VastPredicate>> predicates;
     private final VastSchedulingInfo schedulingInfo;
@@ -89,7 +90,8 @@ public class VastPartitionReaderFactory
             return new EmptyBatchSupplier(schema, partition);
         }
         else {
-            return new VastColumnarBatchReader(tx, batchID, vastConfig, schemaName, tableName, (VastInputPartition) partition, schema, limit, predicates, schedulingInfo, forAlter);
+            return new VastColumnarBatchReader(tx, batchID, vastConfig, schemaName, tableName,
+                    (VastInputPartition) partition, schema, limit, predicates, schedulingInfo, forAlter, Collections.emptyMap());
         }
     }
 
@@ -108,11 +110,5 @@ public class VastPartitionReaderFactory
     {
         LOG.info("{} Updating predicates for table: {}, predicates: {}", batchID, tableName, predicates);
         this.predicates = predicates;
-    }
-
-    void updateProjections(StructType schema)
-    {
-        LOG.info("{} Updating projections for table: {}, projections: {}", batchID, tableName, schema);
-        this.schema = schema;
     }
 }

@@ -48,7 +48,6 @@ import org.apache.arrow.vector.types.pojo.Schema;
 import sun.misc.Unsafe;
 
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -116,12 +115,10 @@ public class VastPageBuilder
     private final Schema schema;
     private final List<VectorSchemaRoot> batches;
     private final String traceStr;
-    private final Optional<String> printBlockPrefix;
 
     public VastPageBuilder(String traceStr, Schema schema)
     {
         this.traceStr = traceStr;
-        printBlockPrefix = Optional.of(format("QueryData(%s) Printing resulted", traceStr));
         this.schema = schema;
         this.batches = new ArrayList<>(DEFAULT_BATCHES_CAPACITY);
     }
@@ -131,11 +128,6 @@ public class VastPageBuilder
     {
         batches.add(root);
         return this;
-    }
-
-    private void printBlock(Block block)
-    {
-        TypeUtils.printBlock(block, printBlockPrefix);
     }
 
     @Override
@@ -168,8 +160,7 @@ public class VastPageBuilder
 
     private boolean isTimeType(Type type, int precision)
     {
-        if (type instanceof TimeType) {
-            TimeType timeType = (TimeType) type;
+        if (type instanceof TimeType timeType) {
             return timeType.getPrecision() == precision;
         }
         else {
@@ -179,8 +170,7 @@ public class VastPageBuilder
 
     private boolean isTimestampType(Type type, int precision)
     {
-        if (type instanceof TimestampType) {
-            TimestampType timestampType = (TimestampType) type;
+        if (type instanceof TimestampType timestampType) {
             return timestampType.getPrecision() == precision;
         }
         else {
@@ -207,11 +197,14 @@ public class VastPageBuilder
             }
             else {
                 boolean[] childNulls = vectorIsNull.orElseThrow();
-                boolean[] newChildNulls = new boolean[childNulls.length];
+                boolean[] newChildNulls = new boolean[parentNulls.length];
                 int newSize = 0;
                 for (int i = 0; i < childNulls.length; i++) {
                     if (!parentNulls[i]) {
                         newChildNulls[newSize++] = childNulls[i];
+                    }
+                    else {
+                        newChildNulls[newSize++] = true;
                     }
                 }
                 return (newSize != childNulls.length) ?
@@ -237,7 +230,6 @@ public class VastPageBuilder
             if (parentVectorIsNull.isPresent()) {
                 int[] offsets = buildOffsetsUsingParentNullsVector(vectors, parentVectorIsNull.orElseThrow());
                 verify(offsets[offsets.length - 1] == totalBytes, "QueryData(%s) last offset is %s, instead of %s", traceStr, offsets[offsets.length - 1], totalBytes);
-                LOG.info("QueryData(%s) VARTRACE returning VariableWidthBlock block for type %s", traceStr, type);
                 return new VariableWidthBlock(offsets.length - 1, slice, offsets, compactedIsNull);
             }
             else {
@@ -344,8 +336,7 @@ public class VastPageBuilder
             }
             return builder.build();
         }
-        else if (type instanceof DecimalType) {
-            DecimalType decimalType = (DecimalType) type;
+        else if (type instanceof DecimalType decimalType) {
             BlockBuilder builder = decimalType.createFixedSizeBlockBuilder(positions);
             if (parentVectorIsNull.isPresent()) {
                 if (decimalType.isShort()) {
@@ -388,8 +379,7 @@ public class VastPageBuilder
             vectors.forEach(vector -> copyTimeNanos(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull));
             return builder.build();
         }
-        else if (type instanceof TimestampType) {
-            TimestampType timestampType = (TimestampType) type;
+        else if (type instanceof TimestampType timestampType) {
             BlockBuilder builder = timestampType.createFixedSizeBlockBuilder(positions);
             TimeUnit unit = ((ArrowType.Timestamp) arrowType).getUnit();
             if (timestampType.isShort()) {
@@ -404,8 +394,7 @@ public class VastPageBuilder
             }
             return builder.build();
         }
-        else if (type instanceof ArrayType) {
-            ArrayType arrayType = (ArrayType) type;
+        else if (type instanceof ArrayType arrayType) {
             Field subfield = Iterators.getOnlyElement(field.getChildren().iterator());
             List<FieldVector> subvectors = vectors
                     .stream()
@@ -432,8 +421,7 @@ public class VastPageBuilder
                     traceStr, positions, compactedIsNull.map(Arrays::toString).orElse("empty"), Arrays.toString(offsets), values, block);
             return block;
         }
-        else if (type instanceof RowType) { // Map is two separate row blocks, built here
-            RowType rowType = (RowType) type;
+        else if (type instanceof RowType rowType) { // Map is two separate row blocks, built here
             List<RowType.Field> nestedFields = rowType.getFields();
             int numberOfNestedFields = nestedFields.size();
             ArrayList<ArrayList<FieldVector>> nestedFieldsVectors = new ArrayList<>(numberOfNestedFields);
@@ -450,25 +438,28 @@ public class VastPageBuilder
             Optional<boolean[]> rowIsNullForChildren;
             int rowPositionCount;
             if (parentVectorIsNull.isPresent()) {
-                LOG.info("QueryData(%s) Row column - parent null vector is present and of size=%s", traceStr, parentVectorIsNull.orElseThrow().length);
+                LOG.debug("QueryData(%s) Row column - parent null vector is present and of size=%s", traceStr, parentVectorIsNull.orElseThrow().length);
                 rowIsNullForChildren = parentVectorIsNull;
                 rowPositionCount = compactedIsNull.orElseThrow().length;
             }
             else {
-                LOG.info("QueryData(%s) Row column - parent null vector is empty, passing self compacted null vector of size=%s", traceStr, compactedIsNull.isPresent() ? compactedIsNull.orElseThrow().length : "empty");
                 rowIsNullForChildren = compactedIsNull;
                 rowPositionCount = positions;
+                LOG.debug("QueryData(%s) Row column - parent null vector is empty, passing self compacted null vector of size=%s, rowPositionCount=%s",
+                        traceStr, compactedIsNull.isPresent() ? compactedIsNull.orElseThrow().length : "empty", rowPositionCount);
             }
             Block[] nestedBlocks = new Block[numberOfNestedFields];
             for (int i = 0; i < numberOfNestedFields; i++) {
                 ArrayList<FieldVector> nestedFieldVectors = nestedFieldsVectors.get(i);
-                Field nestedArrowField = nestedFieldVectors.get(0).getField();
+                Field nestedArrowField = nestedFieldVectors.getFirst().getField();
                 Type nestedTrinoType = nestedFields.get(i).getType();
+                LOG.debug("QueryData(%s) Row column - calling buildBlock. nestedTrinoType=%s, nestedArrowField=%s, positions=%s, rowIsNullForChildren=%s",
+                        traceStr, nestedTrinoType, nestedArrowField, positions, rowIsNullForChildren);
                 nestedBlocks[i] = buildBlock(nestedTrinoType, nestedArrowField, positions, nestedFieldVectors, rowIsNullForChildren);
             }
-            LOG.info("QueryData(%s) Row column - constructing from field blocks. positions=%s (original positions=%s), nulls=%s, blocks=%s",
+            LOG.debug("QueryData(%s) Row column - constructing from field blocks. positions=%s (original positions=%s), nulls=%s, blocks=%s",
                     traceStr, rowPositionCount, positions, compactedIsNull.map(Arrays::toString).orElse("empty"), Arrays.asList(nestedBlocks));
-            return RowBlock.fromFieldBlocks(rowPositionCount, compactedIsNull, nestedBlocks);
+            return RowBlock.fromNotNullSuppressedFieldBlocks(rowPositionCount, compactedIsNull, nestedBlocks);
         }
         throw new UnsupportedOperationException(format("QueryData(%s) unsupported %s type: %s", traceStr, type, vectors));
     }
@@ -508,8 +499,11 @@ public class VastPageBuilder
             for (int i = 0; i < vector.getValueCount(); ++i) {
                 if (!parentNulls[parentRelativeIndex]) {
                     offsets[entry] = vectorOffsetsBase + offsetBuffer.getInt((long) OFFSET_WIDTH * (i + 1));
-                    entry += 1;
                 }
+                else {
+                    offsets[entry] = offsets[entry - 1];
+                }
+                entry++;
                 parentRelativeIndex++;
             }
         }
@@ -614,6 +608,9 @@ public class VastPageBuilder
                         builder.appendNull();
                     }
                 }
+                else {
+                    builder.appendNull();
+                }
             }
         }
     }
@@ -648,6 +645,9 @@ public class VastPageBuilder
                         builder.appendNull();
                     }
                 }
+                else {
+                    builder.appendNull();
+                }
             }
         }
     }
@@ -679,6 +679,9 @@ public class VastPageBuilder
                     else {
                         builder.appendNull();
                     }
+                }
+                else {
+                    builder.appendNull();
                 }
             }
         }
@@ -714,6 +717,9 @@ public class VastPageBuilder
                         builder.appendNull();
                     }
                 }
+                else {
+                    builder.appendNull();
+                }
             }
         }
     }
@@ -745,6 +751,9 @@ public class VastPageBuilder
                     else {
                         builder.appendNull();
                     }
+                }
+                else {
+                    builder.appendNull();
                 }
             }
         }
@@ -780,6 +789,9 @@ public class VastPageBuilder
                         builder.appendNull();
                     }
                 }
+                else {
+                    builder.appendNull();
+                }
             }
         }
     }
@@ -814,6 +826,9 @@ public class VastPageBuilder
                     builder.appendNull();
                 }
             }
+            else {
+                builder.appendNull();
+            }
         }
     }
 
@@ -842,6 +857,9 @@ public class VastPageBuilder
                 else {
                     builder.appendNull();
                 }
+            }
+            else {
+                builder.appendNull();
             }
         }
     }
@@ -872,6 +890,9 @@ public class VastPageBuilder
                     builder.appendNull();
                 }
             }
+            else {
+                builder.appendNull();
+            }
         }
     }
 
@@ -887,6 +908,9 @@ public class VastPageBuilder
                 else {
                     builder.appendNull();
                 }
+            }
+            else {
+                builder.appendNull();
             }
         }
     }
@@ -904,6 +928,9 @@ public class VastPageBuilder
                     builder.appendNull();
                 }
             }
+            else {
+                builder.appendNull();
+            }
         }
     }
 
@@ -919,6 +946,9 @@ public class VastPageBuilder
                 else {
                     builder.appendNull();
                 }
+            }
+            else {
+                builder.appendNull();
             }
         }
     }
@@ -936,6 +966,9 @@ public class VastPageBuilder
                     builder.appendNull();
                 }
             }
+            else {
+                builder.appendNull();
+            }
         }
     }
 
@@ -952,6 +985,9 @@ public class VastPageBuilder
                     builder.appendNull();
                 }
             }
+            else {
+                builder.appendNull();
+            }
         }
     }
 
@@ -967,6 +1003,9 @@ public class VastPageBuilder
                 else {
                     builder.appendNull();
                 }
+            }
+            else {
+                builder.appendNull();
             }
         }
     }
@@ -998,6 +1037,9 @@ public class VastPageBuilder
                 else {
                     builder.appendNull();
                 }
+            }
+            else {
+                builder.appendNull();
             }
         }
     }

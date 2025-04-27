@@ -47,8 +47,8 @@ public class QueryDataResponseParser
     @Override
     protected Page joinPages(List<Page> pages)
     {
-        verify(pages.size() > 0);
-        int rows = pages.get(0).getPositionCount();
+        verify(!pages.isEmpty());
+        int rows = pages.getFirst().getPositionCount();
         int columnCount = pages.stream().mapToInt(Page::getChannelCount).sum();
         Block[] blocks = new Block[columnCount];
         int blockIndex = 0;

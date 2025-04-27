@@ -17,6 +17,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -40,7 +41,7 @@ public class WorkLoad<T>
     private final long threadPoolTerminationTimeout = THREAD_POOL_TERMINATION_TIMEOUT_DEFAULT;
 
     private WorkLoad(Supplier<Function<URI, T>> workSupplier, BooleanSupplier circuitBreaker,
-            Predicate<T> successfulWorkConsumer, Consumer<Throwable> workExecutionExceptionsHandler,
+            Predicate<T> successfulWorkConsumer, BiConsumer<Throwable, URI> workExecutionExceptionsHandler,
             Supplier<RetryStrategy> retryStrategySupplier, List<URI> endpoints, String workLoadThreadsPrefix, VastTraceToken traceToken)
     {
         this.traceToken = traceToken;
@@ -102,7 +103,7 @@ public class WorkLoad<T>
         private Supplier<RetryStrategy> retryStrategy;
         private BooleanSupplier circuitBreaker;
         private Predicate<T> successConsumer;
-        private Consumer<Throwable> exceptionsHandler;
+        private BiConsumer<Throwable, URI> exceptionsHandler;
         private List<URI> endpoints;
         private String threadsPrefix;
         private VastTraceToken traceToken;
@@ -148,7 +149,7 @@ public class WorkLoad<T>
             return this;
         }
 
-        public Builder<T> setWorkConsumers(Predicate<T> successConsumer, Consumer<Throwable> exceptionsHandler)
+        public Builder<T> setWorkConsumers(Predicate<T> successConsumer, BiConsumer<Throwable, URI> exceptionsHandler)
         {
             this.successConsumer = successConsumer;
             this.exceptionsHandler = exceptionsHandler;

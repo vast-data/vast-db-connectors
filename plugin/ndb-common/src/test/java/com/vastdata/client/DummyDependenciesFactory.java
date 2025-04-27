@@ -5,6 +5,8 @@
 package com.vastdata.client;
 
 import com.vastdata.client.stats.StatisticsUrlExtractor;
+import io.airlift.configuration.ConfigDefaults;
+import io.airlift.http.client.HttpClientConfig;
 
 import java.util.function.Predicate;
 
@@ -30,6 +32,12 @@ public class DummyDependenciesFactory
     public VastRequestHeadersBuilder getHeadersFactory()
     {
         return new CommonRequestHeadersBuilder(() -> "DUMMY-" + vastConfig.getEngineVersion());
+    }
+
+    @Override
+    public ConfigDefaults<HttpClientConfig> getHttpClientConfigConfigDefaults()
+    {
+        return null;
     }
 
     @Override

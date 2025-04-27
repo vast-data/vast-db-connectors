@@ -5,6 +5,7 @@
 package com.vastdata.client.executor;
 
 import java.net.URI;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -14,11 +15,11 @@ class WorkExecutor<T>
 {
     private final Function<URI, T> work;
     private final Predicate<T> successConsumer;
-    private final Consumer<Throwable> exceptionsConsumer;
+    private final BiConsumer<Throwable, URI> exceptionsConsumer;
     private final RetryStrategy retryStrategy;
     private final Consumer<WorkExecutor<T>> retryConsumer;
 
-    protected WorkExecutor(Function<URI, T> work, Predicate<T> successConsumer, Consumer<Throwable> exceptionsConsumer,
+    protected WorkExecutor(Function<URI, T> work, Predicate<T> successConsumer, BiConsumer<Throwable, URI> exceptionsConsumer,
             RetryStrategy retryStrategy, Consumer<WorkExecutor<T>> retryConsumer)
     {
         this.work = work;
@@ -37,7 +38,7 @@ class WorkExecutor<T>
             }
         }
         catch (Throwable any) {
-            this.exceptionsConsumer.accept(any);
+            this.exceptionsConsumer.accept(any, endpoint);
         }
     }
 

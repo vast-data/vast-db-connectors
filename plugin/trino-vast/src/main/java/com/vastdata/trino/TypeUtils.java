@@ -6,7 +6,6 @@ package com.vastdata.trino;
 
 import io.airlift.log.Logger;
 import io.trino.spi.TrinoException;
-import io.trino.spi.block.Block;
 import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.CharType;
 import io.trino.spi.type.DecimalType;
@@ -15,21 +14,20 @@ import io.trino.spi.type.RowType;
 import io.trino.spi.type.TimeType;
 import io.trino.spi.type.TimestampType;
 import io.trino.spi.type.Type;
+import io.trino.spi.type.TypeId;
 import io.trino.spi.type.TypeOperators;
 import io.trino.spi.type.VarcharType;
 import org.apache.arrow.flatbuf.Precision;
-import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.types.FloatingPointPrecision;
 import org.apache.arrow.vector.types.TimeUnit;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.FieldType;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 import static com.google.common.base.Verify.verify;
 import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_FIELD;
@@ -127,11 +125,11 @@ public final class TypeUtils
                         .collect(Collectors.toList()));
             case List:
                 verify(field.getChildren().size() == 1, "unexpected number of %s children: %s", field, field.getChildren());
-                Type itemType = convertArrowFieldToTrinoType(field.getChildren().get(0));
+                Type itemType = convertArrowFieldToTrinoType(field.getChildren().getFirst());
                 return new ArrayType(itemType);
             case Map:
                 verify(field.getChildren().size() == 1, "unexpected number of %s children: %s", field, field.getChildren());
-                Field entries = field.getChildren().get(0);
+                Field entries = field.getChildren().getFirst();
                 verify(entries.getType().getTypeID() == ArrowType.ArrowTypeID.Struct, "unexpected entries type: %s", entries);
                 verify(entries.getChildren().size() == 2, "unexpected number of %s children: %s", entries, entries.getChildren());
                 Type keyType = convertArrowFieldToTrinoType(entries.getChildren().get(0));
@@ -144,34 +142,22 @@ public final class TypeUtils
 
     private static int timeUnitToPrecision(TimeUnit timeUnit)
     {
-        switch (timeUnit) {
-            case SECOND:
-                return 0;
-            case MILLISECOND:
-                return 3;
-            case MICROSECOND:
-                return 6;
-            case NANOSECOND:
-                return 9;
-            default:
-                throw new TrinoException(NOT_SUPPORTED, format("Unsupported Arrow type time unit: %s", timeUnit));
-        }
+        return switch (timeUnit) {
+            case SECOND -> 0;
+            case MILLISECOND -> 3;
+            case MICROSECOND -> 6;
+            case NANOSECOND -> 9;
+        };
     }
 
     public static long timeUnitToPicos(TimeUnit timeUnit)
     {
-        switch (timeUnit) {
-            case SECOND:
-                return 1_000_000_000_000L;
-            case MILLISECOND:
-                return 1_000_000_000L;
-            case MICROSECOND:
-                return 1_000_000L;
-            case NANOSECOND:
-                return 1_000L;
-            default:
-                throw new TrinoException(NOT_SUPPORTED, format("Unsupported Arrow type time unit: %s", timeUnit));
-        }
+        return switch (timeUnit) {
+            case SECOND -> 1_000_000_000_000L;
+            case MILLISECOND -> 1_000_000_000L;
+            case MICROSECOND -> 1_000_000L;
+            case NANOSECOND -> 1_000L;
+        };
     }
 
     public static long convertTwoValuesNanoToLong(long micros, int picos)
@@ -193,18 +179,108 @@ public final class TypeUtils
 
     public static TimeUnit precisionToTimeUnit(int precision)
     {
-        switch (precision) {
-            case 0:
-                return TimeUnit.SECOND;
-            case 3:
-                return TimeUnit.MILLISECOND;
-            case 6:
-                return TimeUnit.MICROSECOND;
-            case 9:
-                return TimeUnit.NANOSECOND;
-            default:
-                throw new TrinoException(NOT_SUPPORTED, format("Unsupported precision for Trino type: %d", precision));
+        return switch (precision) {
+            case 0 -> TimeUnit.SECOND;
+            case 3 -> TimeUnit.MILLISECOND;
+            case 6 -> TimeUnit.MICROSECOND;
+            case 9 -> TimeUnit.NANOSECOND;
+            default -> throw new TrinoException(NOT_SUPPORTED, format("Unsupported precision for Trino type: %d", precision));
+        };
+    }
+
+    private static TypeArg parseTrinoTypeId(final String typeId)
+    {
+        final String cellName;
+        final int typeBegin;
+        if ('"' == typeId.charAt(0)) {
+            int nameEnd = 1;
+            while ('"' != typeId.charAt(nameEnd)) {
+                ++nameEnd;
+            }
+            cellName = typeId.substring(1, nameEnd);
+            if (' ' != typeId.charAt(nameEnd + 1)) {
+                throw new IllegalStateException(format("expected ' ' after cell name but found '%s'", typeId.charAt(nameEnd + 1)));
+            }
+            typeBegin = nameEnd + 2;
         }
+        else {
+            cellName = null;
+            typeBegin = 0;
+        }
+        int depth = 0;
+        int lastDelimiter = -1;
+        final List<String> args = new ArrayList<>();
+        String currentTypeName = null;
+        for (int i = typeBegin; i < typeId.length(); ++i) {
+            final char c = typeId.charAt(i);
+            if ('(' == c) {
+                ++depth;
+                if (1 == depth) {
+                    lastDelimiter = i;
+                    if (null != currentTypeName) {
+                        throw new IllegalStateException(format("currentTypeName expected to be null but currentTypeName = %s", currentTypeName));
+                    }
+                    currentTypeName = typeId.substring(typeBegin, i);
+                }
+            }
+            else if (')' == c) {
+                --depth;
+                if (0 == depth) {
+                    args.add(typeId.substring(lastDelimiter + 1, i));
+                }
+            }
+            else if (1 == depth && ',' == c) {
+                args.add(typeId.substring(lastDelimiter + 1, i));
+                lastDelimiter = i;
+            }
+        }
+        if (0 != depth) {
+            throw new IllegalStateException(format("depth expected to be 0 but depth = %d", depth));
+        }
+        if (null == currentTypeName) {
+            if (-1 != lastDelimiter) {
+                throw new IllegalStateException(format("lastDelimitier expected to be -1 but lastDelimiter = %d", lastDelimiter));
+            }
+            currentTypeName = typeId.substring(typeBegin);
+        }
+
+        final Type currentType = switch (currentTypeName) {
+            case "boolean" -> BOOLEAN;
+            case "bigint" -> BIGINT;
+            case "integer" -> INTEGER;
+            case "smallint" -> SMALLINT;
+            case "tinyint" -> TINYINT;
+            case "real" -> REAL;
+            case "double" -> DOUBLE;
+            // case "varchar" -> VARCHAR;
+            // case "varchar(n)" -> VarcharType.createVarcharType(Integer.parseInt(args.getFirst()));
+            case "varchar" -> args.isEmpty() ? VARCHAR : VarcharType.createVarcharType(Integer.parseInt(args.getFirst()));
+            // case "char(n)" -> CharType.createCharType(Integer.parseInt(args.getFirst()));
+            case "char" -> CharType.createCharType(Integer.parseInt(args.getFirst()));
+            case "varbinary" -> VARBINARY;
+            case "date" -> DATE;
+            // case "timestamp(n)" -> TimestampType.createTimestampType(Integer.parseInt(args.getFirst()));
+            case "timestamp" -> TimestampType.createTimestampType(Integer.parseInt(args.getFirst()));
+            // case "time(n)" -> TimeType.createTimeType(Integer.parseInt(args.getFirst()));
+            case "time" -> TimeType.createTimeType(Integer.parseInt(args.getFirst()));
+            // case "decimal(n,m)" -> DecimalType.createDecimalType(Integer.parseInt(args.getFirst()), Integer.parseInt(args[1]));
+            case "decimal" -> DecimalType.createDecimalType(Integer.parseInt(args.getFirst()), Integer.parseInt(args.get(1)));
+            // case "array(...)" -> new ArrayType(parseTrinoTypeId(args.getFirst()));
+            case "array" -> new ArrayType(parseTrinoTypeId(args.getFirst()).type);
+            // case "map(...)" -> new MapType(parseTrinoTypeId(args.getFirst()), parseTrinoTypeId(args[1]), new TypeOperators());
+            case "map" -> new MapType(parseTrinoTypeId(args.getFirst()).type, parseTrinoTypeId(args.get(1)).type, new TypeOperators());
+            // case "row(...)" -> ...
+            case "row" -> RowType.from(args.stream().map(TypeUtils::parseTrinoTypeId).map(arg ->
+                arg.name == null ? RowType.field(arg.type) : RowType.field(arg.name, arg.type)
+            ).toList());
+            default -> throw new IllegalArgumentException(format("Invalid parseTrinoTypeId currentTypeName: \"%s\", type id: \"%s\"", currentTypeName, typeId));
+        };
+        return new TypeArg(cellName, currentType);
+    }
+
+    public static Type parseTrinoTypeId(final TypeId typeId)
+    {
+        return parseTrinoTypeId(typeId.getId()).type;
     }
 
     public static Field convertTrinoTypeToArrowField(Type trinoType, String name, boolean nullable)
@@ -241,8 +317,8 @@ public final class TypeUtils
         else if (trinoType instanceof VarcharType) {
             arrowType = ArrowType.Utf8.INSTANCE;
         }
-        else if (trinoType instanceof CharType) {
-            arrowType = new ArrowType.FixedSizeBinary(((CharType) trinoType).getLength());
+        else if (trinoType instanceof CharType charType) {
+            arrowType = new ArrowType.FixedSizeBinary(charType.getLength());
         }
         else if (VARBINARY.equals(trinoType)) {
             arrowType = ArrowType.Binary.INSTANCE;
@@ -250,32 +326,27 @@ public final class TypeUtils
         else if (DATE.equals(trinoType)) {
             arrowType = new ArrowType.Date(DAY);
         }
-        else if (trinoType instanceof TimestampType) {
-            TimestampType ts = (TimestampType) trinoType;
+        else if (trinoType instanceof TimestampType ts) {
             TimeUnit timeUnit = precisionToTimeUnit(ts.getPrecision());
             arrowType = new ArrowType.Timestamp(timeUnit, null);
         }
-        else if (trinoType instanceof TimeType) {
-            TimeType ts = (TimeType) trinoType;
+        else if (trinoType instanceof TimeType ts) {
             int precision = ts.getPrecision();
             TimeUnit timeUnit = precisionToTimeUnit(precision);
             int bits = precision > 3 ? 64 : 32;
             arrowType = new ArrowType.Time(timeUnit, bits);
         }
-        else if (trinoType instanceof DecimalType) {
-            DecimalType decimalType = (DecimalType) trinoType;
+        else if (trinoType instanceof DecimalType decimalType) {
             arrowType = ArrowType.Decimal.createDecimal(decimalType.getPrecision(), decimalType.getScale(), 128);
         }
-        else if (trinoType instanceof ArrayType) {
+        else if (trinoType instanceof ArrayType arrayType) {
             arrowType = ArrowType.List.INSTANCE;
-            ArrayType arrayType = (ArrayType) trinoType;
             children = List.of(
                     convertTrinoTypeToArrowField(arrayType.getElementType(), ARRAY_ITEM_COLUMN_NAME, true /*nullable*/));
         }
-        else if (trinoType instanceof MapType) {
+        else if (trinoType instanceof MapType mapType) {
             // For details, see https://github.com/apache/arrow/blob/apache-arrow-7.0.0/format/Schema.fbs#L103-L131
             arrowType = new ArrowType.Map(false /*keySorted*/);
-            MapType mapType = (MapType) trinoType;
             Field keyField = convertTrinoTypeToArrowField(mapType.getKeyType(), MAP_KEY_COLUMN_NAME, false /*nullable*/);
             Field valueField = convertTrinoTypeToArrowField(mapType.getValueType(), MAP_VALUE_COLUMN_NAME, true /*nullable*/);
             children = List.of(
@@ -312,24 +383,5 @@ public final class TypeUtils
             value;
     }
 
-    // keeping unused method - useful for debugging
-    public static void printVector(FieldVector vector, Optional<String> printPrefix)
-    {
-        if (LOG.isDebugEnabled()) {
-            String prefixToPrint = printPrefix.map(s -> s + " ").orElse("");
-            LOG.debug("%svector: %s, of type %s", prefixToPrint, vector, vector.getField().getType());
-            LOG.debug("%svector null vector: %s", prefixToPrint, IntStream.range(0, vector.getValueCount()).boxed().map(vector::isNull).collect(Collectors.toList()));
-            vector.getChildrenFromFields().forEach(child -> printVector(child, printPrefix));
-        }
-    }
-
-    public static void printBlock(Block block, Optional<String> printPrefix)
-    {
-        if (LOG.isDebugEnabled()) {
-            String prefixToPrint = printPrefix.map(s -> s + " ").orElse("");
-            LOG.debug("%sblock: %s, of type %s", prefixToPrint, block, block.getClass());
-            LOG.debug("%sblock null vector: %s", prefixToPrint, IntStream.range(0, block.getPositionCount()).boxed().map(block::isNull).collect(Collectors.toList()));
-            block.getChildren().forEach(child -> printBlock(child, printPrefix));
-        }
-    }
+    private final static record TypeArg(String name, Type type) { }
 }

@@ -14,18 +14,23 @@ import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.HttpClientConfig;
 import io.airlift.http.client.jetty.JettyHttpClient;
 import org.slf4j.Logger;
-import scala.collection.mutable.HashMap;
 
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 
 public abstract class NDBCommon
 {
     protected static Logger LOG = null;
+    public static final String TRANSACTION_KEY = "tx";
 
     protected static final AtomicBoolean isInitialized = new AtomicBoolean(false);
-    protected static Supplier<Supplier<HashMap<String, String>>> envSupplierSupplier = () -> null;
+    public static BiConsumer<Boolean, UnaryOperator<Optional<String>>> alterTransaction = (cancelOnFailure, f) -> {
+        throw new IllegalStateException("Env supplier is unset");
+    };
     protected static Supplier<VastConfig> vastConfigSupplier = null;
     protected static Function<VastConfig, VastDependenciesFactory> dependencyFactoryFunction = null;
     protected static Runnable initRoutine = null;
@@ -52,7 +57,7 @@ public abstract class NDBCommon
     }
 
     // called using ndb.NDB.init(spark)
-    protected static synchronized void init()
+    protected static void init()
     {
         if (!isInitialized.get()) {
             initCommonConfig(vastConfigSupplier.get());
@@ -65,7 +70,7 @@ public abstract class NDBCommon
     protected static synchronized void initCommonConfig(VastConfig vastConfig)
     {
         if (!isInitialized.get()) {
-            VastAutocommitTransaction.envSupplier = envSupplierSupplier.get();
+            VastAutocommitTransaction.alterTransaction = alterTransaction;
             setCommonConfig(vastConfig, dependencyFactoryFunction);
             isInitialized.set(true);
         }
