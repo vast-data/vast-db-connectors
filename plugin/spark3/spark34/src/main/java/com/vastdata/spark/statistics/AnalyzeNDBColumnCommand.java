@@ -76,31 +76,31 @@ public class AnalyzeNDBColumnCommand
 
     @Override
     public Seq<InternalRow> run() {
-        SparkSession session = session();
-        LogicalPlan rel = session.table(relation.name()).logicalPlan();
-        Seq<Attribute> columns = rel.output();
+        final SparkSession session = session();
+        final LogicalPlan rel = session.table(relation.name()).logicalPlan();
+        final Seq<Attribute> columns = rel.output();
         LOG.info("Running analyze command with columns: {}", columns);
-        Tuple2<Object, Map<Attribute, ColumnStat>> calculatedStats = CommandUtils$.MODULE$.computeColumnStats(session, rel, columns);
-        long rowCount = (Long) calculatedStats._1;
-        VastStatistics tableStats = StatsUtils.getTableLevelStats(getVastClient(), this.table.getTableMD().schemaName, this.table.getTableMD().tableName);
-        BigInt sizeInBytes = BigInt.apply(tableStats.getSizeInBytes());
+        final Tuple2<Object, Map<Attribute, ColumnStat>> calculatedStats = CommandUtils$.MODULE$.computeColumnStats(session, rel, columns);
+        final long rowCount = (Long) calculatedStats._1;
+        final VastStatistics tableStats = StatsUtils.getTableLevelStats(getVastClient(), this.table.getTableMD().schemaName, this.table.getTableMD().tableName);
+        final BigInt sizeInBytes = BigInt.apply(tableStats.getSizeInBytes());
         LOG.info("Fetched table level statistics for table {}, statistics: numRows={}, sizeInBytes={}",
                 this.table.getTableMD().tableName, tableStats.getNumRows(), tableStats.getSizeInBytes());
-        AttributeMap<ColumnStat> columnStats = getColumnStatAttributeMap(calculatedStats._2);
-        Statistics stats = new Statistics(sizeInBytes, Option.apply(BigInt.apply(rowCount)), columnStats, false);
+        final AttributeMap<ColumnStat> columnStats = getColumnStatAttributeMap(calculatedStats._2);
+        final Statistics stats = new Statistics(sizeInBytes, Option.apply(BigInt.apply(rowCount)), columnStats, false);
         SparkVastStatisticsManager.getInstance().setTableStatistics(table, stats);
         LOG.info("Saved statistics for table {} to spark persistent statistics: {}, {}", this.table.name(), stats.simpleString(), stats.attributeStats());
 
         stats.attributeStats().foreach(tup -> {
-            Attribute attribute = tup._1;
-            ColumnStat columnStat = tup._2;
+            final Attribute attribute = tup._1;
+            final ColumnStat columnStat = tup._2;
             LOG.info("Printing Statistics details for column: {}", attribute);
-            Object maxValue = getValue(columnStat.max());
-            Object minValue = getValue(columnStat.min());
+            final Object maxValue = getValue(columnStat.max());
+            final Object minValue = getValue(columnStat.min());
             String histogramsBinsLength = "Not available";
-            Option<Histogram> histogramOption = columnStat.histogram();
+            final Option<Histogram> histogramOption = columnStat.histogram();
             if (histogramOption != null && histogramOption.nonEmpty()) {
-                Histogram colHist = histogramOption.get();
+                final Histogram colHist = histogramOption.get();
                 histogramsBinsLength = String.valueOf(colHist.bins().length);
             }
             LOG.info("Column {} Stats - min: {}, max: {}, histogram bins: {}", attribute, minValue, maxValue, histogramsBinsLength);

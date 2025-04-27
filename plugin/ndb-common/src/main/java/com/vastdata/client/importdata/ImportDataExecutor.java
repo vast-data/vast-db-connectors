@@ -8,6 +8,7 @@ import com.vastdata.client.ParsedURL;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastResponse;
 import com.vastdata.client.VerifyParam;
+import com.vastdata.client.error.VastRuntimeException;
 import com.vastdata.client.tx.VastTransaction;
 import com.vastdata.client.error.ImportDataFailure;
 import com.vastdata.client.error.VastException;
@@ -25,11 +26,13 @@ import org.apache.arrow.vector.types.pojo.Field;
 
 import java.io.InputStream;
 import java.net.URI;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -84,7 +87,7 @@ public class ImportDataExecutor<T extends VastTransaction>
             VerifyParam.verify(client.listBuckets(false).contains(bucket), format("ImportData(%s): Bucket %s doesn't exist", traceToken, bucket));
             VerifyParam.verify(client.schemaExists(vastTransaction, schemaName), format("ImportData(%s): Schema name %s doesn't exist", traceToken, schemaName));
             VerifyParam.verify(client.listTables(vastTransaction, schemaName, 1000).anyMatch(tableName::equals), format("ImportData(%s): Table %s doesn't exist", traceToken, tableName));
-            final List<Field> fields = client.listColumns(vastTransaction, schemaName, VastImportDataMetadataUtils.getTableNameForAPI(tableName), 1000);
+            final List<Field> fields = client.listColumns(vastTransaction, schemaName, VastImportDataMetadataUtils.getTableNameForAPI(tableName), 1000, Collections.emptyMap());
             final Map<String, Field> fieldsMap = fields.stream().collect(Collectors.toMap(Field::getName, Function.identity()));
             ctx.getSourceFiles().forEach(f -> f.setFieldsDefaultValues(fieldsMap));
         }
@@ -108,9 +111,15 @@ public class ImportDataExecutor<T extends VastTransaction>
             List<ImportDataContext> importDataContextsPerFile = chunkifyImportFilesList(ctx, dataEndpoints);
 
             AtomicBoolean anyFailed = new AtomicBoolean(false);
-            Consumer<Throwable> exceptionsHandler = any -> {
-                LOG.error(any, "ImportData(%s): Caught exception during execution", traceToken);
-                importDataFailures.add(any);
+            BiConsumer<Throwable, URI> exceptionsHandler = (anyException, uri)  -> {
+                LOG.error(anyException, "ImportData(%s): Caught exception during execution on endpoint: %s", traceToken, uri);
+                if (anyException instanceof VastException || anyException instanceof VastRuntimeException) {
+                    // for vast-originated exceptions - uri already should have been part of the exception, keep as is. In case of trouble fix in prior layers
+                    importDataFailures.add(anyException);
+                }
+                else {
+                    importDataFailures.add(toRuntime(format("ImportData(%s): Caught exception during execution on endpoint: %s", traceToken, uri), anyException));
+                }
                 anyFailed.set(true);
             };
             Supplier<Function<URI, VastResponse>> callableSupplier = WorkFactory.fromCollection(importDataContextsPerFile, work);

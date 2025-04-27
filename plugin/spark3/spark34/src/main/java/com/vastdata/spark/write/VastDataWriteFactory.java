@@ -9,14 +9,16 @@ import com.vastdata.client.VastClient;
 import com.vastdata.client.VastConfig;
 import com.vastdata.client.error.VastUserException;
 import com.vastdata.client.tx.VastTransaction;
+import com.vastdata.spark.FullSliceExtractor;
 import com.vastdata.spark.VastArrowAllocator;
 import com.vastdata.spark.VastTable;
 import com.vastdata.spark.VastTableMetaData;
 import com.vastdata.spark.write.bg.AwaitableCompletionListener;
-import com.vastdata.spark.write.bg.BGInserter;
 import com.vastdata.spark.write.bg.CompletedWriteExecutionComponent;
 import com.vastdata.spark.write.bg.FunctionalQ;
 import com.vastdata.spark.write.bg.Status;
+import com.vastdata.spark.write.bg.VastBGWriter;
+import com.vastdata.spark.write.bg.VastBGWriterFactory;
 import ndb.NDB;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.VectorSchemaRoot;
@@ -56,7 +58,6 @@ public class VastDataWriteFactory
 
     private static final Logger FACTORY_LOG = LoggerFactory.getLogger(VastDataWriteFactory.class);
     private static final Logger DATA_WRITER_LOG = LoggerFactory.getLogger(VastDataWriter.class);
-    public static final int CHUNK_SIZE = 1000;
 
     private final List<URI> endpoints;
     private final VastTransaction tx;
@@ -68,7 +69,6 @@ public class VastDataWriteFactory
     {
         private final int dataWriterIndex;
         private final String dataWriteTraceToken;
-
         private final ExecutorService executorService;
         private final AwaitableCompletionListener bgTaskPhasesCompletionListener;
         private final BufferAllocator writerAllocator;
@@ -78,6 +78,8 @@ public class VastDataWriteFactory
         private int ctr = 0;
         private ArrowWriter arrowWriter;
         private VectorSchemaRoot currentRoot;
+        private final int chunkSize;
+        private final FullSliceExtractor fullSliceExtractor;
 
         private VastDataWriter(int dataWriterIndex, Object traceObj)
         {
@@ -93,18 +95,20 @@ public class VastDataWriteFactory
             this.status = new Status(true, null);
             this.writerAllocator = VastArrowAllocator.writeAllocator().newChildAllocator(format("VastDataWriter%s", this.dataWriteTraceToken), 0, Long.MAX_VALUE);
             this.tableArrowSchema = new Schema(TypeUtil.sparkSchemaToArrowFieldsList(vastTableMetaData.schema));
+            this.fullSliceExtractor = new FullSliceExtractor(this.tableArrowSchema);
+            this.chunkSize = vastConfig.getMaxRowsPerInsert();
             int ordinal = ordinal();
             this.insertArrowVectorsQ = new FunctionalQ<>(VectorSchemaRoot.class, this.dataWriteTraceToken, ordinal, 100, 2, this.bgTaskPhasesCompletionListener);
 
             ordinal++;
             URI endpoint = endpoints.get(dataWriterIndex % endpoints.size());
-            BGInserter bgInserter = new BGInserter(ordinal, VAST_CLIENT_SUPPLIER_FROM_SPARK_CONTEXT, this.dataWriteTraceToken, vastConfig, endpoint, tx,
+            VastBGWriter vastBgWriter = VastBGWriterFactory.forInsert(ordinal, VAST_CLIENT_SUPPLIER_FROM_SPARK_CONTEXT, this.dataWriteTraceToken, vastConfig, endpoint, tx,
                     vastTableMetaData.schemaName, vastTableMetaData.tableName, this.insertArrowVectorsQ, vastTableMetaData.forImportData);
-
-            bgInserter.registerCompletionListener(this.bgTaskPhasesCompletionListener);
+            DATA_WRITER_LOG.info("VastDataWriter{}: INSERT chunkSize = {}, tableArrowSchema = {}", dataWriteTraceToken, chunkSize, tableArrowSchema);
+            vastBgWriter.registerCompletionListener(this.bgTaskPhasesCompletionListener);
 
             this.executorService = Executors.newFixedThreadPool(2, new ThreadFactoryBuilder().setNameFormat("insert-worker-" + dataWriterIndex + "-%s").build());
-            executorService.submit(bgInserter);
+            executorService.submit(vastBgWriter);
         }
 
         @Override
@@ -112,16 +116,12 @@ public class VastDataWriteFactory
                 throws IOException
         {
             bgTaskPhasesCompletionListener.assertFailure();
-            if (ctr == 0) {
+            if (ctr % chunkSize == 0) {
                 setNextArrowWriter();
             }
             writeArrowRow(internalRow);
-            if (ctr == CHUNK_SIZE) {
+            if (++ctr % chunkSize == 0) {
                 submitInsertChunk();
-                ctr = 0;
-            }
-            else {
-                ctr++;
             }
         }
 
@@ -159,9 +159,10 @@ public class VastDataWriteFactory
                 currentRoot.close();
                 throw re;
             }
+
             try {
                 DATA_WRITER_LOG.info("VastDataWriter{}: Submitting next chunk of {} rows, hash={}", dataWriteTraceToken, currentRoot.getRowCount(), currentRoot.hashCode());
-                this.insertArrowVectorsQ.accept(currentRoot);
+                this.insertArrowVectorsQ.accept(fullSliceExtractor.apply(currentRoot));
             }
             catch (Throwable any) {
                 currentRoot.close();
@@ -175,7 +176,7 @@ public class VastDataWriteFactory
         {
             DATA_WRITER_LOG.info("VastDataWriter{} commit(), ctr = {}", dataWriteTraceToken, ctr);
             this.bgTaskPhasesCompletionListener.assertFailure();
-            if (ctr > 0) {
+            if (ctr % chunkSize != 0) {
                 submitInsertChunk();
             }
             this.bgTaskPhasesCompletionListener.completed(this);
@@ -201,7 +202,7 @@ public class VastDataWriteFactory
 
         private void terminateBackgroundProcesses()
         {
-            if (this.executorService.shutdownNow().size() > 0) {
+            if (!this.executorService.shutdownNow().isEmpty()) {
                 try {
                     DATA_WRITER_LOG.info("VastDataWriter{} abort() awaitTermination - start", dataWriteTraceToken);
                     boolean termination = this.executorService.awaitTermination(100, TimeUnit.MILLISECONDS);
@@ -219,7 +220,7 @@ public class VastDataWriteFactory
         public void close()
         {
             DATA_WRITER_LOG.info("VastDataWriter{} close()", dataWriteTraceToken);
-            if (this.executorService.shutdownNow().size() > 0) {
+            if (!this.executorService.shutdownNow().isEmpty()) {
                 DATA_WRITER_LOG.warn("VastDataWriter{} Data write is closed without successfully terminating background threads", dataWriteTraceToken);
             }
             VectorSchemaRoot tmp;
@@ -228,6 +229,9 @@ public class VastDataWriteFactory
                 tmp.close();
             }
             this.bgTaskPhasesCompletionListener.assertFailure();
+            if (currentRoot != null) {
+                currentRoot.close();
+            }
             long allocated = this.writerAllocator.getAllocatedMemory();
             if (allocated != 0) {
                 String msg = format("VastDataWriter%s: %s bytes are not freed: %s", dataWriteTraceToken, allocated, writerAllocator.toVerboseString());

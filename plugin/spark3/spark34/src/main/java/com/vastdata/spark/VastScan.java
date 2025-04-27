@@ -17,6 +17,7 @@ import com.vastdata.spark.metrics.SplitFetchTimeMetric;
 import com.vastdata.spark.metrics.SplitGetIdleTime;
 import com.vastdata.spark.predicate.VastPredicate;
 import com.vastdata.spark.predicate.VastPredicatePushdown;
+import com.vastdata.spark.statistics.FilterEstimator;
 import com.vastdata.spark.statistics.TableLevelStatistics;
 import ndb.NDB;
 import org.apache.spark.sql.connector.expressions.Expression;
@@ -39,9 +40,11 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.OptionalLong;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
+import static com.vastdata.OptionalPrimitiveHelpers.map;
 import static com.vastdata.client.VastConfig.DYNAMIC_FILTER_COMPACTION_THRESHOLD;
 import static com.vastdata.client.VastConfig.MIN_MAX_COMPACTION_MIN_VALUES_THRESHOLD;
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
@@ -154,20 +157,23 @@ public class VastScan
             LOG.warn("{} estimateStatistics", this);
         }
         if (scanStatistics == null) {
-            scanStatistics = estimateBasedOnTableStatistics(this.table.estimateStatistics());
+            final TableLevelStatistics scanStatistics = estimateBasedOnTableStatistics((TableLevelStatistics) this.table.estimateStatistics());
+            this.scanStatistics = FilterEstimator.estimateStatistics(this.pushDownPredicates, scanStatistics);
+            LOG.info("Estimated statistics: row count: {} -> {}, size in bytes: {} -> {}",
+                    scanStatistics.numRows(), this.scanStatistics.numRows(), scanStatistics.sizeInBytes(), this.scanStatistics.sizeInBytes());
         }
         return scanStatistics;
     }
 
     @NotNull
-    private Statistics estimateBasedOnTableStatistics(Statistics statistics)
+    private TableLevelStatistics estimateBasedOnTableStatistics(TableLevelStatistics statistics)
     {
-        OptionalLong sizeStatistics = statistics.sizeInBytes();
+        final OptionalLong sizeStatistics = statistics.sizeInBytes();
         if (sizeStatistics.isPresent()) {
-            int tableSchemaDefaultSize = this.table.schema().defaultSize();
-            float scanSchemaSize = (float) this.readSchema().defaultSize();
-            long currentSize = sizeStatistics.getAsLong();
-            long newSize = getNewSize(tableSchemaDefaultSize, scanSchemaSize, currentSize);
+            final int tableSchemaDefaultSize = this.table.schema().defaultSize();
+            final float scanSchemaSize = (float) this.readSchema().defaultSize();
+            final long currentSize = sizeStatistics.getAsLong();
+            final long newSize = getNewSize(tableSchemaDefaultSize, scanSchemaSize, currentSize);
             return new TableLevelStatistics(OptionalLong.of(newSize), statistics.numRows(), statistics.columnStats());
         }
         else {
@@ -178,8 +184,8 @@ public class VastScan
 
     protected long getNewSize(int tableSchemaDefaultSize, float scanSchemaSize, long currentSize)
     {
-        float ratio = scanSchemaSize / tableSchemaDefaultSize;
-        long newSize = (long) (currentSize * ratio);
+        final float ratio = scanSchemaSize / tableSchemaDefaultSize;
+        final long newSize = (long) (currentSize * ratio);
         LOG.warn("{} Decreasing scan estimation size from {} to {}, ratio={}", this, tableSchemaDefaultSize, scanSchemaSize, ratio);
         return newSize;
     }
@@ -239,6 +245,7 @@ public class VastScan
                                 DYNAMIC_FILTER_COMPACTION_THRESHOLD, runtimeFiltersCompactThreshold,
                                 MIN_MAX_COMPACTION_MIN_VALUES_THRESHOLD, minMaxCompactionMinValuesThreshold));
                 pushDownPredicates = Streams.concat(pushDownPredicates.stream(), result.getPushedDown().stream())
+                        .distinct()
                         .collect(Collectors.toList());
                 pushDownPredicatesChanged = true;
                 LOG.info("{} Formatted new predicates: {}", this, this.formatPredicates());
@@ -262,11 +269,6 @@ public class VastScan
                 new PageSizeAVG(), new EmptyPartitionsCount(), new EmptyPagesCount()};
     }
 
-    Integer getLimit()
-    {
-        return limit;
-    }
-
     public VastTable getTable()
     {
         return table;
@@ -274,6 +276,6 @@ public class VastScan
 
     public boolean hasSelectivePredicate()
     {
-        return pushDownPredicates.size() > 0;
+        return !pushDownPredicates.isEmpty();
     }
 }

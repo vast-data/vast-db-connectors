@@ -7,17 +7,19 @@
     <parent>
         <groupId>ndb</groupId>
         <artifactId>ndb-root</artifactId>
-        <version>5.1.0</version>
+        <version>5.3.0</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
     <artifactId>spark-vast</artifactId>
-    <version>5.1.0</version>
+    <version>5.3.0</version>
     <description>Spark - VAST Connector</description>
     <packaging>pom</packaging>
 
     <properties>
+        <spark33.version>3.3.2</spark33.version>
         <spark34.version>3.4.1</spark34.version>
+        <spark35.version>3.5.1</spark35.version>
         <air.main.basedir>${project.parent.basedir}</air.main.basedir>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>8</maven.compiler.source>
@@ -30,8 +32,11 @@
 
     <modules>
         <module>common</module>
+        <module>spark33</module>
         <module>spark34</module>
+        <module>spark35</module>
         <module>spark-agent</module>
+        <module>spark-agent33</module>
     </modules>
 
     <dependencies>
@@ -53,6 +58,36 @@
             <version>1.12.2</version>
             <scope>provided</scope>
         </dependency>
+<!--        <dependency>-->
+<!--            <groupId>org.apache.spark</groupId>-->
+<!--            <artifactId>spark-catalyst_2.13</artifactId>-->
+<!--            <version>${spark.version}</version>-->
+<!--            <scope>provided</scope>-->
+<!--        </dependency>-->
+<!--        <dependency>-->
+<!--            <groupId>org.apache.spark</groupId>-->
+<!--            <artifactId>spark-core_2.13</artifactId>-->
+<!--            <version>${spark.version}</version>-->
+<!--            <scope>provided</scope>-->
+<!--        </dependency>-->
+<!--        <dependency>-->
+<!--            <groupId>org.apache.spark</groupId>-->
+<!--            <artifactId>spark-network-common_2.13</artifactId>-->
+<!--            <version>${spark.version}</version>-->
+<!--            <scope>provided</scope>-->
+<!--        </dependency>-->
+<!--        <dependency>-->
+<!--            <groupId>org.apache.spark</groupId>-->
+<!--            <artifactId>spark-sql_2.13</artifactId>-->
+<!--            <version>${spark.version}</version>-->
+<!--            <scope>provided</scope>-->
+<!--        </dependency>-->
+<!--        <dependency>-->
+<!--            <groupId>org.apache.spark</groupId>-->
+<!--            <artifactId>spark-unsafe_2.13</artifactId>-->
+<!--            <version>${spark.version}</version>-->
+<!--            <scope>provided</scope>-->
+<!--        </dependency>-->
         <dependency>
             <groupId>org.javassist</groupId>
             <artifactId>javassist</artifactId>
@@ -84,4 +119,26 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+<!--    <profiles>-->
+<!--        <profile>-->
+<!--            <id>spark-3.3</id>-->
+<!--            <properties>-->
+<!--                <spark.version>${spark33.version}</spark.version>-->
+<!--            </properties>-->
+<!--            <modules>-->
+<!--                <module>common</module>-->
+<!--                <module>spark33</module>-->
+<!--            </modules>-->
+<!--        </profile>-->
+<!--        <profile>-->
+<!--            <id>spark-3.4</id>-->
+<!--            <properties>-->
+<!--                <spark.version>${spark34.version}</spark.version>-->
+<!--            </properties>-->
+<!--            <modules>-->
+<!--                <module>common</module>-->
+<!--                <module>spark34</module>-->
+<!--            </modules>-->
+<!--        </profile>-->
+<!--    </profiles>-->
 </project>

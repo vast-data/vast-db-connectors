@@ -18,13 +18,9 @@ import org.apache.spark.sql.connector.read.SupportsPushDownAggregates;
 import org.apache.spark.sql.connector.read.SupportsPushDownLimit;
 import org.apache.spark.sql.connector.read.SupportsPushDownRequiredColumns;
 import org.apache.spark.sql.connector.read.SupportsPushDownV2Filters;
-import org.apache.spark.sql.types.CharType;
-import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
-import org.apache.spark.sql.util.CaseInsensitiveStringMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import scala.Function1;
 import spark.sql.catalog.ndb.TypeUtil;
 
 import java.security.SecureRandom;
@@ -37,13 +33,13 @@ import java.util.stream.Collectors;
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 import static java.lang.String.format;
 import static java.util.Objects.isNull;
+import static spark.sql.catalog.ndb.TypeUtil.schemaHasCharNType;
 
 public class VastScanBuilder
         implements SupportsPushDownV2Filters, SupportsPushDownRequiredColumns, SupportsPushDownLimit, SupportsPushDownAggregates
 {
     private static final Logger LOG = LoggerFactory.getLogger(VastScanBuilder.class);
     private static final SecureRandom scanBuilderIdProvider = new SecureRandom();
-    private static final Function1<StructField, Object> schemaHasCharNType = field -> field.dataType() instanceof CharType;
     private static final ImmutableList<List<VastPredicate>> EMPTY_LIST = ImmutableList.of();
 
     private final VastTable table;
@@ -90,7 +86,7 @@ public class VastScanBuilder
     {
         LOG.info("{}:{} pruneColumns: {}", table.name(), scanBuilderID, requiredSchema);
         // Adaptation is needed because spark uses string type for char(n) columns - get original column type
-        this.schema = !this.schema.exists(schemaHasCharNType) ? requiredSchema : adaptRequiredSchemaToTableSchema(this.schema, requiredSchema);
+        this.schema = !this.schema.existsRecursively(schemaHasCharNType) ? requiredSchema : adaptRequiredSchemaToTableSchema(this.schema, requiredSchema);
     }
 
     private StructType adaptRequiredSchemaToTableSchema(StructType currSchema, StructType requiredSchema)
@@ -117,7 +113,7 @@ public class VastScanBuilder
         }
         VastPredicatePushdown result = VastPredicatePushdown.parse(predicates, schema);
         pushedDownPredicates = result.getPushedDown();
-        return result.getPostFilter().toArray(new Predicate[0]); // actual post-filtering is made in physical plan optimizations (NDBStrategy)
+        return result.getPostFilter().toArray(new Predicate[0]);
     }
 
     @Override
@@ -162,10 +158,5 @@ public class VastScanBuilder
     private String describeAggregation(Aggregation aggregation)
     {
         return format("func:%s, group_by:%s", Arrays.toString(aggregation.aggregateExpressions()), Arrays.toString(aggregation.groupByExpressions()));
-    }
-
-    public static VastScanBuilder rebuildScan(VastScan scan)
-    {
-        return new VastScanBuilder(scan.getTable(), scan.readSchema(), scan.getLimit());
     }
 }

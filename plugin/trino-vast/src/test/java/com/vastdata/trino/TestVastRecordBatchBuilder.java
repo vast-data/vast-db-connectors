@@ -60,14 +60,15 @@ public class TestVastRecordBatchBuilder
         ByteArrayBlock booleanBlock = new ByteArrayBlock(1, Optional.of(new boolean[] {true}), new byte[] {0});
         IntArrayBlock intBlock = new IntArrayBlock(1, Optional.of(new boolean[] {true}), new int[] {0});
         Block arrayBlock = ArrayBlock.fromElementBlock(1, Optional.of(new boolean[] {true}), new int[] {0, 0}, booleanBlock);
-        MapBlock mapBlock = MapBlock.fromKeyValueBlock(Optional.empty(), new int[] {0}, intBlock, arrayBlock, mapType);
-        Block rowBlock = RowBlock.fromFieldBlocks(1, Optional.of(new boolean[] {true}), new Block[] {mapBlock});
+        MapBlock mapBlock = MapBlock.fromKeyValueBlock(Optional.of(new boolean[] {true}), new int[] {0, 0}, 1, intBlock, arrayBlock, mapType);
+        RowBlock.fromFieldBlocks(1, new Block[] {mapBlock});
+        Block rowBlock = RowBlock.fromNotNullSuppressedFieldBlocks(1, Optional.of(new boolean[] {true}), new Block[] {mapBlock});
 
         try (VectorSchemaRoot root = builder.build(new Page(rowBlock))) {
             FieldVector vector = root.getVector(0);
             assertEquals(vector.getValueCount(), 1);
             List<FieldVector> children = vector.getChildrenFromFields();
-            assertEquals(children.get(0).toString(), "[null]");
+            assertEquals(children.getFirst().toString(), "[null]");
         }
         Field keys = Field.nullable("keys", new ArrowType.Int(32, true));
         Field vals = Field.nullable("vals", ArrowType.Bool.INSTANCE);
@@ -80,13 +81,13 @@ public class TestVastRecordBatchBuilder
         Field rowcol2 = new Field("rowcol", FieldType.nullable(ArrowType.Struct.INSTANCE), List.of(mapcol2));
 
         // simulation of vast map representation for query data
-        Block structOfKeys = RowBlock.fromFieldBlocks(1, Optional.of(new boolean[] {true}), new Block[] {intBlock});
-        Block structOfValues = RowBlock.fromFieldBlocks(1, Optional.of(new boolean[] {true}), new Block[] {arrayBlock});
+        Block structOfKeys = RowBlock.fromNotNullSuppressedFieldBlocks(1, Optional.of(new boolean[] {true}), new Block[] {intBlock});
+        Block structOfValues = RowBlock.fromNotNullSuppressedFieldBlocks(1, Optional.of(new boolean[] {true}), new Block[] {arrayBlock});
         Block block1 = ArrayBlock.fromElementBlock(1, Optional.of(new boolean[] {true}), new int[] {0, 0}, structOfKeys);
         Block block2 = ArrayBlock.fromElementBlock(1, Optional.of(new boolean[] {true}), new int[] {0, 0}, structOfValues);
 
-        Block rowBlock1 = RowBlock.fromFieldBlocks(1, Optional.of(new boolean[] {true}), new Block[] {block1});
-        Block rowBlock2 = RowBlock.fromFieldBlocks(1, Optional.of(new boolean[] {true}), new Block[] {block2});
+        Block rowBlock1 = RowBlock.fromNotNullSuppressedFieldBlocks(1, Optional.of(new boolean[] {true}), new Block[] {block1});
+        Block rowBlock2 = RowBlock.fromNotNullSuppressedFieldBlocks(1, Optional.of(new boolean[] {true}), new Block[] {block2});
 
         Schema schema1 = new Schema(List.of(rowcol1));
         VastRecordBatchBuilder builder1 = new VastRecordBatchBuilder(schema1);
@@ -112,21 +113,20 @@ public class TestVastRecordBatchBuilder
                 RowType.field("vchar", VarcharType.VARCHAR));
         Field field = TypeUtils.convertTrinoTypeToArrowField(type, "row", true);
         VastRecordBatchBuilder builder = new VastRecordBatchBuilder(new Schema(List.of(field)));
-
-        LongArrayBlock bigintBlock = new LongArrayBlock(3, Optional.of(new boolean[] {false, true, false}), new long[] {1, 2, 3});
-        ByteArrayBlock booleanBlock = new ByteArrayBlock(3, Optional.of(new boolean[] {false, false, true}), new byte[] {1, 0, 1});
+        LongArrayBlock bigintBlock = new LongArrayBlock(5, Optional.of(new boolean[] {true, false, true, false, true}), new long[] {5, 6, 7, 8, 9});
+        ByteArrayBlock booleanBlock = new ByteArrayBlock(5, Optional.of(new boolean[] {true, false, false, true, true}), new byte[] {0, 1, 0, 1, 0});
         Slice slice = Slices.utf8Slice("somestring");
         int offset = slice.length();
-        VariableWidthBlock varcharBlock = new VariableWidthBlock(3, slice, new int[] {0, 0, 0, offset}, Optional.of(new boolean[] {true, true, false}));
-        Block rowBlock = RowBlock.fromFieldBlocks(5, Optional.of(new boolean[] {true, false, false, false, true}), List.of(bigintBlock, booleanBlock, varcharBlock).toArray(new Block[0]));
+        VariableWidthBlock varcharBlock = new VariableWidthBlock(5, slice, new int[] {0, 0, 0, 0, offset, offset}, Optional.of(new boolean[] {true, true, true, false, true}));
+        Block rowBlock = RowBlock.fromNotNullSuppressedFieldBlocks(5, Optional.of(new boolean[] {true, false, false, false, true}), new Block[] {bigintBlock, booleanBlock, varcharBlock});
         try (VectorSchemaRoot root = builder.build(new Page(rowBlock))) {
             FieldVector vector = root.getVector(0);
             assertEquals(vector.getValueCount(), 5);
             List<FieldVector> children = vector.getChildrenFromFields();
-            assertEquals(children.get(0).toString(), "[null, 1, null, 3, null]");
+            assertEquals(children.get(0).toString(), "[null, 6, null, 8, null]");
             assertEquals(children.get(1).toString(), "[null, true, false, null, null]");
             assertEquals(children.get(2).toString(), "[null, null, null, somestring, null]");
-            assertEquals(vector.toString(), "[null, {\"bigint\":1,\"bool\":true}, {\"bool\":false}, {\"bigint\":3,\"vchar\":\"somestring\"}, null]");
+            assertEquals(vector.toString(), "[null, {\"bigint\":6,\"bool\":true}, {\"bool\":false}, {\"bigint\":8,\"vchar\":\"somestring\"}, null]");
             Block actual = new VastPageBuilder(traceStr, new Schema(List.of(field))).add(root).build().getBlock(0);
             assertBlockEquals(type, actual, rowBlock);
         }
@@ -143,21 +143,25 @@ public class TestVastRecordBatchBuilder
         RowType row1Type = RowType.rowType(row2Field);
         Field row1ArrowField = TypeUtils.convertTrinoTypeToArrowField(row1Type, "row1", true);
         VastRecordBatchBuilder builder = new VastRecordBatchBuilder(new Schema(List.of(row1ArrowField)));
-        LongArrayBlock bigintBlock = new LongArrayBlock(1, Optional.of(new boolean[] {true}), new long[]{9});
-        Block row3Block = RowBlock.fromFieldBlocks(1, Optional.of(new boolean[] {false}), new Block[] {bigintBlock});
-        Block row2Block = RowBlock.fromFieldBlocks(1, Optional.of(new boolean[] {false}), new Block[] {row3Block});
-        Block row1BlockNullFirst = RowBlock.fromFieldBlocks(2, Optional.of(new boolean[] {true, false}), new Block[] {row2Block});
-        Block row1BlockNullSecond = RowBlock.fromFieldBlocks(2, Optional.of(new boolean[] {false, true}), new Block[] {row2Block});
-        verifyBuildRowRowRowBigintPage(row1Type, row1ArrowField, builder, row1BlockNullSecond,
-                "[{\"row2\":{\"row3\":{}}}, null]", new Page(2, row1BlockNullSecond));
+        LongArrayBlock bigintBlock = new LongArrayBlock(2, Optional.of(new boolean[] {true, true}), new long[] {Long.MAX_VALUE, Long.MAX_VALUE});
+
+        Block row3BlockNullFirst = RowBlock.fromNotNullSuppressedFieldBlocks(2, Optional.of(new boolean[] {true, false}), new Block[] {bigintBlock});
+        Block row2BlockNullFirst = RowBlock.fromNotNullSuppressedFieldBlocks(2, Optional.of(new boolean[] {true, false}), new Block[] {row3BlockNullFirst});
+        Block row1BlockNullFirst = RowBlock.fromNotNullSuppressedFieldBlocks(2, Optional.of(new boolean[] {true, false}), new Block[] {row2BlockNullFirst});
         verifyBuildRowRowRowBigintPage(row1Type, row1ArrowField, builder, row1BlockNullFirst,
                 "[null, {\"row2\":{\"row3\":{}}}]", new Page(2, row1BlockNullFirst));
+
+        Block row3BlockNullSecond = RowBlock.fromNotNullSuppressedFieldBlocks(2, Optional.of(new boolean[] {false, true}), new Block[] {bigintBlock});
+        Block row2BlockNullSecond = RowBlock.fromNotNullSuppressedFieldBlocks(2, Optional.of(new boolean[] {false, true}), new Block[] {row3BlockNullSecond});
+        Block row1BlockNullSecond = RowBlock.fromNotNullSuppressedFieldBlocks(2, Optional.of(new boolean[] {false, true}), new Block[] {row2BlockNullSecond});
+        verifyBuildRowRowRowBigintPage(row1Type, row1ArrowField, builder, row1BlockNullSecond,
+                "[{\"row2\":{\"row3\":{}}}, null]", new Page(2, row1BlockNullSecond));
     }
 
-    private void verifyBuildRowRowRowBigintPage(RowType row1Type, Field row1ArrowField, VastRecordBatchBuilder builder, Block row1BlockNullSecond,
+    private void verifyBuildRowRowRowBigintPage(RowType row1Type, Field row1ArrowField, VastRecordBatchBuilder builder, Block row1Block,
             String expectedVectorAsString, Page expectedPage)
     {
-        try (VectorSchemaRoot root = builder.build(new Page(row1BlockNullSecond))) {
+        try (VectorSchemaRoot root = builder.build(new Page(row1Block))) {
             FieldVector row1Vector = root.getVector(0);
             assertEquals(row1Vector.toString(), expectedVectorAsString);
             assertEquals(row1Vector.getClass(), StructVector.class);
@@ -176,7 +180,7 @@ public class TestVastRecordBatchBuilder
             assertEquals(valueVectors.getValueCount(), 2);
             assertEquals(valueVectors.getChildrenFromFields().size(), 0);
             Block actual = new VastPageBuilder(traceStr, new Schema(List.of(row1ArrowField))).add(root).build().getBlock(0);
-            assertBlockEquals(row1Type, actual, row1BlockNullSecond);
+            assertBlockEquals(row1Type, actual, row1Block);
             LinkedHashMap<Field, LinkedHashMap<List<Integer>, Integer>> baseFieldWithProjections =
                     new QueryDataBaseFieldsWithProjectionsMappingBuilder()
                             .put(row1ArrowField, List.of())
@@ -211,7 +215,7 @@ public class TestVastRecordBatchBuilder
         Field field = TypeUtils.convertTrinoTypeToArrowField(type, "l", true);
         VastRecordBatchBuilder builder = new VastRecordBatchBuilder(new Schema(List.of(field)));
 
-        LongArrayBlock longBlock = new LongArrayBlock(6, Optional.empty(), new long[] {1, 2, 3, 4, 5, 6});
+        IntArrayBlock longBlock = new IntArrayBlock(6, Optional.empty(), new int[] {1, 2, 3, 4, 5, 6});
         Block arrayBlock = ArrayBlock.fromElementBlock(3, Optional.empty(), new int[] {0, 1, 4, 6}, longBlock);
         try (VectorSchemaRoot root = builder.build(new Page(arrayBlock))) {
             assertThat(root.getVector(0).toString()).isEqualTo("[[1], [2,3,4], [5,6]]");

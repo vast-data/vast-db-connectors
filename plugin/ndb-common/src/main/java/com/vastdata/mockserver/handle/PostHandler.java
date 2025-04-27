@@ -7,14 +7,14 @@ package com.vastdata.mockserver.handle;
 import com.sun.net.httpserver.HttpExchange;
 import com.vastdata.client.ParsedURL;
 import com.vastdata.client.RequestsHeaders;
-import com.vastdata.client.schema.EnumeratedSchema;
 import com.vastdata.mockserver.MockMapSchema;
 import com.vastdata.mockserver.MockTable;
+import com.vastdata.mockserver.MockView;
 import io.airlift.log.Logger;
+import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.types.pojo.Field;
 
 import java.net.URI;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -98,19 +98,30 @@ public class PostHandler
                 respond(format("Bucket %s does not exist", bucket), he, 404);
             }
             switch (query) {
+                case "view":
                 case "table": {
                     String schemaName = parsedURL.getSchemaName();
                     String tableName = parsedURL.getTableName();
                     Set<MockMapSchema> mockMapSchemas = schemaMap.get(bucket);
                     Optional<MockMapSchema> existingSchema = mockMapSchemas.stream().filter(mockSchema -> mockSchema.getName().equals(schemaName)).findAny();
                     if (existingSchema.isPresent()) {
-                        LOG.info("Handling create table %s for schema %s", tableName, tableName);
-                        Map<String, Field> tableColumnsMap = new LinkedHashMap<>();
-                        List<Field> fields = MockSchemaUtil.parseTableSchema(readAllBytes(he.getRequestBody()));
-                        fields.forEach(f -> tableColumnsMap.put(f.getName(), f));
-                        MockTable mockTable = MockTable.withColumns(tableName, tableColumnsMap);
-                        existingSchema.get().getTables().put(tableName, mockTable);
-                        respondOK(he);
+                        if (query.equals("view")) {
+                            LOG.info("Handling create view %s for schema %s", tableName, schemaName);
+                            byte[] bytes = readAllBytes(he.getRequestBody());
+                            VectorSchemaRoot viewDetails = MockSchemaUtil.parseCreateViewRequest(bytes);
+                            MockView mockView = new MockView(tableName, viewDetails);
+                            existingSchema.get().getViews().put(tableName, mockView);
+                            respondOK(he);
+                        }
+                        else {
+                            LOG.info("Handling create table %s for schema %s", tableName, schemaName);
+                            Map<String, Field> tableColumnsMap = new LinkedHashMap<>();
+                            List<Field> fields = MockSchemaUtil.parseTableSchema(readAllBytes(he.getRequestBody()));
+                            fields.forEach(f -> tableColumnsMap.put(f.getName(), f));
+                            MockTable mockTable = MockTable.withColumns(tableName, tableColumnsMap);
+                            existingSchema.get().getTables().put(tableName, mockTable);
+                            respondOK(he);
+                        }
                     }
                     else {
                         respond(format("Schema %s does not exist in bucket %s", schemaName, bucket), he, 404);
@@ -155,24 +166,6 @@ public class PostHandler
                             respond(format("Table %s does not exist in schema %s/%s", tableName, schemaName, bucket), he, 404);
                         }
                         else {
-                            Map<String, Field> columns = mockTable.getColumns();
-                            Collection<Field> allFields = columns.values();
-                            EnumeratedSchema tableSchema = new EnumeratedSchema(allFields);
-//                        List<Integer> projections = collectProjectionIndices(allFields.stream().map(VastColumnHandle::fromField).collect(Collectors.toList()), tableSchema);
-//                        LinkedHashMultimap<Field, List<Integer>> baseFieldWithProjections = LinkedHashMultimap.create(allFields.size(), allFields.size());
-//                        allFields.forEach(f -> baseFieldWithProjections.put(f, List.of()));
-//                        VastTraceToken vastTraceToken = new VastTraceToken(Optional.empty(), random.nextLong(), random.nextInt(100));
-//                        QueryDataResponseParser responseParser = new QueryDataResponseParser(vastTraceToken, tableSchema, projections, baseFieldWithProjections,
-//                                2, Duration.nanosSince(System.nanoTime() - 1000), Optional.empty(), VastDebugConfig.DEFAULT);
-//                        QueryDataResponseParser.SiloStreamParser siloParser = responseParser.newSiloStreamParser(0, he.getRequestBody());
-//                        siloParser.process();
-//                        int processCtr = 0;
-//                        Page page;
-//                        while ((page = responseParser.getNextPage()) == null && processCtr < 10) {
-//                            siloParser.process();
-//                            processCtr++;
-//                        }
-//                        LOG.info("Received rows: %s", page);
                             respondOK(he);
                         }
                     }

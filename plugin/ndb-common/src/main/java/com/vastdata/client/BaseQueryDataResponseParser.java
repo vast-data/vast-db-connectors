@@ -133,8 +133,10 @@ abstract public class BaseQueryDataResponseParser<T>
                 if (expectedFieldType.isComplex()) {
                     List<Field> expectedChildren = requestedSchema.getFields().get(i).getChildren();
                     List<Field> actualChildren = actualField.getChildren();
+                    LOG.debug("QueryData(%s)(stream=%s): Column %s expectedType: %s, expectedChildren: %s, actualType: %s, actualChildren: %s",
+                            traceStr, streamId, i, expectedFieldType, expectedChildren, actualFieldType, actualChildren);
                     verify(expectedChildren.size() == actualChildren.size(), "QueryData(%s)(stream=%s): Column %s nested schema does not match: %s / %s",
-                            traceStr, streamId, i, actualChildren, expectedChildren);
+                            traceStr, streamId, i, expectedChildren, actualChildren);
                 }
             }
             // use requested fields (instead of responseSchema) since they contain field names
@@ -318,7 +320,7 @@ abstract public class BaseQueryDataResponseParser<T>
         this.allocator = new RootAllocator();
 
         this.fields = fields;
-        LOG.info("QueryData(%s) QueryDataResponseParser init: requested fields=%s", traceStr, fields);
+        LOG.info("QueryData(%s) %s init: requested fields=%s", traceStr, BaseQueryDataResponseParser.class.getSimpleName(), fields);
         this.parsers = new HashMap<>();
         this.pages = new ArrayList<>();
         this.pageIterator = ImmutableList.<T>of().iterator();

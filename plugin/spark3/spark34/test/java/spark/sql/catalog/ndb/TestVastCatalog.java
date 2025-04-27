@@ -24,16 +24,24 @@ import com.vastdata.mockserver.VastRootHandler;
 import com.vastdata.spark.SparkTestUtils;
 import com.vastdata.spark.VastArrowAllocator;
 import com.vastdata.spark.VastTable;
+import com.vastdata.spark.VastTableReadOnly;
+import com.vastdata.spark.statistics.FilterEstimator;
 import com.vastdata.spark.statistics.SparkPersistentStatistics;
 import com.vastdata.spark.statistics.SparkVastStatisticsManager;
 import com.vastdata.spark.statistics.SparkVastStatisticsManagerTestUtil;
+import com.vastdata.spark.statistics.TableLevelStatistics;
 import ndb.NDB;
 import ndb.ka.NDBJobsListener;
+import org.apache.spark.SparkConf;
 import org.apache.spark.scheduler.SparkListenerInterface;
+import org.apache.spark.sql.AnalysisException;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import org.apache.spark.sql.catalyst.analysis.NoSuchNamespaceException;
 import org.apache.spark.sql.catalyst.analysis.NoSuchTableException;
+import org.apache.spark.sql.catalyst.analysis.NoSuchViewException;
+import org.apache.spark.sql.catalyst.analysis.ViewAlreadyExistsException;
 import org.apache.spark.sql.catalyst.expressions.Attribute;
 import org.apache.spark.sql.catalyst.expressions.AttributeMap;
 import org.apache.spark.sql.catalyst.expressions.AttributeMap$;
@@ -51,17 +59,22 @@ import org.apache.spark.sql.execution.ProjectExec;
 import org.apache.spark.sql.execution.SparkPlan;
 import org.apache.spark.sql.execution.adaptive.AdaptiveSparkPlanExec;
 import org.apache.spark.sql.execution.datasources.v2.BatchScanExec;
+import org.apache.spark.sql.types.ArrayType;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.IntegerType$;
+import org.apache.spark.sql.types.MapType;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.sql.util.CaseInsensitiveStringMap;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import scala.Option;
 import scala.Tuple2;
@@ -74,6 +87,7 @@ import scala.math.BigInt;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -85,6 +99,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -92,17 +107,22 @@ import static com.amazonaws.http.HttpMethodName.DELETE;
 import static com.amazonaws.http.HttpMethodName.GET;
 import static com.amazonaws.http.HttpMethodName.POST;
 import static com.amazonaws.http.HttpMethodName.PUT;
+import static com.vastdata.OptionalPrimitiveHelpers.map;
 import static com.vastdata.client.VastClient.AUDIT_LOG_BUCKET_NAME;
 import static com.vastdata.client.VastClient.BIG_CATALOG_BUCKET_NAME;
 import static java.lang.String.format;
 import static org.apache.spark.sql.types.DataTypes.createStructField;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
 import static org.mockito.MockitoAnnotations.openMocks;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
+import static spark.sql.catalog.ndb.SparkConfValidator.FORMAT_UNSAFE_SPARK_CONFIGURATION;
+import static spark.sql.catalog.ndb.SparkConfValidator.SETTING_DISABLE_SPARK_DUPLICATE_WRITES_PROTECTION;
 
 public class TestVastCatalog
 {
@@ -153,7 +173,7 @@ public class TestVastCatalog
         mockUtils.createBucket(this.testPort, testBucket);
         try (SparkSession session = SparkTestUtils.getSession(testPort)) {
             session.sql("create database ndb.buck.schem");
-            session.sql("create table ndb.buck.schem.tab (b boolean, i integer)");
+            session.sql("create table ndb.buck.schem.tab (b boolean, i integer, r ARRAY<DOUBLE>)");
             VastCatalog unit = new VastCatalog();
             unit.initialize("", CaseInsensitiveStringMap.empty());
             Identifier tableIdent = Identifier.of(new String[] {"buck", "schem"}, "tab");
@@ -162,17 +182,212 @@ public class TestVastCatalog
             TableChange addColumn = TableChange.addColumn(colName, colType);
             Table tableAfterChange = unit.alterTable(tableIdent, addColumn);
             StructType schema = tableAfterChange.schema();
+            ArrayType arrayType = DataTypes.createArrayType(DataTypes.DoubleType);
             StructType expectedSchema = new StructType(new StructField[] {
                     createStructField("b", DataTypes.BooleanType, true),
                     createStructField("i", DataTypes.IntegerType, true),
+                    createStructField("r", arrayType, true),
                     createStructField("s", DataTypes.StringType, true),
             });
             assertEquals(schema, expectedSchema);
+
+            colName = new String[] {"m"};
+            MapType mapType = DataTypes.createMapType(DataTypes.DateType, DataTypes.TimestampType);
+            colType = mapType;
+            expectedSchema = new StructType(new StructField[] {
+                    createStructField("b", DataTypes.BooleanType, true),
+                    createStructField("i", DataTypes.IntegerType, true),
+                    createStructField("r", arrayType, true),
+                    createStructField("s", DataTypes.StringType, true),
+                    createStructField("m", mapType, true),
+            });
+            assertTableSchemaAfterAddColumn(unit, tableIdent, colName, colType, expectedSchema);
+            colName = new String[] {"st"};
+            StructType structType = DataTypes.createStructType(new StructField[] {new StructField("subfield", DataTypes.BinaryType, true, Metadata.empty())});
+            colType = structType;
+            expectedSchema = new StructType(new StructField[] {
+                    createStructField("b", DataTypes.BooleanType, true),
+                    createStructField("i", DataTypes.IntegerType, true),
+                    createStructField("r", arrayType, true),
+                    createStructField("s", DataTypes.StringType, true),
+                    createStructField("m", mapType, true),
+                    createStructField("st", structType, true),
+            });
+            assertTableSchemaAfterAddColumn(unit, tableIdent, colName, colType, expectedSchema);
+        }
+    }
+
+    private static void assertTableSchemaAfterAddColumn(VastCatalog unit, Identifier tableIdent, String[] colName, DataType colType, StructType expectedSchema)
+            throws NoSuchTableException
+    {
+        TableChange addColumn = TableChange.addColumn(colName, colType);
+        Table tableAfterChange = unit.alterTable(tableIdent, addColumn);
+        StructType schema = tableAfterChange.schema();
+        assertEquals(schema, expectedSchema);
+    }
+
+    @Test
+    public void testCreateViewRelativeNames()
+            throws IOException
+    {
+        MockUtils mockUtils = new MockUtils();
+        String testBucket = "buck";
+        mockUtils.createBucket(this.testPort, testBucket);
+        try (SparkSession session = SparkTestUtils.getSession(testPort)) {
+            session.sql("CREATE DATABASE ndb.buck.schem").show();
+            session.sql("CREATE TABLE ndb.buck.schem.tab1 (b BOOLEAN, i1 INTEGER)").show();
+            session.sql("USE ndb.buck.schem").show();
+            session.sql("CREATE VIEW view1 as (select i1, INTERVAL '2021' YEAR from tab1 where i1 > 10)").show();
         }
     }
 
     @Test
-    public void testShowColumns()
+    public void testCreateViewFullyQualifiedNames()
+            throws IOException
+    {
+        // CREATE [ OR REPLACE ] [ [ GLOBAL ] TEMPORARY ] VIEW [ IF NOT EXISTS ] view_identifier
+        //    create_view_clauses AS query
+        MockUtils mockUtils = new MockUtils();
+        String testBucket = "buck";
+        mockUtils.createBucket(this.testPort, testBucket);
+        try (SparkSession session = SparkTestUtils.getSession(testPort)) {
+            session.sql("CREATE DATABASE ndb.buck.schem").show();
+            session.sql("CREATE TABLE ndb.buck.schem.tab1 (b BOOLEAN, i1 INTEGER)").show();
+            session.sql("CREATE TABLE ndb.buck.schem.tab2 (b BOOLEAN, i2 INTEGER)").show();
+            String createViewNoAliasSql = "CREATE VIEW ndb.buck.schem.view_no_alias " +
+                    "COMMENT 'View comment'" +
+                    "as select tab1.b, tab2.b from ndb.buck.schem.tab1 join ndb.buck.schem.tab2 on i1 = i2";
+            session.sql(createViewNoAliasSql).show();
+            String createView1Sql = "CREATE VIEW ndb.buck.schem.view1 " +
+                    "(t1b COMMENT 'b from tab2', t2b) " +
+                    "COMMENT 'View comment'" +
+                    "as select tab1.b, tab2.b from ndb.buck.schem.tab1 join ndb.buck.schem.tab2 on i1 = i2";
+            session.sql(createView1Sql).show();
+            Row[] collect = (Row[]) session.sql("SHOW VIEWS FROM ndb.buck.schem").collect();
+            assertEquals(collect.length, 2);
+            Set<String> expectedViewNames = new HashSet<>(Arrays.asList("view1", "view_no_alias"));
+            Set<String> actualViewNames = Arrays.stream(collect).map(row -> row.getAs("viewName").toString()).collect(Collectors.toSet());
+            assertEquals(actualViewNames, expectedViewNames);
+            try {
+                session.sql(createView1Sql).show();
+            }
+            catch (RuntimeException e) {
+                assertEquals(e.getCause().getClass(), ViewAlreadyExistsException.class);
+            }
+
+            String replaceView1Sql = "CREATE OR REPLACE VIEW ndb.buck.schem.view1 " +
+                    "(t1b COMMENT 'b from tab2', t2b) " +
+                    "COMMENT 'Replcaed View comment'" +
+                    "as select tab1.b, tab2.b from ndb.buck.schem.tab1 join ndb.buck.schem.tab2 on i1 = i2";
+            session.sql(replaceView1Sql).show();
+
+            String createViewBadSchema = "CREATE OR REPLACE VIEW ndb.buck.schem2.view1 " +
+                    "(t1b COMMENT 'b from tab2', t2b) " +
+                    "COMMENT 'Replcaed View comment'" +
+                    "as select tab1.b, tab2.b from ndb.buck.schem.tab1 join ndb.buck.schem.tab2 on i1 = i2";
+            try {
+                session.sql(createViewBadSchema).show();
+            }
+            catch (RuntimeException e) {
+                assertEquals(e.getCause().getClass(), NoSuchNamespaceException.class);
+            }
+
+            String createViewBadTable = "CREATE OR REPLACE VIEW ndb.buck.schem1.view1 " +
+                    "(t1b COMMENT 'b from tab2', t2b) " +
+                    "COMMENT 'Replcaed View comment'" +
+                    "as select tab1.b, tab2.b from ndb.buck.schem.tab3 join ndb.buck.schem.tab2 on i1 = i2";
+            try {
+                session.sql(createViewBadTable).show();
+            }
+            catch (Exception e) {
+                assertTrue(e instanceof AnalysisException, "Expected AnalysisException but got: " + e);
+            }
+        }
+    }
+
+    @Test
+    public void testDropView()
+            throws IOException
+    {
+        // DROP VIEW [ IF EXISTS ] view_identifier
+        MockUtils mockUtils = new MockUtils();
+        String testBucket = "buck";
+        mockUtils.createBucket(this.testPort, testBucket);
+        try (SparkSession session = SparkTestUtils.getSession(testPort)) {
+            session.sql("CREATE DATABASE ndb.buck.schem").show();
+            session.sql("CREATE TABLE ndb.buck.schem.tab (b BOOLEAN, i INTEGER)").show();
+            session.sql("DROP VIEW IF EXISTS ndb.buck.schem.view1").show();
+            try {
+                session.sql("DROP VIEW ndb.buck.schem.view1").show();
+            }
+            catch (RuntimeException e) {
+                assertEquals(e.getCause().getClass(), NoSuchViewException.class);
+            }
+
+            session.sql("CREATE VIEW ndb.buck.schem.view1 AS (SELECT * FROM ndb.buck.schem.tab)").show();
+            Row[] rows = (Row[]) session.sql("SHOW VIEWS from ndb.buck.schem").collect();
+            assertEquals(rows.length, 1);
+            assertEquals(rows[0].getAs("viewName").toString(), "view1");
+
+            session.sql("DROP VIEW IF EXISTS ndb.buck.schem.view1").show();
+            assertEquals(((Row[]) session.sql("SHOW VIEWS from ndb.buck.schem").collect()).length, 0);
+
+            session.sql("CREATE VIEW ndb.buck.schem.view1 AS (SELECT * FROM ndb.buck.schem.tab)").show();
+            rows = (Row[]) session.sql("SHOW VIEWS from ndb.buck.schem").collect();
+            assertEquals(rows.length, 1);
+            assertEquals(rows[0].getAs("viewName").toString(), "view1");
+
+            session.sql("DROP VIEW ndb.buck.schem.view1").show();
+            session.sql("SHOW VIEWS from ndb.buck.schem").show();
+        }
+    }
+
+    @Test(expectedExceptions = AnalysisException.class, expectedExceptionsMessageRegExp = ".*TABLE_OR_VIEW_NOT_FOUND.*view1.*")
+    public void testAlterViewAs()
+            throws IOException
+    {
+        MockUtils mockUtils = new MockUtils();
+        String testBucket = "buck";
+        mockUtils.createBucket(this.testPort, testBucket);
+        try (SparkSession session = SparkTestUtils.getSession(testPort)) {
+            session.sql("CREATE DATABASE ndb.buck.schem").show();
+            session.sql("CREATE TABLE ndb.buck.schem.tab (b BOOLEAN, i INTEGER)").show();
+            session.sql("CREATE VIEW ndb.buck.schem.view1 AS (SELECT * FROM ndb.buck.schem.tab)").show();
+            session.sql("ALTER VIEW ndb.buck.schem.view1 AS (SELECT * FROM ndb.buck.schem.tab where i > 0)").show(20, false);
+        }
+    }
+
+    @Test(expectedExceptions = AnalysisException.class, expectedExceptionsMessageRegExp = ".*TABLE_OR_VIEW_NOT_FOUND.*view1.*")
+    public void testDeleteFromView()
+            throws IOException
+    {
+        MockUtils mockUtils = new MockUtils();
+        String testBucket = "buck";
+        mockUtils.createBucket(this.testPort, testBucket);
+        try (SparkSession session = SparkTestUtils.getSession(testPort)) {
+            session.sql("CREATE DATABASE ndb.buck.schem").show();
+            session.sql("CREATE TABLE ndb.buck.schem.tab (b BOOLEAN, i INTEGER)").show();
+            session.sql("CREATE VIEW ndb.buck.schem.view1 AS (SELECT * FROM ndb.buck.schem.tab)").show();
+            session.sql("DELETE FROM ndb.buck.schem.view1 where i > 0").show(20, false);
+        }
+    }
+
+    @Test
+    public void testCreateViewWithCos()
+            throws IOException
+    {
+        MockUtils mockUtils = new MockUtils();
+        String testBucket = "buck";
+        mockUtils.createBucket(this.testPort, testBucket);
+        try (SparkSession session = SparkTestUtils.getSession(testPort)) {
+            session.sql("CREATE DATABASE ndb.buck.schem").show();
+            session.sql("CREATE TABLE ndb.buck.schem.tab (b BOOLEAN, i INTEGER)").show();
+            session.sql("CREATE VIEW ndb.buck.schem.view1 AS SELECT i+1 FROM ndb.buck.schem.tab where cos(i) > 0.5").show();
+        }
+    }
+
+    @Test
+    public void testDataTypes()
             throws IOException
     {
         MockUtils mockUtils = new MockUtils();
@@ -181,11 +396,28 @@ public class TestVastCatalog
         try (SparkSession session = SparkTestUtils.getSession(testPort)) {
             session.sql("create database ndb.buck.schem").show();
             session.sql("create table ndb.buck.schem.tab " +
-                    "(b boolean, i integer, r STRUCT<a: INTEGER, b: STRING>, v varchar(30), c char(40), d DATE, t timestamp)").show();
+                    "(b boolean, i integer, m1 map<string, integer>, m2 map<char(5), timestamp>, " +
+                    "r STRUCT<a: INTEGER, b: STRING, c: char(7)>, v varchar(30), c char(40), d DATE, t timestamp)").show();
             session.sql("show columns from ndb.buck.schem.tab").show();
-            session.sql("insert into ndb.buck.schem.tab(b, i, r, v, c, d, t) values " +
-                    "(FALSE, 321, (3, 'structstr'), 'varcharstr', 'charstr', date '2008-11-11', timestamp '2008-11-09 15:45:21')").show();
-            session.sql("show schemas from ndb.buck.schem").show();
+            session.sql("insert into ndb.buck.schem.tab(b, i, m1, m2, r, v, c, d, t) values " +
+                    "(FALSE, 321, map('astr', 777), map('qwert', timestamp '2008-11-09 15:45:21.123'), " +
+                    "(3, 'structstr', 'char7'), 'varcharstr', 'charstr', date '2008-11-11', " +
+                    "timestamp '2008-11-09 15:45:21')").show();
+            session.sql("select r.c, r.b from ndb.buck.schem.tab").explain("cost");
+        }
+    }
+
+    @Test(enabled = false)
+    public void testArrayPushdown()
+            throws IOException
+    {
+        MockUtils mockUtils = new MockUtils();
+        String testBucket = "buck";
+        mockUtils.createBucket(this.testPort, testBucket);
+        try (SparkSession session = SparkTestUtils.getSession(testPort)) {
+            session.sql("create database ndb.buck.schem").show();
+            session.sql("create table ndb.buck.schem.tab (l array<string>)").show();
+            session.sql("select l from ndb.buck.schem.tab where l is not null").show();
         }
     }
 
@@ -209,6 +441,84 @@ public class TestVastCatalog
             session.sql("show schemas").show(false);
             assertEquals(getRows(session, "show schemas from ndb")[0].get(0), "buck.schem");
             assertEquals(getRows(session, "show schemas from ndb.buck")[0].get(0), "buck.schem");
+        }
+    }
+
+    @DataProvider
+    public Object[][] sparkConfigurationAllowWrite()
+    {
+        // {disable protection, max failures, speculation}
+        return new Object[][]{
+                {false, 1, false},
+                {true, 1, false},
+                {true, 2, false},
+                {true, 1, true},
+                {true, 2, true},
+        };
+    }
+
+    @Test(dataProvider = "sparkConfigurationAllowWrite")
+    public void testRequireSafeSparkConfigurationAllowWrite(final boolean disableSparkDuplicateWritesProtection,
+                                                            final int maxFailures, final boolean speculation)
+            throws IOException, VastUserException
+    {
+        final MockUtils mockUtils = new MockUtils();
+        final String testBucket = "buck";
+        mockUtils.createBucket(this.testPort, testBucket);
+
+        try (SparkSession session = SparkTestUtils.getSession(testPort, maxFailures, speculation, disableSparkDuplicateWritesProtection)) {
+            final SparkConf sparkConfiguration = session.sparkContext().getConf();
+            assertTrue(sparkConfiguration.contains(SETTING_DISABLE_SPARK_DUPLICATE_WRITES_PROTECTION));
+            assertEquals(sparkConfiguration.getBoolean(SETTING_DISABLE_SPARK_DUPLICATE_WRITES_PROTECTION, true), disableSparkDuplicateWritesProtection);
+
+            session.sql("create database ndb.buck.schem").show();
+            session.sql("create table ndb.buck.schem.tab " +
+                    "(b boolean, i integer, r STRUCT<a: INTEGER, b: STRING>, v varchar(30), c char(40), d DATE, t timestamp)").show();
+            session.sql("show columns from ndb.buck.schem.tab").show();
+            session.sql("insert into ndb.buck.schem.tab(b, i, r, v, c, d, t) values " +
+                    "(FALSE, 321, (3, 'structstr'), 'varcharstr', 'charstr', date '2008-11-11', timestamp '2008-11-09 15:45:21')").show();
+        }
+    }
+
+    @DataProvider
+    public Object[][] sparkConfigurationDenyWrite()
+    {
+        // {max failures, speculation}
+        return new Object[][]{
+                {1, true},
+                {2, false},
+                {2, true},
+        };
+    }
+
+    @Test(dataProvider = "sparkConfigurationDenyWrite", expectedExceptions = RuntimeException.class)
+    public void testRequireSafeSparkConfigurationDenyWrite(final int maxFailures, final boolean speculation)
+            throws Throwable
+    {
+        final MockUtils mockUtils = new MockUtils();
+        final String testBucket = "buck";
+        mockUtils.createBucket(this.testPort, testBucket);
+        try (SparkSession session = SparkTestUtils.getSession(testPort, maxFailures, speculation, false)) {
+            final SparkConf sparkConfiguration = session.sparkContext().getConf();
+            assertTrue(sparkConfiguration.contains(SETTING_DISABLE_SPARK_DUPLICATE_WRITES_PROTECTION));
+            assertFalse(sparkConfiguration.getBoolean(SETTING_DISABLE_SPARK_DUPLICATE_WRITES_PROTECTION, true));
+
+            assertFalse(session.sparkContext().getConf().getBoolean(SETTING_DISABLE_SPARK_DUPLICATE_WRITES_PROTECTION, true),
+                    "Default configuration expected to enable Spark duplicate writes protection");
+
+            session.sql("create database ndb.buck.schem").show();
+            session.sql("create table ndb.buck.schem.tab " +
+                    "(b boolean, i integer, r STRUCT<a: INTEGER, b: STRING>, v varchar(30), c char(40), d DATE, t timestamp)").show();
+            session.sql("show columns from ndb.buck.schem.tab").show();
+            session.sql("insert into ndb.buck.schem.tab(b, i, r, v, c, d, t) values " +
+                    "(FALSE, 321, (3, 'structstr'), 'varcharstr', 'charstr', date '2008-11-11', timestamp '2008-11-09 15:45:21')").show();
+        }
+        catch (final RuntimeException error) {
+            assertEquals(error.getMessage(), String.format(FORMAT_UNSAFE_SPARK_CONFIGURATION, maxFailures, speculation));
+            assertTrue(Arrays.stream(error.getStackTrace()).anyMatch(element -> element.getMethodName().equals("newWriteBuilder") && element.getClassName().equals(VastTableReadOnly.class.getCanonicalName())));
+            assertEquals(error.getCause().getMessage(), String.format(FORMAT_UNSAFE_SPARK_CONFIGURATION, maxFailures, speculation));
+            assertTrue(Arrays.stream(error.getCause().getStackTrace()).anyMatch(element -> element.getMethodName().equals("<init>") && element.getClassName().equals(SparkConfValidator.class.getCanonicalName())));
+            throw error;
         }
     }
 
@@ -360,6 +670,7 @@ public class TestVastCatalog
         }
     }
 
+    //    enable for manual debugging
     @Test(enabled = false)
     public void testInsert()
             throws IOException
@@ -369,20 +680,20 @@ public class TestVastCatalog
         mockUtils.createBucket(this.testPort, testBucket);
         int noOfVals = 120000;
 
-        String[] valuesArray = IntStream.range(0, noOfVals).mapToObj(i -> format("(%s, %s, 'c%s', 's%s', %s.01)", i % 2 == 0, i, i, i, i)).toArray(String[]::new);
+        String[] valuesArray = IntStream.range(0, noOfVals).mapToObj(i -> format("(%s, %s, 'c%s', 's%s', cast(%s.001 as decimal(30,3)), %s.0f)", i % 2 == 0, i, i, i, i, i)).toArray(String[]::new);
         String valuesStr = String.join(",", valuesArray);
-        try (SparkSession session = SparkTestUtils.getSession(testPort)) {
+        HashMap<String, Object> extraConf = new HashMap<>();
+        extraConf.put("spark.ndb.max_row_count_per_insert", 2777);
+        try (SparkSession session = SparkTestUtils.getSession(testPort, extraConf)) {
             session.sql("create database ndb.buck.schem").show();
-            session.sql("create table ndb.buck.schem.tab (b boolean, i integer, c char(20), s varchar(20), d decimal(10,2))").show();
+            session.sql("create table ndb.buck.schem.tab (b boolean, i integer, c char(20), s varchar(20), d decimal(30,3), f float)").show();
             String format = format("insert into ndb.buck.schem.tab values %s", valuesStr);
             session.sql(format).show();
             String path = "buck/schem/tab";
             testGracefulVastException(session, format, path, POST, "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>InvalidBucketState</Code><Message>The request is not valid with the current state of the bucket.</Message><Resource>aresource</Resource><RequestId>a00100000006</RequestId></Error>", 409, VastConflictException.class);
             testGracefulVastException(session, format, path, POST, "Forbidden", 403, VastUserException.class);
         }
-        finally {
-            assertEquals(VastArrowAllocator.writeAllocator().getAllocatedMemory(), 0);
-        }
+        assertEquals(VastArrowAllocator.writeAllocator().getAllocatedMemory(), 0);
     }
 
     private static void testGracefulVastException(SparkSession session, String sql, String tablePath, HttpMethodName method, String message, int rc, Class<?> expectedException)
@@ -432,6 +743,32 @@ public class TestVastCatalog
             session.sql("create table ndb.buck.schem.tab (b boolean, i integer)").show();
             session.sql("alter table ndb.buck.schem.tab drop partition (i = 5)").show();
         }
+    }
+
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = ".*Failed renaming table - changing bucket is not supported.*",
+            dataProvider = "badRenameTableQueries")
+    public void testRenameBucketIsNotSupported(String badRenameQuery)
+            throws IOException
+    {
+        MockUtils mockUtils = new MockUtils();
+        String testBucket = "buck";
+        mockUtils.createBucket(this.testPort, testBucket);
+        try (SparkSession session = SparkTestUtils.getSession(testPort)) {
+            session.sql("create database ndb.buck.schem").show();
+            session.sql("create table ndb.buck.schem.tab (b boolean, i integer, s string, c char(5))").show();
+
+            session.sql(badRenameQuery).show();
+        }
+    }
+
+    @DataProvider(name = "badRenameTableQueries")
+    public Object[][] badRenameTableQueriesData()
+    {
+        return new Object[][]{
+                {"alter table ndb.buck.schem.tab rename to buck2.schem.newtable"},
+                {"alter table ndb.buck.schem.tab rename to buck2.schem.newtable"},
+                {"alter table ndb.buck.schem.tab rename to buck2.schem1.tab"},
+        };
     }
 
     @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Row level delete is not supported for required filters.*")
@@ -644,7 +981,8 @@ public class TestVastCatalog
         try (SparkSession session = SparkTestUtils.getSession(testPort)) {
             session.sql("create database ndb.buck.schem");
             session.sql("create table ndb.buck.schem.tab (b boolean, c char(5))");
-            session.sql("delete from ndb.buck.schem.tab where c is not null").explain();
+            session.sql("select ndb.create_tx()").show();
+            session.sql("delete from ndb.buck.schem.tab where c is not null").show();
         }
     }
 
@@ -1026,6 +1364,57 @@ public class TestVastCatalog
             Optional<Statistics> newTableStatistics = sparkPersistentStatistics.getTableStatistics(table);
             assertEquals(Optional.of(tableStatistics), newTableStatistics);
         }
+    }
+
+    @Test(dataProvider = "statisticsLowerSizeEstimationFactors")
+    public void testStatisticsLowerSizeEstimation(final long factorReciprocal, final long precisionReciprocal) throws IOException
+    {
+        MockUtils mockUtils = new MockUtils();
+        String testBucket = "buck";
+        mockUtils.createBucket(this.testPort, testBucket);
+        try (SparkSession session = SparkTestUtils.getSession(testPort)) {
+            session.sql("create database ndb.buck.schem");
+            session.sql("create table ndb.buck.schem.tab (b BINARY)");
+            final String query = "select * from ndb.buck.schem.tab where b = 'abcd'";
+            final Statistics baseStatistics = overrideEstimationFactor(session, query, 1.0);
+            final double precision = 1.0 / precisionReciprocal;
+            final long epsilonRowCount = (long) (baseStatistics.rowCount().get().toLong() * precision);
+            final long epsilonSizeInBytes = (long) (baseStatistics.sizeInBytes().toLong() * precision);
+            final Statistics statistics = overrideEstimationFactor(session, query, 1.0 / factorReciprocal);
+            assertClose(baseStatistics.rowCount().get().toLong(), statistics.rowCount().get().toLong() * factorReciprocal, epsilonRowCount);
+            assertClose(baseStatistics.sizeInBytes().toLong(), statistics.sizeInBytes().toLong() * factorReciprocal, epsilonSizeInBytes);
+        }
+    }
+
+    private static Statistics overrideEstimationFactor(final SparkSession session, final String query, final double factor)
+    {
+        try (MockedStatic<FilterEstimator> mockedFilterEstimator = mockStatic(FilterEstimator.class)) {
+            mockedFilterEstimator
+                    .when(() -> FilterEstimator.estimateStatistics(ArgumentMatchers.anyList(), ArgumentMatchers.any()))
+                    .thenAnswer(input -> {
+                        final TableLevelStatistics statistics = input.getArgument(1);
+                        final UnaryOperator<Long> applySelectivity = stat -> (long) (stat * factor);
+                        return new TableLevelStatistics(map(statistics.sizeInBytes(), applySelectivity),
+                            map(statistics.numRows(), applySelectivity),
+                            statistics.columnStats());
+                    });
+            return session.sql(query).queryExecution().optimizedPlan().stats();
+        }
+    }
+
+    @DataProvider
+    private Long[][] statisticsLowerSizeEstimationFactors()
+    {
+        return new Long[][] {
+                {2L, 10_000_000L},
+                {3L, 10_000_000L},
+                {1024L, 100_000L},
+        };
+    }
+
+    private static void assertClose(final long left, final long right, final long epsilon)
+    {
+        assertTrue(Math.abs(left - right) < epsilon);
     }
 
     @Test

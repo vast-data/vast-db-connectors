@@ -21,6 +21,7 @@ import java.util.stream.Collectors;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -57,7 +58,7 @@ public class TestVastMetadata
         Field field2 = new Field("col2", FieldType.notNullable(ArrowType.Utf8.INSTANCE), null);
         List<Field> columnsList = List.of(field1, field2);
         List<VastColumnHandle> columnHandlesList = columnsList.stream().map(VastColumnHandle::fromField).collect(Collectors.toList());
-        when(mockClient.listColumns(any(), any(String.class), any(String.class), anyInt())).thenReturn(columnsList);
+        when(mockClient.listColumns(any(), any(String.class), any(String.class), anyInt(), anyMap())).thenReturn(columnsList);
         when(session.getProperty(eq("client_page_size"), eq(Integer.class))).thenReturn(5);
 
         VastMetadata unit = new VastMetadata(mockClient, null, null);
@@ -71,7 +72,7 @@ public class TestVastMetadata
         ConnectorTableSchema tableSchema3 = unit.getTableSchema(session, tableHandle.forDelete());
         assertEquals(tableSchema1.getColumns(), tableSchema3.getColumns());
         assertEquals(tableSchema3.getColumns().size(), columnHandlesList.size());
-        verify(mockClient, times(1)).listColumns(any(), any(String.class), any(String.class), anyInt());
+        verify(mockClient, times(1)).listColumns(any(), any(String.class), any(String.class), anyInt(), anyMap());
     }
 
     @Test
@@ -82,7 +83,7 @@ public class TestVastMetadata
         Field field2 = new Field("col2", FieldType.notNullable(ArrowType.Utf8.INSTANCE), null);
         List<Field> columnsList = List.of(field1, field2);
         List<VastColumnHandle> columnHandlesList = columnsList.stream().map(VastColumnHandle::fromField).collect(Collectors.toList());
-        when(mockClient.listColumns(any(), any(String.class), any(String.class), anyInt())).thenReturn(columnsList);
+        when(mockClient.listColumns(any(), any(String.class), any(String.class), anyInt(), anyMap())).thenReturn(columnsList);
         when(session.getProperty(eq("client_page_size"), eq(Integer.class))).thenReturn(5);
 
         VastMetadata unit = new VastMetadata(mockClient, null, null);
@@ -93,6 +94,6 @@ public class TestVastMetadata
         ConnectorTableSchema tableSchema2 = unit.getTableSchema(session, tableHandle);
         assertEquals(tableSchema1.getColumns(), tableSchema2.getColumns());
         assertEquals(tableSchema2.getColumns().size(), columnHandlesList.size() + 1);
-        verify(mockClient, times(1)).listColumns(any(), any(String.class), any(String.class), anyInt());
+        verify(mockClient, times(1)).listColumns(any(), any(String.class), any(String.class), anyInt(), anyMap());
     }
 }

@@ -30,6 +30,7 @@ import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 
 import java.net.URI;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -135,7 +136,7 @@ public class VastPageSourceProvider
             }
         }
         // no need to limit when no projections are specified (e.g. in `SELECT count(*) FROM t`), to use optimized VAST implementation
-        Optional<Integer> batchSize = projections.size() > 0 ? Optional.of(rowsPerPage) : Optional.empty();
+        Optional<Integer> batchSize = projections.isEmpty() ? Optional.empty() : Optional.of(rowsPerPage);
         Schema responseSchema = projectionSerializer.getResponseSchema();
         Supplier<QueryDataResponseParser> fetchPages = () -> {
             QueryDataResponseSchemaConstructor querySchema = QueryDataResponseSchemaConstructor.deconstruct(traceStr, responseSchema, projections, baseFieldWithProjections);
@@ -151,7 +152,7 @@ public class VastPageSourceProvider
                     usedDataEndpoint,
                     vastSplit.getContext(), vastSplit.getSchedulingInfo(),
                     dataEndpoints, retryConfig, batchSize, table.getBigCatalogSearchPath(), pagination,
-                    getEnableSortedProjections(session));
+                    getEnableSortedProjections(session), Collections.emptyMap());
             return result.get();
         };
 

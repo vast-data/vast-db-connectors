@@ -17,7 +17,7 @@ import org.slf4j.LoggerFactory;
 import scala.collection.mutable.HashMap;
 
 import java.net.URI;
-import java.util.function.Supplier;
+import java.util.Optional;
 
 import static com.vastdata.client.VastConfig.DYNAMIC_FILTER_COMPACTION_THRESHOLD_DEFAULT_VALUE;
 import static com.vastdata.client.VastConfig.MIN_MAX_COMPACTION_MIN_VALUES_DEFAULT_VALUE;
@@ -35,9 +35,23 @@ public final class NDB
         };
         initRoutine = NDB::init;
         dependencyFactoryFunction = VastSparkDependenciesFactory::new;
-        envSupplierSupplier = () -> () -> {
-            SparkContext sparkContext = SparkContext$.MODULE$.getActive().get();
-            return sparkContext.executorEnvs();
+        alterTransaction = (cancelOnFailure, f) -> {
+            final HashMap<String, String> environment = SparkContext$.MODULE$.getActive().get().executorEnvs();
+            final Optional<String> currentTransaction = Optional.ofNullable(environment.get(TRANSACTION_KEY).getOrElse(() -> null));
+            try {
+                final Optional<String> newTransaction = f.apply(currentTransaction);
+                if (newTransaction.isPresent()) {
+                    environment.put(TRANSACTION_KEY, newTransaction.get());
+                } else {
+                    environment.remove(TRANSACTION_KEY);
+                }
+            }
+            catch (final Exception error) {
+                if (cancelOnFailure) {
+                    environment.remove(TRANSACTION_KEY);
+                }
+                throw error;
+            }
         };
     }
 
@@ -94,6 +108,9 @@ public final class NDB
         int rowGroupsPerSubSplit = conf.getInt("spark.ndb.rowgroups_per_subsplit", 8);
         int queryDataRowsPerPage = conf.getInt("spark.ndb.query_data_rows_per_page", 100000);
         int queryDataRowsPerSplit = conf.getInt("spark.ndb.query_data_rows_per_split", 4000000);
+        int maxInsertRows = conf.getInt("spark.ndb.max_row_count_per_insert", 16000);
+        int maxUpdateRows = conf.getInt("spark.ndb.max_row_count_per_update", 2048);
+        int maxDeleteRows = conf.getInt("spark.ndb.max_row_count_per_delete", 2048);
         long advisoryPartitionSize = conf.getLong("spark.ndb.adaptive.advisoryPartitionSizeInBytes", 268435456);
         boolean adaptivePartitioning = conf.getBoolean("spark.ndb.adaptive.partitionPlanning", true);
         int retriesMaxCount = conf.getInt("spark.ndb.retry_max_count", 3);
@@ -118,6 +135,9 @@ public final class NDB
                 .setRowGroupsPerSubSplit(rowGroupsPerSubSplit)
                 .setQueryDataRowsPerPage(queryDataRowsPerPage)
                 .setQueryDataRowsPerSplit(queryDataRowsPerSplit)
+                .setMaxRowsPerInsert(maxInsertRows)
+                .setMaxRowsPerUpdate(maxUpdateRows)
+                .setMaxRowsPerDelete(maxDeleteRows)
                 .setAdvisoryPartitionSize(advisoryPartitionSize)
                 .setAdaptivePartitioning(adaptivePartitioning)
                 .setRetryMaxCount(retriesMaxCount)
@@ -137,10 +157,5 @@ public final class NDB
     private static void printConf(SparkConf conf)
     {
         LOG.debug("Initializing using Spark conf: {}, {}", conf, conf.getAll());
-    }
-
-    public static Supplier<HashMap<String, String>> getEnvSupplier()
-    {
-        return envSupplierSupplier.get();
     }
 }

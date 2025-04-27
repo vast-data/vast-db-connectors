@@ -21,13 +21,7 @@ public class VastTableMetaData
     @Override
     public boolean equals(Object o)
     {
-        if (super.equals(o)) {
-            VastTableMetaData that = (VastTableMetaData) o;
-            return Objects.equals(schema, that.schema);
-        }
-        else {
-            return false;
-        }
+        return super.equals(o) && Objects.equals(schema, ((VastTableMetaData) o).schema);
     }
 
     @Override

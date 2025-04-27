@@ -57,12 +57,6 @@ public class VastBatchWriter
     }
 
     @Override
-    public boolean useCommitCoordinator()
-    {
-        return true;
-    }
-
-    @Override
     public void onDataWriterCommit(WriterCommitMessage message)
     {
         LOG.info("onDataWriterCommit() {}", message);

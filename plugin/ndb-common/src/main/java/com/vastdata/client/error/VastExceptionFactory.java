@@ -81,9 +81,9 @@ public final class VastExceptionFactory
         return new VastClosedTransactionException(transactionHandle);
     }
 
-    public static Optional<VastException> checkResponseStatus(VastResponse vastResponse, String msg)
+    public static Optional<VastException> checkResponseStatus(final VastResponse vastResponse, final String msg)
     {
-        int status = vastResponse.getStatus();
+        final int status = vastResponse.getStatus();
         if (status >= 500) {
             return Optional.of(serverException(renderErrorMessage(wrapErrorMessageWithErrorDetails(msg, status, vastResponse.getRequestUri()), vastResponse)));
         }

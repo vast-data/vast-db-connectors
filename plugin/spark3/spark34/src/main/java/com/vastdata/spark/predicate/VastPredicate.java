@@ -84,7 +84,7 @@ public class VastPredicate
         VastPredicate other = (VastPredicate)o;
         Expression[] children = predicate.children();
         Expression[] ochildren = other.predicate.children();
-        if (!field.equals(other.field) || predicate.name() != other.predicate.name() || children.length != ochildren.length) {
+        if (!field.equals(other.field) || !predicate.name().equals(other.predicate.name()) || children.length != ochildren.length) {
             return false;
         }
         if (children.length == 1) {

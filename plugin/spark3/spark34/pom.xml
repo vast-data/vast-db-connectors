@@ -7,12 +7,12 @@
     <parent>
         <groupId>ndb</groupId>
         <artifactId>spark-vast</artifactId>
-        <version>5.1.0</version>
+        <version>5.3.0</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
     <artifactId>spark-vast-spark34</artifactId>
-    <version>5.1.0</version>
+    <version>5.3.0</version>
     <name>spark-34</name>
     <description>Spark - VAST for Spark 3.4</description>
     <packaging>jar</packaging>
@@ -75,10 +75,17 @@
             <artifactId>spark-vast-common</artifactId>
             <version>${project.version}</version>
         </dependency>
+
         <dependency>
-            <groupId>net.bytebuddy</groupId>
-            <artifactId>byte-buddy</artifactId>
-            <version>1.14.2</version>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-VDB-thriftserver_2.13</artifactId>
+            <version>3.4.4.1414476</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>*</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>io.airlift</groupId>
@@ -130,8 +137,21 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>ndb</groupId>
+            <artifactId>spark-vast-common</artifactId>
+            <type>test-jar</type>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
+            <version>4.11.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-inline</artifactId>
             <version>4.11.0</version>
             <scope>test</scope>
         </dependency>
@@ -184,29 +204,28 @@
                         -XX:+ExitOnOutOfMemoryError
                         -XX:+HeapDumpOnOutOfMemoryError
                         -XX:-OmitStackTraceInFastThrow
-                        --add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED
-                        --add-exports=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED
-                        --add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED
-                        --add-exports=jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED
-                        --add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED
-                        --add-exports=jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED
-                        --add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED
-                        --add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED
-                        --add-opens=java.base/java.io=ALL-UNNAMED
-                        --add-opens=java.base/java.lang=ALL-UNNAMED
-                        --add-opens=java.base/java.nio=ALL-UNNAMED
-                        --add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED
-                        --add-opens=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED
-                        --add-opens=java.base/java.nio=ALL-UNNAMED
-                        --add-opens=java.base/java.lang=ALL-UNNAMED
-                        --add-exports=java.base/sun.nio.ch=ALL-UNNAMED
                     </argLine>
                 </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-dependency-plugin</artifactId>
+                <configuration combine.self="override"/>
                 <executions>
+                    <execution>
+                        <id>analyze-only</id>
+                        <goals>
+                            <goal>analyze-only</goal>
+                        </goals>
+                        <configuration>
+                            <failOnWarning>false</failOnWarning>
+                            <ignoredDependencies>
+                                <ignoredDependency>org.apache.spark:spark-VDB-thriftserver_2.13</ignoredDependency>
+                                <ignoredDependency>io.airlift:http-client</ignoredDependency>
+                                <ignoredDependency>com.amazonaws:aws-java-sdk-core</ignoredDependency>
+                            </ignoredDependencies>
+                        </configuration>
+                    </execution>
                     <execution>
                         <id>copy-dependencies</id>
                         <phase>package</phase>
@@ -214,11 +233,13 @@
                             <goal>copy-dependencies</goal>
                         </goals>
                         <configuration>
+                            <excludeArtifactIds>hive-service-rpc,hive-common</excludeArtifactIds>
                             <excludeTransitive>false</excludeTransitive>
                             <includeScope>runtime</includeScope>
                             <outputDirectory>target/dependencies</outputDirectory>
                         </configuration>
                     </execution>
+
                 </executions>
             </plugin>
             <plugin>

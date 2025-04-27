@@ -65,6 +65,12 @@ public class TrinoPersistentStatistics
         });
     }
 
+    @VisibleForTesting
+    protected long getCurrentCacheSize()
+    {
+        return cache.size();
+    }
+
     private Optional<TableStatistics> tableStatisticsLoader(CacheKey tableHandleCacheKey)
     {
         StatisticsUrl extracted = StatisticsUrl.extract(tableHandleCacheKey.getTableHandle(), statisticsUrlHelper, tag);
@@ -75,7 +81,14 @@ public class TrinoPersistentStatistics
             return Optional.empty();
         }
         Optional<String> tsBuffer = client.s3GetObj(keyName, bucketName);
-        LOG.info("fetched object %s from Vast: %s", keyName, tsBuffer);
+        if (tsBuffer == null)
+        {
+            LOG.info("failed fetching object %s from Vast", keyName);
+            return null;
+        }
+        else {
+            LOG.info("fetched object %s from Vast: %s", keyName, tsBuffer);
+        }
         Optional<TableStatistics> result = tsBuffer.map(bufferBytes -> {
             try {
                 TrinoSerializableTableStatistics serializableTableStatistics = mapper.readValue(bufferBytes, TrinoSerializableTableStatistics.class);

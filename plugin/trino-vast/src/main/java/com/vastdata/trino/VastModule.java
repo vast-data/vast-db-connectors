@@ -19,7 +19,6 @@ import io.airlift.log.Logger;
 import io.trino.plugin.base.session.SessionPropertiesProvider;
 
 import static com.google.inject.multibindings.Multibinder.newSetBinder;
-import static com.vastdata.client.VastDependenciesFactory.HTTP_CLIENT_CONFIG_CONFIG_DEFAULTS;
 import static io.airlift.configuration.ConfigBinder.configBinder;
 import static io.airlift.http.client.HttpClientBinder.httpClientBinder;
 
@@ -34,7 +33,7 @@ public class VastModule
         VastMockS3ServerStarter.fromEnv();
         LOG.info("Configuring VastModule");
         httpClientBinder(binder).bindHttpClient("vast", ForVast.class)
-                .withConfigDefaults(HTTP_CLIENT_CONFIG_CONFIG_DEFAULTS);
+                .withConfigDefaults(VastTrinoDependenciesFactory.HTTP_CLIENT_CONFIG_CONFIG_DEFAULTS);
 
         newSetBinder(binder, SessionPropertiesProvider.class).addBinding().to(VastSessionProperties.class).in(Scopes.SINGLETON);
 

@@ -64,9 +64,11 @@ public final class StatsUtils
 
     public static org.apache.spark.sql.connector.read.Statistics sparkCatalystStatsToTableStatistics(Statistics fullStats)
     {
-        OptionalLong sizeInBytes = OptionalLong.of(fullStats.sizeInBytes().longValue());
-        OptionalLong rowCount = fullStats.rowCount().isEmpty() ? OptionalLong.empty() : OptionalLong.of(fullStats.rowCount().get().longValue());
-        Map<NamedReference, ColumnStatistics> columnStats = new HashMap<>();
+        final OptionalLong sizeInBytes = OptionalLong.of(fullStats.sizeInBytes().toLong());
+        final OptionalLong rowCount = fullStats.rowCount().isDefined()
+                ? OptionalLong.of(fullStats.rowCount().get().toLong())
+                : OptionalLong.empty();
+        final Map<NamedReference, ColumnStatistics> columnStats = new HashMap<>();
         fullStats.attributeStats().foreach(entry -> {
             NamedReference ref = FieldReference.apply(entry._1.name());
             ColumnStatistics stat = new ColumnLevelStatistics(entry._2);

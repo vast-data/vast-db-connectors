@@ -31,9 +31,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.BooleanSupplier;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -58,7 +58,7 @@ public class TestWorkLoad
             successCtr.incrementAndGet();
             return i % 2 != 0;
         };
-        Consumer<Throwable> failedConsumer = o -> {};
+        BiConsumer<Throwable, URI> failedConsumer = (o, u) -> {};
         BooleanSupplier bla = () -> true;
         BiFunction<Integer, URI, Integer> bif = (i, uri) -> i;
 

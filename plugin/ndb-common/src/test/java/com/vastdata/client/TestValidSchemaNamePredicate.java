@@ -4,34 +4,39 @@
 
 package com.vastdata.client;
 
-import com.google.common.collect.ImmutableList;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static java.lang.String.format;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.assertEquals;
 
 public class TestValidSchemaNamePredicate
 {
     private final ValidSchemaNamePredicate unit = new ValidSchemaNamePredicate();
 
-    @Test
-    public void testValidSchemaName()
+    @DataProvider
+    Object[][] schemaNames()
     {
-        ImmutableList.of("/buck/schema/nested/", "/Buck/Schema/Nested/nested1", "buck/schema", "buck/schema/", "bu ck/sc ema")
-                .forEach(name -> {
-                    boolean valid = unit.test(name);
-                    assertTrue(valid, format("Schema name %s was tested negative", name));
-                });
+        return new Object[][] {
+                {"/buck/schema/nested/", true},
+                {"/Buck/Schema/Nested/nested1", true},
+                {"buck/schema", true},
+                {"buck/schema/", true},
+                {"bu ck/sc ema", true},
+                {"/buck", false},
+                {"/Buck/", false},
+                {"buck", false},
+                {"buck///", false},
+                {"", false},
+                {"/", false},
+                {"////buck/schema", false},
+                {"///buck1A", false},
+        };
     }
 
-    @Test
-    public void testInvalidSchemaName()
+    @Test(dataProvider = "schemaNames")
+    public void testValidSchemaName(final String schemaName, final boolean isValid)
     {
-        ImmutableList.of("/buck", "/Buck/", "buck", "buck///", "", "/", "////buck/schema", "///buck1A")
-                .forEach(name -> {
-                    boolean valid = unit.test(name);
-                    assertFalse(valid, format("Schema name %s was expected to test negative", name));
-                });
+        assertEquals(unit.test(schemaName), isValid, format("Schema name %s was tested negative", schemaName));
     }
 }
