@@ -55,13 +55,13 @@
 
     <repositories>
 	<repository>
-	    <id>vastdb-maven-release</id>
-	    <url>s3://vast-maven-repo/release</url>
-	</repository>
-	<repository>
             <id>central</id>
             <name>Maven Central Repository</name>
             <url>https://repo.maven.apache.org/maven2</url>
+	</repository>
+	<repository>
+	    <id>vastdb-maven-release</id>
+	    <url>https://vast-maven-repo.s3.amazonaws.com/release</url>
 	</repository>
     </repositories>
 
@@ -109,13 +109,5 @@
                 </executions>
             </plugin>
         </plugins>
-	
-	<extensions>
-	    <extension>
-		<groupId>com.github.seahen</groupId>
-		<artifactId>maven-s3-wagon</artifactId>
-		<version>1.3.3</version>
-	    </extension>
-	</extensions>
     </build>
 </project>
