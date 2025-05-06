@@ -6,9 +6,14 @@ package com.vastdata.client.schema;
 
 import org.apache.arrow.vector.types.pojo.Field;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
+
+import static com.vastdata.client.schema.VastMetadataUtils.SORTED_BY_PROPERTY;
+import static com.vastdata.client.schema.VastMetadataUtils.colNamesToIndex;;
 
 public class CreateTableContext
 {
@@ -41,5 +46,14 @@ public class CreateTableContext
     List<Field> getFields()
     {
         return fields;
+    }
+
+    public List<Integer> getSortKey()
+    {
+	List<String> rawSortedBy = (List<String>)properties.get(SORTED_BY_PROPERTY);
+	if (rawSortedBy == null) {
+	    return new ArrayList<>();
+	}
+	return colNamesToIndex(fields.stream().map(Field::getName).collect(Collectors.toList()), rawSortedBy);
     }
 }

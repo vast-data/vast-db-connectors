@@ -56,7 +56,8 @@
     <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/arrow/arrow-format/13.0.0/arrow-format-13.0.0.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/arrow/arrow-memory-netty/13.0.0/arrow-memory-netty-13.0.0.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/io/netty/netty-buffer/4.1.96.Final/netty-buffer-4.1.96.Final.jar" enabled="true" runInBatchMode="false"/>
-    <factorypathentry kind="VARJAR" id="M2_REPO/net/bytebuddy/byte-buddy/1.14.2/byte-buddy-1.14.2.jar" enabled="true" runInBatchMode="false"/>
+    <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/arrow/arrow-compression/13.0.0/arrow-compression-13.0.0.jar" enabled="true" runInBatchMode="false"/>
+    <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/commons/commons-compress/1.21/commons-compress-1.21.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/io/airlift/units/1.6/units-1.6.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/com/fasterxml/jackson/core/jackson-annotations/2.15.1/jackson-annotations-2.15.1.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/spark/spark-catalyst_2.13/3.3.2/spark-catalyst_2.13-3.3.2.jar" enabled="true" runInBatchMode="false"/>
@@ -72,7 +73,6 @@
     <factorypathentry kind="VARJAR" id="M2_REPO/org/spark-project/spark/unused/1.0.0/unused-1.0.0.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/spark/spark-core_2.13/3.3.2/spark-core_2.13-3.3.2.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/avro/avro/1.11.0/avro-1.11.0.jar" enabled="true" runInBatchMode="false"/>
-    <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/commons/commons-compress/1.21/commons-compress-1.21.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/avro/avro-mapred/1.11.0/avro-mapred-1.11.0.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/avro/avro-ipc/1.11.0/avro-ipc-1.11.0.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/org/tukaani/xz/1.9/xz-1.9.jar" enabled="true" runInBatchMode="false"/>
@@ -175,6 +175,7 @@
     <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/parquet/parquet-hadoop/1.12.2/parquet-hadoop-1.12.2.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/parquet/parquet-jackson/1.12.2/parquet-jackson-1.12.2.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/spark/spark-unsafe_2.13/3.3.2/spark-unsafe_2.13-3.3.2.jar" enabled="true" runInBatchMode="false"/>
+    <factorypathentry kind="VARJAR" id="M2_REPO/net/bytebuddy/byte-buddy/1.12.19/byte-buddy-1.12.19.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/org/objenesis/objenesis/3.3/objenesis-3.3.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/arrow/arrow-memory-core/13.0.0/arrow-memory-core-13.0.0.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/arrow/arrow-vector/13.0.0/arrow-vector-13.0.0.jar" enabled="true" runInBatchMode="false"/>

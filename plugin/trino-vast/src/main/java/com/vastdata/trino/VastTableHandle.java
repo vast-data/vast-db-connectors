@@ -27,6 +27,7 @@ public final class VastTableHandle
     private final String tableName;
     private List<VastColumnHandle> tableColumns;
     private final List<VastColumnHandle> mergedColumns; // set by `VastMetadata#beginMerge`
+    private final Optional<List<String>> sortedColumns;
     private final Optional<Long> limit;
     private final TupleDomain<VastColumnHandle> predicate; // enforced by connector
     private final ComplexPredicate complexPredicate;
@@ -39,6 +40,7 @@ public final class VastTableHandle
             @JsonProperty("schemaName") String schemaName,
             @JsonProperty("tableName") String tableName,
             @JsonProperty("mergedColumns") List<VastColumnHandle> mergedColumns,
+            @JsonProperty("sortedColumns") Optional<List<String>> sortedColumns,
             @JsonProperty("predicate") TupleDomain<VastColumnHandle> predicate,
             @JsonProperty("complexPredicate") ComplexPredicate complexPredicate,
             @JsonProperty("bigCatalogSearchPath") Optional<String> bigCatalogSearchPath,
@@ -50,6 +52,7 @@ public final class VastTableHandle
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
         this.tableName = requireNonNull(tableName, "tableName is null");
         this.mergedColumns = requireNonNull(mergedColumns, "mergedColumns is null");
+        this.sortedColumns = requireNonNull(sortedColumns, "sortedColumns is null");
         this.predicate = requireNonNull(predicate, "predicate is null");
         this.complexPredicate = complexPredicate;
         this.bigCatalogSearchPath = requireNonNull(bigCatalogSearchPath, "bigCatalogSearchPath is null");
@@ -61,40 +64,47 @@ public final class VastTableHandle
 
     public VastTableHandle(String schemaName, String tableName, String handleID, boolean forImportData)
     {
-        this(schemaName, tableName, List.of(), TupleDomain.all(), null, Optional.empty(), List.of(), Optional.empty(), forImportData, handleID);
+        this(schemaName, tableName, List.of(), Optional.empty(), TupleDomain.all(), null, Optional.empty(), List.of(), Optional.empty(), forImportData, handleID);
     }
 
     public VastTableHandle forDelete()
     {
-        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, List.of(), predicate, complexPredicate, bigCatalogSearchPath, substringMatches, limit, false, handleID);
+        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, List.of(), sortedColumns, predicate, complexPredicate, bigCatalogSearchPath, substringMatches, limit, false, handleID);
         newHandle.setColumnHandlesCache(this.tableColumns);
         return newHandle;
     }
 
     public VastTableHandle forMerge(List<VastColumnHandle> mergeableColumns)
     {
-        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, mergeableColumns, predicate, complexPredicate, bigCatalogSearchPath, substringMatches, limit, false, handleID);
+        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, mergeableColumns, sortedColumns, predicate, complexPredicate, bigCatalogSearchPath, substringMatches, limit, false, handleID);
         newHandle.setColumnHandlesCache(this.tableColumns);
         return newHandle;
     }
 
     public VastTableHandle withPredicate(TupleDomain<VastColumnHandle> predicate, Optional<ComplexPredicate> complexPredicate, List<VastSubstringMatch> substringMatches)
     {
-        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, mergedColumns, predicate, complexPredicate.orElse(null), bigCatalogSearchPath, substringMatches, limit, false, handleID);
+        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, mergedColumns, sortedColumns, predicate, complexPredicate.orElse(null), bigCatalogSearchPath, substringMatches, limit, false, handleID);
         newHandle.setColumnHandlesCache(this.tableColumns);
         return newHandle;
     }
 
     public VastTableHandle withBigCatalogSearchPath(String bigCatalogSearchPath)
     {
-        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, mergedColumns, predicate, complexPredicate, Optional.of(bigCatalogSearchPath), substringMatches, limit, false, handleID);
+        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, mergedColumns, sortedColumns, predicate, complexPredicate, Optional.of(bigCatalogSearchPath), substringMatches, limit, false, handleID);
         newHandle.setColumnHandlesCache(this.tableColumns);
         return newHandle;
     }
 
     public VastTableHandle withLimit(long limit)
     {
-        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, mergedColumns, predicate, complexPredicate, bigCatalogSearchPath, substringMatches, Optional.of(limit), false, handleID);
+        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, mergedColumns, sortedColumns, predicate, complexPredicate, bigCatalogSearchPath, substringMatches, Optional.of(limit), false, handleID);
+        newHandle.setColumnHandlesCache(this.tableColumns);
+        return newHandle;
+    }
+
+    public VastTableHandle withSortedColumns(List<String> sortedColumns)
+    {
+        VastTableHandle newHandle = new VastTableHandle(schemaName, tableName, mergedColumns, Optional.ofNullable(sortedColumns), predicate, complexPredicate, bigCatalogSearchPath, substringMatches, limit, forImportData, handleID);
         newHandle.setColumnHandlesCache(this.tableColumns);
         return newHandle;
     }
@@ -153,6 +163,12 @@ public final class VastTableHandle
         return forImportData;
     }
 
+    @JsonProperty
+    public Optional<List<String>> getSortedColumns()
+    {
+        return sortedColumns;
+    }
+
     public SchemaTableName toSchemaTableName()
     {
         return new SchemaTableName(schemaName, tableName);
@@ -187,7 +203,7 @@ public final class VastTableHandle
     @Override
     public String toString()
     {
-        return format("%s:%s@%s%s", schemaName, tableName, predicate, limit.map(value -> format(",limit=%d", value)).orElse(""));
+        return format("%s:%s@%s%s:sorted_by@[%s]", schemaName, tableName, predicate, limit.map(value -> format(",limit=%d", value)).orElse(""), getSortedColumns());
     }
 
     public void clearColumnHandlesCache()
@@ -200,7 +216,7 @@ public final class VastTableHandle
         this.tableColumns = tableColumns;
     }
 
-    public List<VastColumnHandle> getColumnHandlesCache()
+        public List<VastColumnHandle> getColumnHandlesCache()
     {
         return tableColumns;
     }

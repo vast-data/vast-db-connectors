@@ -49,7 +49,7 @@ import java.util.Optional;
 import java.util.function.Function;
 
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
-import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_FIELD;
+import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_UINT64_FIELD;
 import static com.vastdata.spark.metrics.CustomTaskMetricFactory.customTaskMetric;
 import static java.lang.String.format;
 
@@ -73,7 +73,7 @@ public class VastColumnarBatchReader
     {
         Schema projectionSchema;
         if (forAlter) {
-            projectionSchema = new Schema(Lists.newArrayList(ROW_ID_FIELD));
+            projectionSchema = new Schema(Lists.newArrayList(ROW_ID_UINT64_FIELD));
         }
         else {
             projectionSchema = new Schema(TypeUtil.sparkSchemaToArrowFieldsList(schema));

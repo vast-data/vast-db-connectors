@@ -18,7 +18,8 @@ public enum RequestsHeaders
     TABULAR_CLIENT_NAME("tabular-client-name"),
     TABULAR_API_VERSION_ID("tabular-api-version-id"),
     TABULAR_EXACT_MATCH("tabular-name-exact-match"),
-    TABULAR_TRACE_TOKEN("tabular-trace-token");
+    TABULAR_TRACE_TOKEN("tabular-trace-token"),
+    TABULAR_SORTED_TEMPLATE("tabular-sorted-column-%d");
 
     private final String headerName;
 

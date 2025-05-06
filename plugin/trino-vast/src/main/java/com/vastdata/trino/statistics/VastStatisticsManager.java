@@ -35,6 +35,7 @@ import io.trino.spi.type.Decimals;
 import io.trino.spi.type.Int128;
 import io.trino.spi.type.TimeType;
 import io.trino.spi.type.TimestampType;
+import io.trino.spi.type.TimestampWithTimeZoneType;
 import io.trino.spi.type.Type;
 import org.apache.arrow.vector.types.TimeUnit;
 import org.apache.arrow.vector.types.pojo.Field;
@@ -60,12 +61,14 @@ import static io.trino.spi.statistics.TableStatisticType.ROW_COUNT;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.spi.type.DateType.DATE;
+import static io.trino.spi.type.DateTimeEncoding.unpackMillisUtc;
 import static io.trino.spi.type.DecimalConversions.longDecimalToDouble;
 import static io.trino.spi.type.DoubleType.DOUBLE;
 import static io.trino.spi.type.IntegerType.INTEGER;
 import static io.trino.spi.type.RealType.REAL;
 import static io.trino.spi.type.SmallintType.SMALLINT;
 import static io.trino.spi.type.TinyintType.TINYINT;
+import static io.trino.spi.type.UuidType.UUID;
 import static io.trino.spi.type.VarbinaryType.VARBINARY;
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static java.lang.Float.intBitsToFloat;
@@ -153,7 +156,7 @@ public class VastStatisticsManager
             ByteArrayBlock byteArrayBlock = (ByteArrayBlock) block;
             return Optional.of(((Byte) byteArrayBlock.getByte(0)).doubleValue());
         }
-        else if (type.equals(VARCHAR) || type instanceof CharType || type == VARBINARY) {
+        else if (type.equals(VARCHAR) || type instanceof CharType || type == VARBINARY || type == UUID) {
             return Optional.empty(); // Trino does not support non-numeric min/max values
         }
         if (type instanceof DecimalType decimalType) {
@@ -171,6 +174,14 @@ public class VastStatisticsManager
             }
             LongArrayBlock longArrayBlock = (LongArrayBlock) block;
             return Optional.of(((Long) longArrayBlock.getLong(0)).doubleValue());
+        }
+        if (type instanceof TimestampWithTimeZoneType ts) {
+            TimeUnit timeUnit = TypeUtils.precisionToTimeUnit(ts.getPrecision());
+            if (timeUnit == TimeUnit.NANOSECOND || timeUnit == timeUnit.MICROSECOND) {
+                return Optional.empty(); // Trino doesn't support min/max values for these precisions
+            }
+            LongArrayBlock longArrayBlock = (LongArrayBlock) block;
+            return Optional.of(((Long) unpackMillisUtc(longArrayBlock.getLong(0))).doubleValue());
         }
         if (type instanceof TimeType) {
             return Optional.empty(); // Trino does not support displaying time types in show stats

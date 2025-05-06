@@ -55,7 +55,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
-import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_FIELD;
+import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_UINT64_FIELD;
 import static com.vastdata.client.schema.RowIDVectorCopy.copyVectorBuffers;
 import static java.lang.String.format;
 
@@ -297,7 +297,7 @@ public class VastDelete
     private static FieldVector transformColumnarBatchToNewUnsignedRowIDVector(VastColumnarBatchReader reader, ColumnarBatch columnarBatch)
     {
         return copyVectorBuffers((FieldVector) ((ArrowColumnVector) columnarBatch.column(0)).getValueVector(),
-                ROW_ID_FIELD.createVector(reader.getAllocator()));
+                ROW_ID_UINT64_FIELD.createVector(reader.getAllocator()));
     }
 
     private void deleteSelectedPages(VastClient client, Supplier<URI> endpointsSupplier, VastAutocommitTransaction tx, LinkedBlockingQueue<FieldVector> pages, VastTraceToken token)
@@ -307,7 +307,7 @@ public class VastDelete
             while ((fieldVector = pages.poll(1, TimeUnit.SECONDS)) != null) {
                 LOG.debug("{} Polled next page of {} rows to delete: {}, field: {}", token, fieldVector.getValueCount(), fieldVector.getField(), fieldVector);
 
-                try (VectorSchemaRoot root = new VectorSchemaRoot(ImmutableList.of(ROW_ID_FIELD), ImmutableList.of(fieldVector))) {
+                try (VectorSchemaRoot root = new VectorSchemaRoot(ImmutableList.of(ROW_ID_UINT64_FIELD), ImmutableList.of(fieldVector))) {
                     LOG.debug("{} Deleting next page of {} rows to delete: {}, fields: {}", token, root.getRowCount(), root.getSchema(), root.getFieldVectors());
                     client.deleteRows(tx, table.getTableMD().schemaName, table.getTableMD().tableName, root, endpointsSupplier.get(), Optional.empty());
                 }

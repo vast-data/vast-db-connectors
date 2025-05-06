@@ -10,6 +10,8 @@ import com.google.inject.Inject;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastSchedulingInfo;
 import com.vastdata.client.VastSplitContext;
+import com.vastdata.client.error.VastException;
+import com.vastdata.client.error.VastRuntimeException;
 import com.vastdata.client.tx.VastTraceToken;
 import com.vastdata.client.tx.VastTransaction;
 import com.vastdata.trino.statistics.VastStatisticsManager;
@@ -22,6 +24,7 @@ import io.trino.spi.connector.ConnectorTransactionHandle;
 import io.trino.spi.connector.Constraint;
 import io.trino.spi.connector.DynamicFilter;
 import io.trino.spi.connector.FixedSplitSource;
+import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.statistics.Estimate;
 import io.trino.spi.statistics.TableStatistics;
 
@@ -29,19 +32,28 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
+import java.util.function.DoubleSupplier;
 import java.util.function.IntSupplier;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static com.vastdata.client.util.NumOfSplitsEstimator.estimateNumberOfSplits;
+import static com.vastdata.client.util.NumOfSplitsEstimator.getNumOfSplitsEstimation;
+import static com.vastdata.trino.FilterEstimator.estimateSelectivity;
+import static com.vastdata.trino.FilterEstimator.splitDomains;
+import static com.vastdata.trino.GetTableSizeHelper.getTableSizeEstimate;
+import static com.vastdata.trino.VastSessionProperties.getAdaptivePartitioning;
 import static com.vastdata.trino.VastSessionProperties.getDataEndpoints;
+import static com.vastdata.trino.VastSessionProperties.getDynamicFilterCompactionThreshold;
 import static com.vastdata.trino.VastSessionProperties.getDynamicFilteringWaitTimeout;
 import static com.vastdata.trino.VastSessionProperties.getNumOfSplits;
 import static com.vastdata.trino.VastSessionProperties.getNumOfSubSplits;
 import static com.vastdata.trino.VastSessionProperties.getQueryDataRowsPerSplit;
 import static com.vastdata.trino.VastSessionProperties.getRowGroupsPerSubSplit;
+import static com.vastdata.trino.VastSessionProperties.getSplitSizeMultiplier;
+import static com.vastdata.trino.VastSessionProperties.getEstimateSplitsFromElysium;
 import static com.vastdata.trino.VastSessionProperties.getEstimateSplitsFromRowIdPredicate;
 import static java.lang.String.format;
 
@@ -70,21 +82,58 @@ public class VastSplitManager
             DynamicFilter dynamicFilter,
             Constraint constraint)
     {
-        VastTransaction vastTransaction = (VastTransaction) transaction;
         VastTableHandle table = (VastTableHandle) connectorTableHandle;
-
-        String fullTableName = format("%s/%s", table.getSchemaName(), table.getTableName());
-        Estimate rowsEstimate = statisticsManager.getTableStatistics(table).orElse(TableStatistics.empty()).getRowCount();
-        if (getEstimateSplitsFromRowIdPredicate(session)) {
-            rowsEstimate = vastRowsEstimator.getMinimalRowsEstimation(table.getPredicate(), rowsEstimate);
-        }
-        int numOfSplits = estimateNumOfSplits(session, rowsEstimate);
-        LOG.debug("using %d splits for %s, estimated to have %s rows", numOfSplits, fullTableName, rowsEstimate);
-        int numOfSubSplits = getNumOfSubSplits(session);
-        int rowGroupsPerSubSplit = getRowGroupsPerSubSplit(session);
         VastTransaction tx = (VastTransaction) transaction;
         VastTraceToken traceToken = tx.generateTraceToken(session.getTraceToken());
         VastSchedulingInfo schedulingInfo = client.getSchedulingInfo(tx, traceToken, table.getSchemaName(), table.getTableName());
+
+        String fullTableName = format("%s/%s", table.getSchemaName(), table.getTableName());
+        TableStatistics ts = statisticsManager.getTableStatistics(table).orElse(TableStatistics.empty());
+        Estimate rowsEstimate = ts.getRowCount();
+        TupleDomain<VastColumnHandle> tupleDomain = table.getPredicate();
+        if (dynamicFilter.isComplete()) {
+            TupleDomain<VastColumnHandle> dynamicPredicate = dynamicFilter
+                .getCurrentPredicate()
+                .transformKeys(VastColumnHandle.class::cast)
+                .simplify(getDynamicFilterCompactionThreshold(session));
+            tupleDomain = dynamicPredicate.intersect(tupleDomain);
+        }
+        if (getEstimateSplitsFromRowIdPredicate(session)) {
+            rowsEstimate = vastRowsEstimator.getMinimalRowsEstimation(table.getPredicate(), rowsEstimate);
+            ts = new TableStatistics(rowsEstimate, ts.getColumnStatistics());
+        }
+        else if (getEstimateSplitsFromElysium(session) && !tupleDomain.isAll() && !tupleDomain.isNone()) {
+            Optional<List<String>> sorted = table.getSortedColumns();
+            if (sorted.isPresent() && !sorted.orElseThrow().isEmpty()) {
+                TupleDomain<VastColumnHandle>[] domains = splitDomains(tupleDomain, sorted.orElseThrow());
+                if (!domains[0].isAll() || rowsEstimate.isUnknown()) {
+                    try {
+                        long estimate = getTableSizeEstimate(table, domains[0],
+                                                     tx, traceToken, schedulingInfo, client, session);
+                        LOG.debug("got estimate from Vast: %s (%s)", estimate, rowsEstimate.toString());
+                        if (rowsEstimate.isUnknown() || rowsEstimate.getValue() > estimate) {
+                            LOG.debug("updating the estimate");
+                            tupleDomain = domains[1];
+                            rowsEstimate = Estimate.of(estimate);
+                            ts = new TableStatistics(rowsEstimate, ts.getColumnStatistics());
+                        }
+                    }
+                    catch (VastRuntimeException re) {
+                        final VastTrinoExceptionFactory vastTrinoExceptionFactory = new VastTrinoExceptionFactory();
+                        throw vastTrinoExceptionFactory.fromVastRuntimeException(re);
+                    }
+                    catch (VastException e) {
+                        final VastTrinoExceptionFactory vastTrinoExceptionFactory = new VastTrinoExceptionFactory();
+                        throw vastTrinoExceptionFactory.fromVastException(e);
+                    }
+                }
+            }
+        }
+        int numOfSplits = 
+            estimateNumOfSplits(session, tupleDomain, ts, table.getLimit());
+        LOG.debug("using %d splits for %s", numOfSplits, fullTableName);
+        int numOfSubSplits = getNumOfSubSplits(session);
+        int rowGroupsPerSubSplit = getRowGroupsPerSubSplit(session);
 
         List<VastSplit> splits = IntStream
                 .range(0, numOfSplits)
@@ -94,7 +143,7 @@ public class VastSplitManager
                 })
                 .collect(Collectors.toList());
 
-        return new VastSplitSource(splits, dynamicFilter, getDynamicFilteringWaitTimeout(session), fullTableName, vastTransaction.generateTraceToken(session.getTraceToken()));
+        return new VastSplitSource(splits, dynamicFilter, getDynamicFilteringWaitTimeout(session), fullTableName, traceToken);
     }
 
     private static class VastSplitSource
@@ -131,12 +180,28 @@ public class VastSplitManager
         }
     }
 
-    private static int estimateNumOfSplits(ConnectorSession session, Estimate rowsEstimate)
+    private static int estimateNumOfSplits(ConnectorSession session, TupleDomain<VastColumnHandle> tupleDomain,
+                                           TableStatistics statistics, Optional<Long> limit)
     {
+        LOG.debug("split planning parameters: %d, %b, %d, %d", getNumOfSplits(session), getAdaptivePartitioning(session),
+                  getSplitSizeMultiplier(session), getQueryDataRowsPerSplit(session));
         IntSupplier maxSplitsSupplier = () -> getNumOfSplits(session);
-        LongSupplier rowPerSplitSupplier = () -> getQueryDataRowsPerSplit(session);
-        Supplier<Optional<Double>> rowsEstimateSupplier = () -> rowsEstimate.isUnknown() ? Optional.empty() : Optional.of(rowsEstimate.getValue());
-        return estimateNumberOfSplits(maxSplitsSupplier, rowPerSplitSupplier, () -> -1L, rowsEstimateSupplier, 0);
+        LongSupplier rowsPerSplitConf = () -> getQueryDataRowsPerSplit(session);
+        /* The number of rows per split here should be ment from the CNode's perspective.
+         * If we have a selective filter, Trino will get way less rows.
+         * As a split defines both a CNode-side unit of work, and a Trino-Worker-side unit of work, here we try to
+         * come up with a compromise, that is hopefully good enough for everybody.
+         */
+        BooleanSupplier useMultiplier = () -> !statistics.getRowCount().isUnknown() && getAdaptivePartitioning(session);
+        DoubleSupplier selectivityEstimation = () -> estimateSelectivity(tupleDomain, statistics, limit);
+        LongSupplier multiplierConf = () -> getSplitSizeMultiplier(session);
+        Supplier<Optional<Double>> rowsEstimateSupplier =
+            () -> statistics.getRowCount().isUnknown()?
+            (tupleDomain.isAll() && limit.isPresent()? Optional.of(limit.orElseThrow().doubleValue()) : Optional.empty()) :
+             Optional.of(statistics.getRowCount().getValue());
+        LOG.debug("row estimate: %s", rowsEstimateSupplier.get());
+        return getNumOfSplitsEstimation(useMultiplier, selectivityEstimation, maxSplitsSupplier,
+                                        rowsPerSplitConf, multiplierConf, rowsEstimateSupplier);
     }
 
 

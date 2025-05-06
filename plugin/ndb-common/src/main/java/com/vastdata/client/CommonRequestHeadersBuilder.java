@@ -10,6 +10,7 @@ import com.google.common.collect.Multimap;
 import com.vastdata.client.tx.VastTraceToken;
 import com.vastdata.client.tx.VastTransaction;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
 
@@ -86,6 +87,15 @@ public class CommonRequestHeadersBuilder
     public VastRequestHeadersBuilder withTraceToken(VastTraceToken traceToken)
     {
         headers.put(RequestsHeaders.TABULAR_TRACE_TOKEN.getHeaderName(), traceToken.toString());
+        return this;
+    }
+
+    @Override
+    public VastRequestHeadersBuilder withSorting(List<Integer> sortedColumns)
+    {
+        for (int i = 0; i < sortedColumns.size(); i++) {
+            headers.put(String.format(RequestsHeaders.TABULAR_SORTED_TEMPLATE.getHeaderName(), i), sortedColumns.get(i).toString());
+        }
         return this;
     }
 }

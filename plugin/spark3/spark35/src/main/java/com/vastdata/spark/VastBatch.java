@@ -23,7 +23,10 @@ import org.slf4j.LoggerFactory;
 import java.security.SecureRandom;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
+import java.util.function.DoubleSupplier;
 import java.util.function.IntSupplier;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -32,7 +35,7 @@ import java.util.stream.IntStream;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
-import static com.vastdata.client.util.NumOfSplitsEstimator.estimateNumberOfSplits;
+import static com.vastdata.client.util.NumOfSplitsEstimator.getNumOfSplitsEstimation;
 import static com.vastdata.spark.statistics.FilterEstimator.estimateSelectivity;
 import static com.vastdata.spark.statistics.FilterEstimator.getSizePerRow;
 import static com.vastdata.spark.statistics.StatsUtils.sparkCatalystStatsToTableStatistics;
@@ -78,20 +81,19 @@ public class VastBatch
             LOG.warn(format("planInputPartitions()for batchID=%s, table=%s", batchID, table.name()), new Exception("VERBOSE BATCH"));
         }
         LOG.info("planInputPartitions() initializing for batchID={}, table={}, predicates={}", batchID, table.name(), predicates);
-        IntSupplier numOfSplitsConfSupplier = vastConfig::getNumOfSplits;
-        LongSupplier rowPerSplitSupplier = vastConfig::getQueryDataRowsPerSplit;
-        LongSupplier advisoryPartitionSizeSupplier = vastConfig::getAdvisoryPartitionSize;
+        final IntSupplier numOfSplitsConfSupplier = vastConfig::getNumOfSplits;
+        final LongSupplier rowsPerSplitConf = vastConfig::getQueryDataRowsPerSplit;
         Optional<Statistics> statistics = SparkVastStatisticsManager.getInstance().getTableStatistics(table);
+	final OptionalLong rowCount = (statistics.isPresent() && !statistics.get().rowCount().isEmpty())?
+	    OptionalLong.of(statistics.get().rowCount().get().longValue()) : OptionalLong.empty();
         Supplier<Optional<Double>> rowsEstimateSupplier =
-                () -> statistics.map(s -> s.rowCount().isEmpty() ?
-                        null :
-                        (s.rowCount().get().longValue() *
-                                (vastConfig.getAdaptivePartitioning() ?
-                                        estimateSelectivity(predicates, sparkCatalystStatsToTableStatistics(statistics.get())) : 1.0)));
-        int numOfSplits =
-                estimateNumberOfSplits(numOfSplitsConfSupplier, rowPerSplitSupplier, advisoryPartitionSizeSupplier, rowsEstimateSupplier,
-                        (vastConfig.getAdvisoryPartitionSize() > 0 && statistics.isPresent())? getSizePerRow(schema, sparkCatalystStatsToTableStatistics(statistics.get())) : 0);
-        int numOfSplitsConf = numOfSplitsConfSupplier.getAsInt();
+	    () -> rowCount.isPresent()? Optional.of((double)rowCount.getAsLong()) : Optional.empty();
+        BooleanSupplier useMultiplier = () -> rowCount.isPresent() && vastConfig.getAdaptivePartitioning();
+        DoubleSupplier selectivityEstimation = () -> estimateSelectivity(predicates, sparkCatalystStatsToTableStatistics(statistics.get()));
+        LongSupplier multiplierConf = vastConfig::getSplitSizeMultiplier;
+        final int numOfSplits =
+            getNumOfSplitsEstimation(useMultiplier, selectivityEstimation, numOfSplitsConfSupplier, rowsPerSplitConf, multiplierConf, rowsEstimateSupplier);
+        final int numOfSplitsConf = numOfSplitsConfSupplier.getAsInt();
         if (numOfSplits < numOfSplitsConf) {
             LOG.info("Reduced splits number for batchID={}, table={} from {} to {}", batchID, table.name(), numOfSplitsConf, numOfSplits);
         }

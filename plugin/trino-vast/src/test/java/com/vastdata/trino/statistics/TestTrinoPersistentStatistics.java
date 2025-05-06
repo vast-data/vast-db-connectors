@@ -227,7 +227,7 @@ public class TestTrinoPersistentStatistics
                 .setRowCount(Estimate.of(11.0))
                 .build();
         VastTableHandle handle1 = new VastTableHandle("buck/schem", "tab", "id", false);
-        VastTableHandle handle2 = new VastTableHandle("buck/schem", "tab", List.of(), TupleDomain.all(), null, Optional.empty(), List.of(), Optional.of(13L), false, "id");
+        VastTableHandle handle2 = new VastTableHandle("buck/schem", "tab", List.of(), Optional.empty(), TupleDomain.all(), null, Optional.empty(), List.of(), Optional.of(13L), false, "id");
         VastTableHandle handle3 = new VastTableHandle("buck/schem", "tab2", "id", false);
 
         persistentStatistics.setTableStatistics(handle1, stats);

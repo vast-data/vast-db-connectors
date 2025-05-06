@@ -6,6 +6,7 @@ import com.google.common.collect.ImmutableList;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.error.VastException;
 import com.vastdata.client.error.VastTooLargePageException;
+import com.vastdata.trino.rowid.TrinoRowIDFieldFactory;
 import com.vastdata.trino.tx.VastTransactionHandle;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
@@ -30,7 +31,6 @@ import java.util.stream.Collectors;
 
 import static com.google.common.base.Verify.verify;
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
-import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_FIELD;
 import static com.vastdata.client.schema.ArrowSchemaUtils.VASTDB_ROW_ID_FIELD;
 import static com.vastdata.trino.VastMergePage.createVastUpdateDeleteInsertPages;
 import static com.vastdata.trino.VastSessionProperties.getMaxRowsPerDelete;
@@ -55,7 +55,9 @@ public class VastMergeSink
     private static VastRecordBatchBuilder recordBatchBuilder(VastTableHandle table, boolean forDelete)
     {
         ImmutableList.Builder<Field> fields = ImmutableList.builder();
-        fields.add(ROW_ID_FIELD); // row ID column is expected to be the first one
+        Field rowIdField = TrinoRowIDFieldFactory.INSTANCE.apply(table);
+        LOG.debug("row_id field: %s, for table: %s", rowIdField, table);
+        fields.add(rowIdField); // row ID column is expected to be the first one
         if (! forDelete) {
             table.getMergedColumns().stream().map(VastColumnHandle::getField).forEach(fields::add);
         }

@@ -4,6 +4,7 @@
 
 package com.vastdata.trino;
 
+import com.vastdata.trino.rowid.ArrowTypeToTrinoRowIDTypeFunction;
 import io.airlift.log.Logger;
 import io.trino.spi.TrinoException;
 import io.trino.spi.type.ArrayType;
@@ -13,6 +14,8 @@ import io.trino.spi.type.MapType;
 import io.trino.spi.type.RowType;
 import io.trino.spi.type.TimeType;
 import io.trino.spi.type.TimestampType;
+import io.trino.spi.type.TimestampWithTimeZoneType;
+import io.trino.spi.type.TimeZoneKey;
 import io.trino.spi.type.Type;
 import io.trino.spi.type.TypeId;
 import io.trino.spi.type.TypeOperators;
@@ -30,7 +33,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import static com.google.common.base.Verify.verify;
-import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_FIELD;
+import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_FIELD_NAME;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
@@ -39,7 +42,9 @@ import static io.trino.spi.type.DoubleType.DOUBLE;
 import static io.trino.spi.type.IntegerType.INTEGER;
 import static io.trino.spi.type.RealType.REAL;
 import static io.trino.spi.type.SmallintType.SMALLINT;
+import static io.trino.spi.type.DateTimeEncoding.packDateTimeWithZone;
 import static io.trino.spi.type.TinyintType.TINYINT;
+import static io.trino.spi.type.UuidType.UUID;
 import static io.trino.spi.type.VarbinaryType.VARBINARY;
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static java.lang.String.format;
@@ -57,19 +62,21 @@ public final class TypeUtils
     private static final String MAP_VALUE_COLUMN_NAME = "value";
     private static final String MAP_ENTRIES_COLUMN_NAME = "entries";
 
+    public record Pair<T, U>(T first, U second) { }
+
     private TypeUtils()
     {
     }
 
     public static boolean isRowId(Field field)
     {
-        return field.equals(ROW_ID_FIELD);
+        return field.getName().equals(ROW_ID_FIELD_NAME);
     }
 
     public static Type convertArrowFieldToTrinoType(Field field)
     {
         if (isRowId(field)) {
-            return BIGINT;
+            return ArrowTypeToTrinoRowIDTypeFunction.INSTANCE.apply(field.getType());
         }
         ArrowType arrowType = field.getType();
         switch (arrowType.getTypeID()) {
@@ -99,15 +106,28 @@ public final class TypeUtils
                 return VARCHAR;
             case Timestamp:
                 ArrowType.Timestamp timestampType = (ArrowType.Timestamp) arrowType;
-                return TimestampType.createTimestampType(timeUnitToPrecision(timestampType.getUnit()));
+                if (timestampType.getTimezone() == null) {
+                    return TimestampType.createTimestampType(timeUnitToPrecision(timestampType.getUnit()));
+                } 
+                else {
+                    return TimestampWithTimeZoneType.createTimestampWithTimeZoneType(timeUnitToPrecision(timestampType.getUnit()));
+                }
             case Time:
                 ArrowType.Time timeType = (ArrowType.Time) arrowType;
                 return TimeType.createTimeType(timeUnitToPrecision(timeType.getUnit()));
             case Binary:
                 return VARBINARY;
-            case FixedSizeBinary:
+            case FixedSizeBinary: {
+                final int width = ((ArrowType.FixedSizeBinary) arrowType).getByteWidth();
+                if (width == 16) {
+                    Map<String,String> metadata = field.getMetadata();
+                    if (metadata != null && metadata.getOrDefault("ARROW:extension:name", "").equals("arrow.uuid")) {
+                        return UUID;
+                    }
+                }
                 // Works for ASCII translations only
-                return CharType.createCharType(((ArrowType.FixedSizeBinary) arrowType).getByteWidth());
+                return CharType.createCharType(width);
+            }
             case Date:
                 ArrowType.Date dateType = (ArrowType.Date) arrowType;
                 if (dateType.getUnit() == DAY) {
@@ -163,18 +183,38 @@ public final class TypeUtils
     public static long convertTwoValuesNanoToLong(long micros, int picos)
     {
         long result = (micros * 1000) + (picos / 1000);
-        Object[] values = convertLongNanoToTwoValues(result);
-        if (values[0].equals(micros) && values[1].equals(picos)) {
+        Pair<Long, Integer> values = convertLongNanoToTwoValues(result);
+        if (values.first().equals(micros) && values.second().equals(picos)) {
             return result;
         }
-        throw new TrinoException(NOT_SUPPORTED, format("Unsupported timestamp value in Arrow: micros=%s<>%s, picos=%s<>%s", micros, values[0], picos, values[1]));
+        throw new TrinoException(NOT_SUPPORTED, format("Unsupported timestamp value in Arrow: micros=%s<>%s, picos=%s<>%s", micros, values.first(), picos, values.second()));
     }
 
-    public static Object[] convertLongNanoToTwoValues(long nano)
+    public static long convertTwoValuesNanoToLongMilli(long millis, int picos)
+    {
+        long result = (millis * 1000_000) + (picos / 1000);
+        long millis2 = Math.floorDiv(result, 1000_000);
+        int picos2 = Math.floorMod(result, 1000_000) * 1000;
+        LOG.debug("nanos %s <- millis %s, picos %s", result, millis, picos);
+        if (millis == millis2 && picos == picos2) {
+            return result;
+        }
+        throw new TrinoException(NOT_SUPPORTED, format("Unsupported timestamp value in Arrow: micros=%s<>%s, picos=%s<>%s", millis, millis2, picos, picos2));
+    }
+
+    public static Pair<Long, Integer> convertLongNanoToTwoValues(long nano)
     {
         long micros = Math.floorDiv(nano, 1000);
         int picos = Math.floorMod(nano, 1000) * 1000;
-        return new Object[] {micros, picos};
+        return new Pair<Long, Integer>(micros, picos);
+    }
+
+    public static Pair<Long, Integer> convertLongNanoToTwoValuesZone(long nano, TimeZoneKey zoneKey)
+    {
+        long millis = Math.floorDiv(nano, 1000_000);
+        int picos = Math.floorMod(nano, 1000_000) * 1000;
+        LOG.debug("nanos %s -> millis %s, picos %s", nano, millis, picos);
+        return new Pair<Long, Integer>(packDateTimeWithZone(millis, zoneKey), picos);
     }
 
     public static TimeUnit precisionToTimeUnit(int precision)
@@ -262,6 +302,7 @@ public final class TypeUtils
             // case "timestamp(n)" -> TimestampType.createTimestampType(Integer.parseInt(args.getFirst()));
             case "timestamp" -> TimestampType.createTimestampType(Integer.parseInt(args.getFirst()));
             // case "time(n)" -> TimeType.createTimeType(Integer.parseInt(args.getFirst()));
+            case "time with time zone" -> TimestampWithTimeZoneType.createTimestampWithTimeZoneType(Integer.parseInt(args.getFirst()));
             case "time" -> TimeType.createTimeType(Integer.parseInt(args.getFirst()));
             // case "decimal(n,m)" -> DecimalType.createDecimalType(Integer.parseInt(args.getFirst()), Integer.parseInt(args[1]));
             case "decimal" -> DecimalType.createDecimalType(Integer.parseInt(args.getFirst()), Integer.parseInt(args.get(1)));
@@ -314,6 +355,15 @@ public final class TypeUtils
         else if (DOUBLE.equals(trinoType)) {
             arrowType = new ArrowType.FloatingPoint(FloatingPointPrecision.DOUBLE);
         }
+        else if (UUID.equals(trinoType)) {
+            arrowType = new ArrowType.FixedSizeBinary(16);
+            if (properties == null) {
+                properties = Map.of("ARROW:extension:name", "arrow.uuid");
+            }
+            else {
+                properties.put("ARROW:extension:name", "arrow.uuid");
+            }
+        }
         else if (trinoType instanceof VarcharType) {
             arrowType = ArrowType.Utf8.INSTANCE;
         }
@@ -329,6 +379,10 @@ public final class TypeUtils
         else if (trinoType instanceof TimestampType ts) {
             TimeUnit timeUnit = precisionToTimeUnit(ts.getPrecision());
             arrowType = new ArrowType.Timestamp(timeUnit, null);
+        }
+        else if (trinoType instanceof TimestampWithTimeZoneType ts) {
+            final TimeUnit timeUnit = precisionToTimeUnit(ts.getPrecision());
+            arrowType = new ArrowType.Timestamp(timeUnit, "UTC");
         }
         else if (trinoType instanceof TimeType ts) {
             int precision = ts.getPrecision();

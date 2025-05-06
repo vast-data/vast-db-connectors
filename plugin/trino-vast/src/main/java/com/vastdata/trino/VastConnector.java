@@ -4,6 +4,7 @@
 
 package com.vastdata.trino;
 
+import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastVersion;
@@ -25,6 +26,7 @@ import io.trino.spi.connector.SystemTable;
 import io.trino.spi.procedure.Procedure;
 import io.trino.spi.session.PropertyMetadata;
 import io.trino.spi.transaction.IsolationLevel;
+import io.trino.spi.type.ArrayType;
 import org.apache.arrow.memory.ArrowBuf;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
@@ -34,13 +36,17 @@ import java.util.Set;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.vastdata.client.error.VastExceptionFactory.closedTransaction;
+import static com.vastdata.client.schema.VastMetadataUtils.SORTED_BY_PROPERTY;
 import static io.trino.spi.session.PropertyMetadata.stringProperty;
+import static io.trino.spi.type.VarcharType.VARCHAR;
+import static java.util.Locale.ENGLISH;
 import static java.util.Objects.requireNonNull;
 
 public class VastConnector
         implements Connector
 {
     private static final Logger LOG = Logger.get(VastConnector.class);
+
     private final LifeCycleManager lifeCycleManager;
     private final VastClient client;
     private final VastTrinoTransactionHandleManager transManager;
@@ -48,6 +54,7 @@ public class VastConnector
     private final VastPageSourceProvider pageSourceProvider;
     private final VastPageSinkProvider pageSinkProvider;
     private final List<PropertyMetadata<?>> sessionProperties;
+    private final List<PropertyMetadata<?>> tableProperties;
     private final VastStatisticsManager statisticsManager;
 
     @Inject
@@ -79,6 +86,18 @@ public class VastConnector
             LOG.debug("Arrow buffer allocated: %s", buf);
             buf.getReferenceManager().release();
         }
+        tableProperties = ImmutableList.of(
+					   new PropertyMetadata<>(
+								  SORTED_BY_PROPERTY,
+								  "Bucket sorting columns",
+								  new ArrayType(VARCHAR),
+								  List.class,
+								  ImmutableList.of(),
+								  false,
+								  value -> ((List<?>) value).stream()
+								  .map(name -> ((String) name).toLowerCase(ENGLISH))
+								  .collect(toImmutableList()),
+								  value -> value));
     }
 
     @Override
@@ -169,5 +188,11 @@ public class VastConnector
     public boolean isSingleStatementWritesOnly()
     {
         return false;
+    }
+
+    @Override
+    public List<PropertyMetadata<?>> getTableProperties()
+    {
+        return tableProperties;
     }
 }

@@ -10,6 +10,7 @@ import com.vastdata.client.importdata.EvenSizeWithLimitChunkifier;
 import io.airlift.configuration.Config;
 import io.airlift.configuration.ConfigDescription;
 import io.airlift.configuration.ConfigSecuritySensitive;
+import io.airlift.log.Logger;
 
 import javax.validation.constraints.Max;
 import javax.validation.constraints.Min;
@@ -25,6 +26,8 @@ import java.util.stream.Collectors;
 public class VastConfig
         implements Serializable
 {
+    private static final Logger LOG = Logger.get(VastConfig.class);
+
     public static final int MIN_SUB_SPLITS = 1;
     public static final int MAX_SUB_SPLITS = 64;
 
@@ -53,6 +56,7 @@ public class VastConfig
     private long maxRequestBodySize = 5 * 1024 * 1024; // must be <= Mooktze largest buffer size (see `src/plasma/execution/silo.cpp`)
     private long advisoryPartitionSize = 256 *1024 * 1024;
     private boolean adaptivePartitioning = true;
+    private int splitSizeMultiplier = 800;
 
     private int retryMaxCount = 600; // 10 minutes of retries in case we can't connect to VAST
     private int retrySleepDuration = 1000;
@@ -82,9 +86,18 @@ public class VastConfig
     private boolean vastTransactionKeepAliveEnabled = TX_KEEP_ALIVE_ENABLED_DEFAULT;
     private int vastTransactionKeepAliveIntervalSeconds = TX_KEEP_ALIVE_INTERVAL_DEFAULT;
     private boolean estimateSplitsFromRowIdPredicate = false;
+    private boolean estimateSplitsFromElysium = true;
 
     private Long seedForShufflingEndpoints = null;
     private boolean useColumnHistogram = true; // Relevant for spark only
+
+    private int compression = 0;
+    private int compressionMinSavings = 30;
+    private int compressionLevel = 1;
+
+    public VastConfig()
+    {
+    }
 
     public URI getEndpoint()
     {
@@ -275,6 +288,18 @@ public class VastConfig
         this.adaptivePartitioning = adaptivePartitioning;
         return this;
     }
+
+    public int getSplitSizeMultiplier()
+    {
+        return this.adaptivePartitioning? this.splitSizeMultiplier : 1;
+    }
+
+    public VastConfig setSplitSizeMultiplier(int splitSizeMultiplier)
+    {
+        this.splitSizeMultiplier = splitSizeMultiplier <= 1? 1 : splitSizeMultiplier;
+        return this;
+    }
+
 
     @Min(0)
     public int getRetryMaxCount()
@@ -533,6 +558,18 @@ public class VastConfig
         return this;
     }
 
+    public boolean getEstimateSplitsFromElysium()
+    {
+        return estimateSplitsFromElysium;
+    }
+
+    @Config("estimate_splits_from_elysium")
+    public VastConfig setEstimateSplitsFromElysium(boolean estimateSplitsFromElysium)
+    {
+        this.estimateSplitsFromElysium = estimateSplitsFromElysium;
+        return this;
+    }
+
     public boolean getEstimateSplitsFromRowIdPredicate()
     {
         return estimateSplitsFromRowIdPredicate;
@@ -567,5 +604,103 @@ public class VastConfig
     {
         this.useColumnHistogram = useColumnHistogram;
         return this;
+    }
+
+    public int getCompression()
+    {
+	return this.compression;
+    }
+
+    @Config("compression")
+    public VastConfig setCompression(String compression)
+    {
+	if (compression.contains("zstd")) {
+	    this.compression = 1;
+	}
+	else {
+	    this.compression = 0;
+	}
+	return this;
+    }
+
+    public int getCompressionMinSavings()
+    {
+	return this.compressionMinSavings;
+    }
+
+    @Config("compression_min_savings")
+    public VastConfig setCompressionMinSavings(int savings)
+    {
+	if (savings > 99) {
+	    this.compressionMinSavings = 99;
+	}
+	else if (savings < 1) {
+	    this.compressionMinSavings = 1;
+	}
+	else {
+	    this.compressionMinSavings = savings;
+	}
+	return this;
+    }
+
+    public int getCompressionLevel()
+    {
+	return this.compressionLevel;
+    }
+
+    @Config("compression_level")
+    public VastConfig setCompressionLevel(int level)
+    {
+	this.compressionLevel = level;
+	return this;
+    }
+
+    @Override
+    public String toString()
+    {
+        return "VastConfig{" +
+                "endpoint=" + endpoint +
+                ", dataEndpoints=" + dataEndpoints +
+                ", accessKeyId='" + accessKeyId + '\'' +
+                ", secretAccessKey='" + secretAccessKey + '\'' +
+                ", region='" + region + '\'' +
+                ", enableCustomSchemaSeparator=" + enableCustomSchemaSeparator +
+                ", customSchemaSeparator='" + customSchemaSeparator + '\'' +
+                ", numOfSplits=" + numOfSplits +
+                ", numOfSubSplits=" + numOfSubSplits +
+                ", rowGroupsPerSubSplit=" + rowGroupsPerSubSplit +
+                ", queryDataRowsPerSplit=" + queryDataRowsPerSplit +
+                ", queryDataRowsPerPage=" + queryDataRowsPerPage +
+                ", maxRequestBodySize=" + maxRequestBodySize +
+                ", advisoryPartitionSize=" + advisoryPartitionSize +
+                ", adaptivePartitioning=" + adaptivePartitioning +
+                ", retryMaxCount=" + retryMaxCount +
+                ", retrySleepDuration=" + retrySleepDuration +
+                ", parallelImport=" + parallelImport +
+                ", dynamicFilteringWaitTimeout=" + dynamicFilteringWaitTimeout +
+                ", dynamicFilterCompactionThreshold=" + dynamicFilterCompactionThreshold +
+                ", dynamicFilterMaxValuesThreshold=" + dynamicFilterMaxValuesThreshold +
+                ", minMaxCompactionMinValuesThreshold=" + minMaxCompactionMinValuesThreshold +
+                ", engineVersion='" + engineVersion + '\'' +
+                ", enablePredicatePushdown=" + enablePredicatePushdown +
+                ", matchSubstringPushdown=" + matchSubstringPushdown +
+                ", complexPredicatePushdown=" + complexPredicatePushdown +
+                ", expressionProjectionPushdown=" + expressionProjectionPushdown +
+                ", enableSortedProjections=" + enableSortedProjections +
+                ", maxRowCountPerInsert=" + maxRowCountPerInsert +
+                ", maxRowCountPerUpdate=" + maxRowCountPerUpdate +
+                ", maxRowCountPerDelete=" + maxRowCountPerDelete +
+                ", importChunkLimit=" + importChunkLimit +
+                ", maxStatisticsFilesSupportedPerSession=" + maxStatisticsFilesSupportedPerSession +
+                ", keepFilterAfterPushdown=" + keepFilterAfterPushdown +
+                ", vastTransactionKeepAliveEnabled=" + vastTransactionKeepAliveEnabled +
+                ", vastTransactionKeepAliveIntervalSeconds=" + vastTransactionKeepAliveIntervalSeconds +
+                ", estimateSplitsFromRowIdPredicate=" + estimateSplitsFromRowIdPredicate +
+                ", seedForShufflingEndpoints=" + seedForShufflingEndpoints +
+                ", useColumnHistogram=" + useColumnHistogram +
+                ", compression=" + compression +
+                ", compressionMinSavings=" + compressionMinSavings +
+                ", compressionLevel=" + compressionLevel +
+                '}';
     }
 }

@@ -61,10 +61,13 @@ import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 
 public class ArrowSchemaUtils
 {
+    public static final String ROW_ID_FIELD_NAME = "$row_id";
     public static final String VASTDB_EXTERNAL_ROW_ID_COLUMN_NAME = "vastdb_rowid";
+    
     // Returned by VAST server for DELETE/UPDATE support (see https://trino.io/docs/current/develop/delete-and-update.html)
-    public static final Field ROW_ID_FIELD = Field.nullable("$row_id", new ArrowType.Int(64, false));
-    public static final Field ROW_ID_FIELD_SIGNED = Field.nullable("$row_id", new ArrowType.Int(64, true));
+    public static final Field ROW_ID_UINT64_FIELD = Field.nullable(ROW_ID_FIELD_NAME, new ArrowType.Int(64, false));
+    public static final Field ROW_ID_INT64_FIELD = Field.nullable(ROW_ID_FIELD_NAME, new ArrowType.Int(64, true));
+    public static final Field ROW_ID_DEC128_FIELD = Field.nullable(ROW_ID_FIELD_NAME, new ArrowType.Decimal(38, 0 , 128));
     // "vastdb_rowid" is part of https://vastdata.atlassian.net/browse/ORION-132013
     // This feature exposes vast’s internal row ID for user defined allocation and efficient queries
     public static final Field VASTDB_ROW_ID_FIELD = Field.nullable(VASTDB_EXTERNAL_ROW_ID_COLUMN_NAME, new ArrowType.Int(64, true));
@@ -88,13 +91,6 @@ public class ArrowSchemaUtils
     {
         FlatBufferBuilder builder = new FlatBufferBuilder();
         Optional<Integer> propsOffset = Optional.empty();
-        Optional<Map<String, Optional<Object>>> properties = ctx.getProperties();
-        if (properties.isPresent()) {
-            Optional<byte[]> serialized = VastPayloadSerializer.getInstanceForMap().apply(properties.get());
-            if (serialized.isPresent()) {
-                propsOffset = Optional.of(builder.createString(ByteBuffer.wrap(serialized.get())));
-            }
-        }
         AlterTableRequest.startAlterTableRequest(builder);
         propsOffset.ifPresent(offset -> AlterTableRequest.addProperties(builder, offset));
         int finishOffset = AlterTableRequest.endAlterTableRequest(builder);
