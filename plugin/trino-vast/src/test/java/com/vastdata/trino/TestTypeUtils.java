@@ -14,7 +14,6 @@ import io.trino.spi.type.TimeType;
 import io.trino.spi.type.TimestampType;
 import io.trino.spi.type.Type;
 import io.trino.spi.type.TypeOperators;
-import io.trino.spi.type.UuidType;
 import io.trino.spi.type.VarcharType;
 import org.apache.arrow.vector.types.DateUnit;
 import org.apache.arrow.vector.types.FloatingPointPrecision;
@@ -28,7 +27,7 @@ import org.testng.annotations.Test;
 import java.util.List;
 import java.util.Optional;
 
-import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_FIELD;
+import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_UINT64_FIELD;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.spi.type.DateType.DATE;
@@ -114,7 +113,7 @@ public class TestTypeUtils
     @Test
     public void testConvertRowId()
     {
-        Type type = TypeUtils.convertArrowFieldToTrinoType(ROW_ID_FIELD);
+        Type type = TypeUtils.convertArrowFieldToTrinoType(ROW_ID_UINT64_FIELD);
         assertEquals(type, BIGINT); // a special case for '$row_id' uint64 special column
     }
 
@@ -123,12 +122,6 @@ public class TestTypeUtils
     {
         ArrowType.FloatingPoint type = new ArrowType.FloatingPoint(FloatingPointPrecision.HALF);
         TypeUtils.convertArrowFieldToTrinoType(Field.nullable("dummy_name", type));
-    }
-
-    @Test(expectedExceptions = TrinoException.class, expectedExceptionsMessageRegExp = "Unsupported Trino type: uuid")
-    public void testExceptionForUnsupportedUuid()
-    {
-        TypeUtils.convertTrinoTypeToArrowField(UuidType.UUID, "name", true /*nullable*/);
     }
 
     @Test(expectedExceptions = TrinoException.class, expectedExceptionsMessageRegExp = "Row fields must be explicitly named: row\\(varchar\\)")

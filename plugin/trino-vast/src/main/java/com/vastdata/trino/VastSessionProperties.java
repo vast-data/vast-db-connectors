@@ -64,6 +64,10 @@ public class VastSessionProperties
     private static final String IMPORT_CHUNK_LIMIT = "import_chunk_limit";
 
     private static final String ESTIMATE_SPLITS_FROM_ROW_ID_PREDICATE = "estimate_splits_from_row_id_predicate";
+    private static final String ESTIMATE_SPLITS_FROM_ELYSIUM = "estimate_splits_from_elysium";
+
+    private static final String ADAPTIVE_PARTITIONING_PREDICATE = "adaptive_partitioning";
+    private static final String SPLIT_SIZE_MULTIPLIER = "split_size_multiplier";
 
     private static final String SEED_FOR_SHUFFLING_ENDPOINTS = "seed_for_shuffling_endpoints";
 
@@ -208,10 +212,25 @@ public class VastSessionProperties
                         "Number of splits will be calculated with consideration to the user defined ROW_IDs",
                         config.getEstimateSplitsFromRowIdPredicate(),
                         false))
+                .add(booleanProperty(
+                        ESTIMATE_SPLITS_FROM_ELYSIUM,
+                        "Number of splits will be calculated with consideration to the sorting key",
+                        config.getEstimateSplitsFromElysium(),
+                        false))
                 .add(longProperty(
                         SEED_FOR_SHUFFLING_ENDPOINTS,
                         "Seed for shuffling the data endpoints deterministically",
                         config.getSeedForShufflingEndpoints(),
+                        true))
+                .add(booleanProperty(
+                        ADAPTIVE_PARTITIONING_PREDICATE,
+                        "Determine nuber of splits based on table statistics",
+                        config.getAdaptivePartitioning(),
+                        true))
+                .add(integerProperty(
+                        SPLIT_SIZE_MULTIPLIER,
+                        "Increase the split size accordingly when running with selective filters",
+                        config.getSplitSizeMultiplier(),
                         true))
                 .build();
     }
@@ -361,5 +380,20 @@ public class VastSessionProperties
     public static boolean getEstimateSplitsFromRowIdPredicate(ConnectorSession session)
     {
         return session.getProperty(ESTIMATE_SPLITS_FROM_ROW_ID_PREDICATE, Boolean.class);
+    }
+
+    public static boolean getEstimateSplitsFromElysium(ConnectorSession session)
+    {
+        return session.getProperty(ESTIMATE_SPLITS_FROM_ELYSIUM, Boolean.class);
+    }
+
+    public static boolean getAdaptivePartitioning(ConnectorSession session)
+    {
+        return session.getProperty(ADAPTIVE_PARTITIONING_PREDICATE, Boolean.class);
+    }
+
+    public static int getSplitSizeMultiplier(ConnectorSession session)
+    {
+        return session.getProperty(SPLIT_SIZE_MULTIPLIER, Integer.class);
     }
 }

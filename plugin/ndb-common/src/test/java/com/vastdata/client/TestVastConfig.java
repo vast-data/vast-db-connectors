@@ -57,7 +57,11 @@ public class TestVastConfig
                 .setVastTransactionKeepAliveIntervalSeconds(60)
                 .setVastTransactionKeepAliveEnabled(true)
                 .setEstimateSplitsFromRowIdPredicate(false)
-                .setSeedForShufflingEndpoints(null));
+                .setEstimateSplitsFromElysium(true)
+                .setSeedForShufflingEndpoints(null)
+                .setCompression("none")
+                .setCompressionMinSavings(30)
+                .setCompressionLevel(1));
     }
 
     @Test
@@ -101,7 +105,11 @@ public class TestVastConfig
                 .put("vast_transaction_keep_alive_enabled", "false")
                 .put("vast_transaction_keep_alive_interval_seconds", "150")
                 .put("estimate_splits_from_row_id_predicate", "true")
+                .put("estimate_splits_from_elysium", "false")
                 .put("seed_for_shuffling_endpoints", "123")
+                .put("compression", "zstd")
+                .put("compression_min_savings", "40")
+                .put("compression_level", "3")
                 .buildOrThrow();
 
         VastConfig expected = new VastConfig()
@@ -142,7 +150,11 @@ public class TestVastConfig
                 .setVastTransactionKeepAliveEnabled(false)
                 .setVastTransactionKeepAliveIntervalSeconds(150)
                 .setEstimateSplitsFromRowIdPredicate(true)
-                .setSeedForShufflingEndpoints(123L);
+                .setEstimateSplitsFromElysium(false)
+                .setSeedForShufflingEndpoints(123L)
+                .setCompression("zstd")
+                .setCompressionMinSavings(40)
+                .setCompressionLevel(3);
 
         assertFullMapping(properties, expected);
     }

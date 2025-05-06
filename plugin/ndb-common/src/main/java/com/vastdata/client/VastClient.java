@@ -62,6 +62,8 @@ import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.util.VectorSchemaRootAppender;
 import org.apache.commons.codec.binary.Hex;
+import vast_flatbuf.tabular.ColumnDetails;
+import vast_flatbuf.tabular.GetRowColumnSecurityResponse;
 import vast_flatbuf.tabular.GetTableStatsResponse;
 import vast_flatbuf.tabular.ListSchemasResponse;
 import vast_flatbuf.tabular.ListTablesResponse;
@@ -111,6 +113,8 @@ import static com.vastdata.client.error.VastExceptionFactory.userException;
 import static io.airlift.http.client.HttpStatus.OK;
 import static io.airlift.http.client.HttpStatus.SERVICE_UNAVAILABLE;
 import static java.lang.String.format;
+import static java.util.Collections.emptyList;
+import static java.util.Collections.emptyMap;
 
 public class VastClient
 {
@@ -180,6 +184,17 @@ public class VastClient
         }
     }
 
+    private static GetRowColumnSecurityResponse parseGetRowColumnSecurityResponse(final VastResponse response)
+    {
+        try {
+            return GetRowColumnSecurityResponse.getRootAsGetRowColumnSecurityResponse(response.getByteBuffer());
+        }
+        catch (final Throwable error) {
+            LOG.error(error, "%s: failed to parse GetRowColumnSecurityResponse: %s", response, Hex.encodeHexString(response.getByteBuffer()));
+            throw error;
+        }
+    }
+
     private static VastStatistics parseGetTableStats(VastResponse response)
     {
         try {
@@ -206,6 +221,22 @@ public class VastClient
             .range(0, r.tablesLength())
             .mapToObj(r::tables)
             .map(ObjectDetails::handle);
+
+    private static final Function<GetRowColumnSecurityResponse, RowColumnSecurityResponse> streamGetRowColumnSecurityResponse = r -> {
+        final List<String> rowFilters = IntStream.range(0, r.rowFilterLength())
+                .mapToObj(i -> r.rowFilter(i).filter())
+                .collect(Collectors.toList());
+        final Set<String> allowedColumns = IntStream.range(0, r.columnAllowLength())
+                .mapToObj(i -> r.columnAllow(i).name())
+                .collect(Collectors.toSet());
+        final Set<String> deniedColumns = IntStream.range(0, r.columnDenyLength())
+                .mapToObj(i -> r.columnDeny(i).name())
+                .collect(Collectors.toSet());
+        final Map<String, String> maskedColumns = IntStream.range(0, r.columnMaskLength())
+                .mapToObj(r::columnMask)
+                .collect(Collectors.toMap(vast_flatbuf.tabular.ColumnDetails::name, ColumnDetails::mask));
+        return new RowColumnSecurityResponse(rowFilters, allowedColumns, deniedColumns, maskedColumns);
+    };
 
     private final Function<VastResponse, IterationResult> iterationResultProvider = r -> {
         Multimap<HeaderName, String> headers = r.getHeaders();
@@ -245,6 +276,7 @@ public class VastClient
         this.recordBatchSerializer = VastPayloadSerializer.getInstanceForRecordBatch();
         this.splitter = new RecordBatchSplitter(config.getMaxRequestBodySize(), recordBatchSerializer);
         this.arrowSchemaUtils = arrowSchemaUtils;
+        LOG.debug("VastClient config: %s", config);
     }
 
     public List<String> listBuckets(boolean includeHidden)
@@ -577,6 +609,23 @@ public class VastClient
         return results.equals(ImmutableList.of(viewName));
     }
 
+    public RowColumnSecurityResponse getRowColumnSecurity(final VastTransaction transaction, final String schema, final String name)
+            throws VastServerException, VastUserException
+    {
+        LOG.debug("starting getRowColumnSecurity(%s, %s, %s)", transaction, schema, name);
+        VerifyParam.verify(!Strings.isNullOrEmpty(schema), "schema is null or empty");
+        VerifyParam.verify(!Strings.isNullOrEmpty(name), "name is null or empty");
+        // TODO: is this the right way to handle this?  See https://vastdata.slack.com/archives/C082HQCLZPC/p1742833497516579
+        if (SPECIAL_SCHEMAS.contains(schema) || INTERNAL_BUCKETS_NO_VIEW_OPERATIONS.stream().anyMatch(bucket -> schema.startsWith(bucket + "/"))) {
+            return new RowColumnSecurityResponse(Collections.emptyList(), Collections.emptySet(),Collections.emptySet(), Collections.emptyMap());
+        }
+        final String path = BASE + schema;
+        final AtomicReference<RowColumnSecurityResponse> result = new AtomicReference<>();
+        final Consumer<GetRowColumnSecurityResponse> resultConsumer = r -> result.set(streamGetRowColumnSecurityResponse.apply(r));
+        singleObjectFetch(transaction, VastClient::parseGetRowColumnSecurityResponse, resultConsumer, Requests.ROW_COLUMN_SECURITY, path, name);
+        return result.get();
+    }
+
     public void createSchema(VastTransaction transaction, String schemaName, String serializedProperties)
             throws VastException
     {
@@ -652,7 +701,7 @@ public class VastClient
         }
     }
 
-    public List<Field> listColumns(VastTransaction transaction, String schema, String table, int pageSize, Map<String, String> extraQueryParams)
+    private List<Field> listColumnsImpl(VastTransaction transaction, String schema, String table, int pageSize, Requests queryType, Map<String, String> extraQueryParams)
             throws VastException
     {
         ArrayList<Field> fields = new ArrayList<>();
@@ -669,8 +718,21 @@ public class VastClient
             }
         };
         Consumer<List<Field>> resultConsumer = fields::addAll;
-        pagedObjectsFetch(transaction, fieldsExtractor, resultConsumer, Requests.LIST_COLUMNS, path, pageSize, extraQueryParams);
+        pagedObjectsFetch(transaction, fieldsExtractor, resultConsumer, queryType, path, pageSize, extraQueryParams);
         return fields;
+    }
+
+
+    public List<Field> listColumns(VastTransaction transaction, String schema, String table, int pageSize, Map<String, String> extraQueryParams)
+            throws VastException
+    {
+	    return listColumnsImpl(transaction, schema, table, pageSize, Requests.LIST_COLUMNS, extraQueryParams);
+    }
+
+    public List<Field> listSortedColumns(VastTransaction transaction, String schema, String table, int pageSize)
+            throws VastException
+    {
+	    return listColumnsImpl(transaction, schema, table, pageSize, Requests.LIST_SORTED_BY, emptyMap());
     }
 
     public void queryData(
@@ -687,6 +749,9 @@ public class VastClient
         byte[] body = arrowSchemaUtils.serializeQueryDataRequestBody(path, schema, projections, predicate);
         if (LOG.isDebugEnabled()) {
             LOG.debug("QueryData request body for table %s: %s", path, Hex.encodeHexString(body));
+            if (this.config.getCompression() != 1) {
+                LOG.debug("Config Compression: %d", this.config.getCompression());
+            }
         }
         VastRequestHeadersBuilder headersFactory = dependenciesFactory.getHeadersFactory()
                 .withContentLength(body.length);
@@ -706,6 +771,12 @@ public class VastClient
         if (enableSortedProjections) {
             headers.put("tabular-enable-sorted-projections", "true");
         }
+
+        if (this.config.getCompression() != 0) {
+            headers.put("tabular-compression-params",
+                format("%d,%d,%d", this.config.getCompression(), this.config.getCompressionMinSavings(), this.config.getCompressionLevel()));
+        }
+
         if (schedulingInfo != null) {
             schedulingInfo.updateHeaders(headers);
         }
@@ -731,7 +802,7 @@ public class VastClient
             };
             // QueryData is an idempotent RPC (parser is re-created on retry, pagination is set only on success)
             VastResponse queryDataResponse = retryIfNeeded(() -> httpClient.execute(requestSupplier.get(), handlerSupplier.get()), ignored -> {
-                LOG.debug(ignored, "Retrying `queryData`");
+		LOG.info(ignored.toString(), "Retrying `queryData`");
             });
             HttpStatus statusCode = HttpStatus.fromStatusCode(queryDataResponse.getStatus());
             if (statusCode == OK) {
@@ -766,7 +837,7 @@ public class VastClient
     @VisibleForTesting
     protected static int getEndpointIndex(String tableName, VastSplitContext split, int i, int size)
     {
-        return (split.getCurrentSplit() + i + (tableName.hashCode() & Integer.MAX_VALUE)) % size;
+        return (int)((split.getCurrentSplit() + i + (tableName.hashCode() & Integer.MAX_VALUE)) % size);
     }
 
     private VectorSchemaRoot sendSomeRows(final VastTransaction transaction,
@@ -851,10 +922,15 @@ public class VastClient
     {
         String path = format("/%s/%s", schema, table);
         for (byte[] body : splitter.split(root, maxRowsPerDelete.orElse(config.getMaxRowsPerDelete()))) {
-            Multimap<String, String> headers = dependenciesFactory.getHeadersFactory()
-                    .withTransaction(transaction)
-                    .withContentLength(body.length)
-                    .build();
+	    VastRequestHeadersBuilder headersFactory = dependenciesFactory
+		.getHeadersFactory()
+		.withContentLength(body.length);
+
+	    if (transaction != null) {
+		headersFactory = headersFactory.withTransaction(transaction);
+	    }
+	    
+	    final Multimap<String, String> headers = headersFactory.build();
 
             Request request = new VastRequestBuilder(dataEndpoint, config, DELETE, path, ImmutableMap.of(Requests.DELETE_ROWS.getRequestParam(), ""))
                     .addHeaders(headers)
@@ -895,12 +971,14 @@ public class VastClient
 
     public void createTable(VastTransaction transaction, CreateTableContext ctx)
             throws VastException
+
     {
         String path = BASE + ctx.getSchemaName() + BASE + ctx.getTableName();
         Optional<byte[]> body = schemaSerializer.apply(arrowSchemaUtils.fromCreateTableContext(ctx));
         Multimap<String, String> headers = dependenciesFactory.getHeadersFactory()
                 .withTransaction(transaction)
                 .withContentLength(body.map(bytes -> bytes.length).orElse(0))
+                .withSorting(ctx.getSortKey())
                 .build();
         Request req = new VastRequestBuilder(config, POST, path, ImmutableMap.of(Requests.CREATE_TABLE.getRequestParam(), ""))
                 .addHeaders(headers)
@@ -974,9 +1052,11 @@ public class VastClient
     {
         String path = BASE + schemaName + BASE + tableName;
         Optional<byte[]> body = Optional.ofNullable(arrowSchemaUtils.fromAlterTableContext(ctx));
+	Optional<List<Integer>> sortKey = ctx.getSortKey();
         Multimap<String, String> headers = dependenciesFactory.getHeadersFactory()
                 .withTransaction(transaction)
                 .withContentLength(body.map(bytes -> bytes.length).orElse(0))
+	    .withSorting(sortKey.isPresent()? sortKey.get() : emptyList())
                 .build();
         Optional<Map<String, String>> of = ctx.getName().isPresent() ?
                 Optional.of(ImmutableMap.of("tabular-new-table-name", ctx.getName().get())) :

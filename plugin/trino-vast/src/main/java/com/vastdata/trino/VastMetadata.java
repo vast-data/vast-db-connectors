@@ -25,6 +25,7 @@ import com.vastdata.trino.expression.VastExpression;
 import com.vastdata.trino.expression.VastProjectionPushdown;
 import com.vastdata.trino.predicate.ComplexPredicate;
 import com.vastdata.trino.predicate.VastConnectorExpressionPushdown;
+import com.vastdata.trino.rowid.TrinoRowIDFieldFactory;
 import com.vastdata.trino.statistics.VastStatisticsManager;
 import com.vastdata.trino.tx.VastTransactionHandle;
 import io.airlift.log.Logger;
@@ -100,7 +101,7 @@ import static com.vastdata.client.importdata.VastImportDataMetadataUtils.IMPORT_
 import static com.vastdata.client.importdata.VastImportDataMetadataUtils.getBigCatalogSearchPath;
 import static com.vastdata.client.importdata.VastImportDataMetadataUtils.getTableNameForAPI;
 import static com.vastdata.client.importdata.VastImportDataMetadataUtils.isImportDataTableName;
-import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_FIELD;
+import static com.vastdata.client.schema.VastMetadataUtils.SORTED_BY_PROPERTY;
 import static com.vastdata.trino.VastSessionProperties.getComplexPredicatePushdown;
 import static com.vastdata.trino.VastSessionProperties.getExpressionProjectionPushdown;
 import static com.vastdata.trino.VastSessionProperties.getMatchSubstringPushdown;
@@ -110,10 +111,13 @@ import static com.vastdata.trino.ViewDefinitionHelpers.viewPageSource;
 import static com.vastdata.trino.expression.VastProjectionPushdown.forVariableChildren;
 import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static io.trino.spi.StandardErrorCode.GENERIC_USER_ERROR;
+import static io.trino.spi.StandardErrorCode.INVALID_TABLE_PROPERTY;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
 import static io.trino.spi.StandardErrorCode.TABLE_NOT_FOUND;
 import static io.trino.spi.expression.StandardFunctions.LIKE_FUNCTION_NAME;
 import static java.lang.String.format;
+import static java.util.Collections.emptyList;
+import static java.util.Collections.emptyMap;
 import static java.util.Objects.nonNull;
 import static java.util.Objects.requireNonNull;
 
@@ -246,7 +250,12 @@ public class VastMetadata
         try {
             Optional<String> vastTableHandleId = client.getVastTableHandleId(transactionHandle, schemaTableName.getSchemaName(), tableNameForExistenceCheck);
             if (vastTableHandleId.isPresent()) {
-                return new VastTableHandle(schemaTableName.getSchemaName(), origTableName, vastTableHandleId.orElseThrow(), !origTableName.equals(tableNameForExistenceCheck));
+                VastTableHandle vastTableHandle = new VastTableHandle(schemaTableName.getSchemaName(), origTableName, vastTableHandleId.orElseThrow(), !origTableName.equals(tableNameForExistenceCheck));
+                List<String> vastSortedBy = getVastSortedBy(vastTableHandle, 1000);
+                if (vastSortedBy != null) {
+                    return vastTableHandle.withSortedColumns(vastSortedBy);
+                }
+                return vastTableHandle;
             }
             else {
                 return null;
@@ -299,6 +308,17 @@ public class VastMetadata
         }
     }
 
+    private List<String> getVastSortedBy(VastTableHandle table, int pageSize)
+            throws VastException
+    {
+        if (table.getSortedColumns() == null || table.getSortedColumns().isEmpty()) {
+            String schemaName = table.getSchemaName();
+            String tableName = table.getTableName();
+            return listSortedColumns(schemaName, tableName, pageSize);
+        }
+        return table.getSortedColumns().orElse(null);
+    }
+
     @Override
     public ConnectorTableMetadata getTableMetadata(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
@@ -309,12 +329,13 @@ public class VastMetadata
             List<ColumnMetadata> columns = getVastColumnHandles(table, clientPageSize).stream()
                     .map(VastColumnHandle::getColumnMetadata)
                     .collect(Collectors.toList());
-            ConnectorTableMetadata result = new ConnectorTableMetadata(table.toSchemaTableName(), columns);
+            List<String> sColumns = getVastSortedBy(table, clientPageSize);
+            ConnectorTableMetadata result = new ConnectorTableMetadata(table.toSchemaTableName(), columns,
+                    sColumns.isEmpty()? emptyMap() : Map.of(SORTED_BY_PROPERTY, sColumns));
             LOG.debug("%s", result);
             return result;
         }
         catch (VastException e) {
-            LOG.error(e, "tx %s: getTableMetadata() failed: %s", transactionHandle, e);
             throw vastTrinoExceptionFactory.fromVastException(e);
         }
     }
@@ -405,6 +426,26 @@ public class VastMetadata
         return fields.stream().map(VastColumnHandle::fromField).collect(Collectors.toList());
     }
 
+    private List<String> listSortedColumns(String schemaName, String tableName, int pageSize)
+            throws VastException
+    {
+        if (schemaName.equalsIgnoreCase(INFORMATION_SCHEMA_NAME)) {
+            // TODO https://github.com/trinodb/trino/issues/1559 this should be filtered out in engine.
+            return List.of();
+        }
+        LOG.debug("tx %s: listSortedColumns(%s/%s)", transactionHandle, schemaName, tableName);
+        String tableNameForAPI = getTableNameForAPI(tableName);
+        try {
+            List<Field> fields = client.listSortedColumns(transactionHandle, schemaName, tableNameForAPI, pageSize);
+            return fields.stream().map(Field::getName).collect(Collectors.toList());
+        }
+        // BigCatalog doesn't support sorted by.  SO we might get an exception here.
+        catch (VastException e) {
+            LOG.debug(e, "tx %s: listSortedColumns() failed: %s", transactionHandle, e);
+            return emptyList();
+        }
+    }
+
     @Override
     public Iterator<TableColumnsMetadata> streamTableColumns(ConnectorSession session, SchemaTablePrefix prefix)
     {
@@ -458,10 +499,11 @@ public class VastMetadata
         if (name.equals(IMPORT_DATA_HIDDEN_COLUMN_NAME)) {
             throw new TrinoException(GENERIC_USER_ERROR, format("Illegal name for add column: %s", name));
         }
+        VastTableHandle table = (VastTableHandle) tableHandle;
+        int clientPageSize = VastSessionProperties.getClientPageSize(session);
         TableColumnLifecycleContext ctx = new VastTrinoSchemaAdaptor().adaptForAddColumn(tableHandle, column);
         try {
             client.addColumn(transactionHandle, ctx);
-            VastTableHandle table = (VastTableHandle) tableHandle;
             table.clearColumnHandlesCache();
         }
         catch (VastException e) {
@@ -553,6 +595,11 @@ public class VastMetadata
                 return;
             }
         }
+        List<String> sortedProperty = (List<String>) vastTableMetadata.getProperties().get(SORTED_BY_PROPERTY);
+        if (sortedProperty!= null && !sortedProperty.isEmpty()) {
+            List<String> columnNames = vastTableMetadata.getColumns().stream().map(ColumnMetadata::getName).toList();
+            validateSortedColumnsList(sortedProperty, columnNames);
+        }
         try {
             CreateTableContext ctx = new VastTrinoSchemaAdaptor().adaptForCreateTable(vastTableMetadata);
             client.createTable(transactionHandle, ctx);
@@ -562,6 +609,17 @@ public class VastMetadata
         }
         catch (VastRuntimeException e) {
             throw vastTrinoExceptionFactory.fromVastRuntimeException(e);
+        }
+    }
+
+    private void validateSortedColumnsList(List<String> sortedProperty, List<String> columnNames)
+    {
+        if (!new HashSet<>(columnNames).containsAll(sortedProperty)) {
+            throw new TrinoException(INVALID_TABLE_PROPERTY, format("Invalid column names in %s", SORTED_BY_PROPERTY));
+        }
+        Set<String> propertySet = new HashSet<>(sortedProperty);
+        if (sortedProperty.size() != propertySet.size()) {
+            throw new TrinoException(INVALID_TABLE_PROPERTY, format("Each column can only appear once in %s", SORTED_BY_PROPERTY));
         }
     }
 
@@ -1111,6 +1169,7 @@ public class VastMetadata
         VastTableHandle vastTableHandle = (VastTableHandle) tableHandle;
         String tableName = vastTableHandle.getTableName();
         String schemaName = vastTableHandle.getSchemaName();
+        int clientPageSize = VastSessionProperties.getClientPageSize(session);
         try {
             VastColumnHandle vastColumnHandle = (VastColumnHandle) source;
             AlterColumnContext ctx = new VastTrinoSchemaAdaptor().adaptForAlterColumn(vastColumnHandle, target, null, null);
@@ -1148,8 +1207,25 @@ public class VastMetadata
         VastTableHandle vastTableHandle = (VastTableHandle) tableHandle;
         String tableName = vastTableHandle.getTableName();
         String schemaName = vastTableHandle.getSchemaName();
+        int clientPageSize = VastSessionProperties.getClientPageSize(session);
         try {
-            AlterTableContext ctx = new AlterTableContext(null, properties);
+            List<String> columnNames = getVastColumnHandles(vastTableHandle, clientPageSize).stream()
+                    .map(VastColumnHandle::getField)
+                    .map(Field::getName)
+                    .collect(Collectors.toList());
+            Optional<Object> sortedBy = properties.get(SORTED_BY_PROPERTY);
+            if (sortedBy != null) {
+                List<String> sortedProperty = (List<String>)sortedBy.orElseThrow(() -> new TrinoException(INVALID_TABLE_PROPERTY, "Making a sorted table to unsorted is not supported"));
+                if (sortedProperty.size() <= 0) {
+                    throw new TrinoException(INVALID_TABLE_PROPERTY, format("empty %s is not supported", SORTED_BY_PROPERTY));
+                }
+                validateSortedColumnsList(sortedProperty, columnNames);
+                List<String> sColumns = getVastSortedBy(vastTableHandle, clientPageSize);
+                if (sColumns != null && !sColumns.isEmpty() && !sColumns.equals(sortedProperty)) {
+                    throw new TrinoException(INVALID_TABLE_PROPERTY, "Modifying the sorting key is not supported");
+                }
+            }
+            AlterTableContext ctx = new AlterTableContext(null, properties, columnNames);
             client.alterTable(transactionHandle, schemaName, tableName, ctx);
         }
         catch (VastException e) {
@@ -1163,12 +1239,16 @@ public class VastMetadata
     }
 
     //Supporting Merge
+    @Override
     public ColumnHandle getMergeRowIdColumnHandle(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
-        LOG.debug("tx %s: getMergeRowIdColumnHandle(%s)", transactionHandle, tableHandle);
+        LOG.info("tx %s: getMergeRowIdColumnHandle(%s)", transactionHandle, tableHandle);
         // Vast server will generate an extra "row ID" column, and Trino engine will pass it to VastMergePage#storeMergedRows
         // See https://trino.io/docs/current/develop/supporting-merge.html for details
-        return VastColumnHandle.fromField(ROW_ID_FIELD);
+        VastTableHandle vastTableHandle = (VastTableHandle) tableHandle;
+        VastColumnHandle vastColumnHandle = VastColumnHandle.fromField(TrinoRowIDFieldFactory.INSTANCE.apply(vastTableHandle));
+        LOG.info("tx %s: getMergeRowIdColumnHandle - return: %s", transactionHandle, vastColumnHandle);
+        return vastColumnHandle;
     }
 
     @Override

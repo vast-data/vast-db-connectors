@@ -64,7 +64,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_FIELD_SIGNED;
+import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_INT64_FIELD;
 import static com.vastdata.spark.SparkArrowVectorUtil.VASTDB_SPARK_ROW_ID_NONNULL;
 import static java.lang.String.format;
 import static org.apache.spark.sql.types.DataTypes.TimestampType;
@@ -75,7 +75,7 @@ import static spark.sql.catalog.ndb.UnsupportedTypes.UNSUPPORTED_TYPE_PREDICATE;
 public final class TypeUtil
 {
     public static final StructField SPARK_ROW_ID_FIELD = StructField.apply(VASTDB_SPARK_ROW_ID_NONNULL.getName(), DataTypes.LongType, false, Metadata.empty());
-    public static final StructField VAST_ROW_ID_FIELD_SIGNED_FIELD = StructField.apply(ROW_ID_FIELD_SIGNED.getName(), DataTypes.LongType, false, Metadata.empty());
+    public static final StructField VAST_ROW_ID_FIELD_SIGNED_FIELD = StructField.apply(ROW_ID_INT64_FIELD.getName(), DataTypes.LongType, false, Metadata.empty());
     public static final StructType SPARK_ROW_ID_SCHEMA = new StructType(new StructField[] {SPARK_ROW_ID_FIELD});
 
     public static final String NDB_CATALOG_DOES_NOT_SUPPORT_NON_NULL_COLUMNS = "NDB catalog does not support Non null columns";

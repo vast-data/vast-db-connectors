@@ -16,8 +16,8 @@ import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 
-import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_FIELD;
-import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_FIELD_SIGNED;
+import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_UINT64_FIELD;
+import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_INT64_FIELD;
 import static com.vastdata.client.schema.RowIDVectorCopy.copyVectorBuffers;
 
 public final class SparkArrowVectorUtil
@@ -52,15 +52,15 @@ public final class SparkArrowVectorUtil
     }
 
     public static final UnaryOperator<FieldVector> VAST_ROW_ID_TO_SPARK_ROW_ID_VECTOR_ADAPTOR =
-            new ConditionalArrowVectorAdaptor(ROW_ID_FIELD.getName(), allocator -> new BigIntVector(VASTDB_SPARK_ROW_ID_NONNULL.getName(), allocator));
+            new ConditionalArrowVectorAdaptor(ROW_ID_UINT64_FIELD.getName(), allocator -> new BigIntVector(VASTDB_SPARK_ROW_ID_NONNULL.getName(), allocator));
 
     private static final UnaryOperator<FieldVector> ROW_ID_SIGNED_TO_UNSIGNED_VECTOR_ADAPTOR =
-            new ConditionalArrowVectorAdaptor(ROW_ID_FIELD_SIGNED.getName(), ROW_ID_FIELD::createVector);
+            new ConditionalArrowVectorAdaptor(ROW_ID_INT64_FIELD.getName(), ROW_ID_UINT64_FIELD::createVector);
     public static final UnaryOperator<VectorSchemaRoot> ROW_ID_SIGNED_ADAPTOR = s ->
     {
         Schema adaptedSchema = new Schema(s.getSchema().getFields().stream().map(f -> {
-            if (ROW_ID_FIELD_SIGNED.getName().equals(f.getName())) {
-                return ROW_ID_FIELD;
+            if (ROW_ID_INT64_FIELD.getName().equals(f.getName())) {
+                return ROW_ID_UINT64_FIELD;
             }
             else {
                 return f;

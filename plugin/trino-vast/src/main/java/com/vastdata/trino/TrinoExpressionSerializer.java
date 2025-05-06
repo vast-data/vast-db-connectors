@@ -12,8 +12,10 @@ import io.trino.spi.type.CharType;
 import io.trino.spi.type.DecimalType;
 import io.trino.spi.type.Int128;
 import io.trino.spi.type.LongTimestamp;
+import io.trino.spi.type.LongTimestampWithTimeZone;
 import io.trino.spi.type.TimeType;
 import io.trino.spi.type.TimestampType;
+import io.trino.spi.type.TimestampWithTimeZoneType;
 import io.trino.spi.type.Type;
 import org.apache.arrow.computeir.flatbuf.BinaryLiteral;
 import org.apache.arrow.computeir.flatbuf.BooleanLiteral;
@@ -46,12 +48,14 @@ import java.nio.ByteOrder;
 import static com.google.common.base.Verify.verify;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
+import static io.trino.spi.type.DateTimeEncoding.unpackMillisUtc;
 import static io.trino.spi.type.DateType.DATE;
 import static io.trino.spi.type.DoubleType.DOUBLE;
 import static io.trino.spi.type.IntegerType.INTEGER;
 import static io.trino.spi.type.RealType.REAL;
 import static io.trino.spi.type.SmallintType.SMALLINT;
 import static io.trino.spi.type.TinyintType.TINYINT;
+import static io.trino.spi.type.UuidType.UUID;
 import static io.trino.spi.type.VarbinaryType.VARBINARY;
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static java.lang.Float.intBitsToFloat;
@@ -165,6 +169,28 @@ abstract public class TrinoExpressionSerializer
                     TimestampLiteral.createTimestampLiteral(builder, result),
                     fieldOffset));
         }
+        if (type instanceof TimestampWithTimeZoneType) {
+            TimeUnit unit = ((ArrowType.Timestamp) arrowType).getUnit();
+            long result;
+            if (unit == TimeUnit.NANOSECOND || unit == TimeUnit.MICROSECOND) {
+                LongTimestampWithTimeZone ts = (LongTimestampWithTimeZone) value;
+                result = TypeUtils.convertTwoValuesNanoToLongMilli(ts.getEpochMillis(), ts.getPicosOfMilli()); // in nanos
+            }
+            else {
+                // ShortTimestampWithTimeZoneType is represented in millis since Epoch (in Trino)
+                long millisInUnit = TypeUtils.timeUnitToPicos(unit) / 1_000_000_000;
+                long valueMillis = unpackMillisUtc((long) value);
+                if (valueMillis % millisInUnit != 0) {
+                    throw new IllegalArgumentException(format("%s value %d be a multiple of %d", arrowType, valueMillis, millisInUnit));
+                }
+                result = valueMillis / millisInUnit; // rescale to use the correct TimeUnit (for Arrow)
+            }
+            return Expression.createExpression(builder, ExpressionImpl.Literal, Literal.createLiteral(
+                    builder,
+                    LiteralImpl.TimestampLiteral,
+                    TimestampLiteral.createTimestampLiteral(builder, result),
+                    fieldOffset));
+        }
         if (type instanceof TimeType) {
             ArrowType.Time arrowTimeType = (ArrowType.Time) arrowType;
             long picosInUnit = TypeUtils.timeUnitToPicos(arrowTimeType.getUnit());
@@ -213,6 +239,14 @@ abstract public class TrinoExpressionSerializer
                     builder,
                     LiteralImpl.BinaryLiteral,
                     BinaryLiteral.createBinaryLiteral(builder, builder.createByteVector(slice.getBytes())),
+                    fieldOffset));
+        }
+        if (type.equals(UUID)) {
+            Slice slice = (Slice) value;
+            return Expression.createExpression(builder, ExpressionImpl.Literal, Literal.createLiteral(
+                    builder,
+                    LiteralImpl.FixedSizeBinaryLiteral,
+                    FixedSizeBinaryLiteral.createFixedSizeBinaryLiteral(builder, builder.createByteVector(slice.getBytes())),
                     fieldOffset));
         }
         throw new UnsupportedOperationException(format("unsupported predicate pushdown for type=%s, value=%s", type, value));

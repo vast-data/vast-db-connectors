@@ -56,7 +56,7 @@
     <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/arrow/arrow-format/13.0.0/arrow-format-13.0.0.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/arrow/arrow-memory-netty/13.0.0/arrow-memory-netty-13.0.0.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/io/netty/netty-buffer/4.1.96.Final/netty-buffer-4.1.96.Final.jar" enabled="true" runInBatchMode="false"/>
-    <factorypathentry kind="VARJAR" id="M2_REPO/net/bytebuddy/byte-buddy/1.14.2/byte-buddy-1.14.2.jar" enabled="true" runInBatchMode="false"/>
+    <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/arrow/arrow-compression/13.0.0/arrow-compression-13.0.0.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/spark/spark-VDB-thriftserver_2.13/3.4.4.1414476/spark-VDB-thriftserver_2.13-3.4.4.1414476.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/io/airlift/units/1.6/units-1.6.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/com/fasterxml/jackson/core/jackson-annotations/2.15.1/jackson-annotations-2.15.1.jar" enabled="true" runInBatchMode="false"/>
@@ -177,6 +177,7 @@
     <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/parquet/parquet-jackson/1.12.3/parquet-jackson-1.12.3.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/com/google/protobuf/protobuf-java/3.21.12/protobuf-java-3.21.12.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/spark/spark-unsafe_2.13/3.4.1/spark-unsafe_2.13-3.4.1.jar" enabled="true" runInBatchMode="false"/>
+    <factorypathentry kind="VARJAR" id="M2_REPO/net/bytebuddy/byte-buddy/1.12.19/byte-buddy-1.12.19.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/org/objenesis/objenesis/3.3/objenesis-3.3.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/arrow/arrow-memory-core/13.0.0/arrow-memory-core-13.0.0.jar" enabled="true" runInBatchMode="false"/>
     <factorypathentry kind="VARJAR" id="M2_REPO/org/apache/arrow/arrow-vector/13.0.0/arrow-vector-13.0.0.jar" enabled="true" runInBatchMode="false"/>

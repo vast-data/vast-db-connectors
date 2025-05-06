@@ -7,12 +7,12 @@
     <parent>
         <groupId>ndb</groupId>
         <artifactId>spark-vast</artifactId>
-        <version>5.3.0</version>
+        <version>5.3.0.1</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
     <artifactId>spark-vast-spark-agent</artifactId>
-    <version>5.3.0</version>
+    <version>5.3.0.1</version>
     <name>spark-agent</name>
     <description>Spark Agent - VAST for Spark</description>
 
@@ -31,9 +31,9 @@
                 <artifactId>maven-jar-plugin</artifactId>
                 <version>3.4.0</version>
                 <configuration>
-                  <archive>
-                      <manifestFile>src/main/resources/META-INF/MANIFEST.MF</manifestFile> -->
-                  </archive>
+                    <archive>
+                        <manifestFile>src/main/resources/META-INF/MANIFEST.MF</manifestFile> -->
+                    </archive>
                 </configuration>
             </plugin>
             <plugin>

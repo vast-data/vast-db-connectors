@@ -46,7 +46,7 @@ import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
-import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_FIELD_SIGNED;
+import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_INT64_FIELD;
 import static com.vastdata.spark.SparkArrowVectorUtil.ROW_ID_SIGNED_ADAPTOR;
 import static com.vastdata.spark.SparkArrowVectorUtil.VASTDB_SPARK_ROW_ID_NONNULL;
 import static java.lang.String.format;
@@ -108,7 +108,7 @@ public class VastWriteFactory
             if (vastTableMetaData.isForDelete()) {
                 this.chunkSize = vastConfig.getMaxRowsPerDelete();
                 this.writeModeAdaptor = ROW_ID_SIGNED_ADAPTOR;
-                this.tableArrowSchema = new Schema(Lists.newArrayList(ROW_ID_FIELD_SIGNED));
+                this.tableArrowSchema = new Schema(Lists.newArrayList(ROW_ID_INT64_FIELD));
                 DATA_WRITER_LOG.info("VastWriter{}: DELETE chunkSize = {}, writeSchema = {}", dataWriteTraceToken, chunkSize, SPARK_ROW_ID_SCHEMA);
                 this.rowsQ = InternalRowsQFactory.forDelete(chunkSize);
             }

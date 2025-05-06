@@ -10,6 +10,7 @@ import io.trino.spi.block.ByteArrayBlock;
 import io.trino.spi.block.DictionaryBlock;
 import io.trino.spi.block.Fixed12Block;
 import io.trino.spi.block.IntArrayBlock;
+import io.trino.spi.block.Int128ArrayBlock;
 import io.trino.spi.block.LongArrayBlock;
 import io.trino.spi.block.RunLengthEncodedBlock;
 import io.trino.spi.block.ShortArrayBlock;
@@ -186,6 +187,33 @@ public final class BlockApiFactory
                 }
             }
             default -> throw new IllegalStateException(format("Unexpected block class for Fixed12 api: %s", block));
+        };
+    }
+
+    public static Int128ArrayBlockApi getInt128ApiInstance(Block block)
+    {
+        return switch (block) {
+            case Int128ArrayBlock b -> new Int128ApiBlockWrapper(b::getInt128High, b::getInt128Low);
+            case RunLengthEncodedBlock rle -> {
+                ValueBlock value = rle.getValue();
+                if (value instanceof Int128ArrayBlock wrapped) {
+                    yield new ConstantInt128ArrayApi(wrapped.getInt128High(0), wrapped.getInt128Low(0));
+                }
+                else {
+                    throw new RuntimeException(format("Unexpected nested block for Int128 RunLengthEncodedBlock: %s", value.getClass()));
+                }
+            }
+            case DictionaryBlock dict -> {
+                if (dict.getUnderlyingValueBlock() instanceof Int128ArrayBlock) {
+                    Function<Integer, Long> dictIdFirstFunction = i -> ((Int128ArrayBlock) dict.getUnderlyingValueBlock()).getInt128High(dict.getId(i));
+                    Function<Integer, Long> dictIdSecondFunction = i -> ((Int128ArrayBlock) dict.getUnderlyingValueBlock()).getInt128Low(dict.getId(i));
+                    yield new Int128ApiBlockWrapper(dictIdFirstFunction, dictIdSecondFunction);
+                }
+                else {
+                    throw new RuntimeException(format("Unexpected nested block for Int128 DictionaryBlock: %s", dict.getUnderlyingValueBlock().getClass()));
+                }
+            }
+            default -> throw new IllegalStateException(format("Unexpected block class for Int128 api: %s", block));
         };
     }
 }
