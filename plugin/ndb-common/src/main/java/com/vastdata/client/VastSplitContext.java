@@ -13,14 +13,14 @@ import static com.google.common.base.MoreObjects.toStringHelper;
 
 public class VastSplitContext
 {
-    private final long currentSplit;
+    private final int currentSplit;
     private final int numOfSplits;
     private final int numOfSubSplits;
     private final int rowGroupsPerSubSplit;
 
     @JsonCreator
     public VastSplitContext(
-            @JsonProperty("currentSplit") long currentSplit,
+            @JsonProperty("currentSplit") int currentSplit,
             @JsonProperty("numOfSplits") int numOfSplits,
             @JsonProperty("numOfSubSplits") int numOfSubSplits,
             @JsonProperty("rowGroupsPerSubSplit") int rowGroupsPerSubSplit)
@@ -32,7 +32,7 @@ public class VastSplitContext
     }
 
     @JsonProperty
-    public long getCurrentSplit()
+    public int getCurrentSplit()
     {
         return currentSplit;
     }

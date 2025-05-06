@@ -6,7 +6,6 @@ import com.vastdata.client.schema.ArrowSchemaUtils;
 import com.vastdata.client.schema.CreateTableContext;
 import com.vastdata.client.schema.DropTableContext;
 import com.vastdata.client.schema.StartTransactionContext;
-import static com.vastdata.client.schema.VastMetadataUtils.SORTED_BY_PROPERTY;
 import com.vastdata.client.schema.VastMetadataUtils;
 import com.vastdata.client.tx.SimpleVastTransaction;
 import io.airlift.http.client.HttpClient;
@@ -1160,12 +1159,12 @@ public class TestIntegration
 
         // Prepare row IDs for deletion (delete row 1)
         RootAllocator deleteAllocator = new RootAllocator();
-        UInt8Vector rowIdsToDelete = new UInt8Vector(ArrowSchemaUtils.ROW_ID_FIELD_NAME, deleteAllocator);
+        UInt8Vector rowIdsToDelete = new UInt8Vector("$rowid", deleteAllocator);
         rowIdsToDelete.allocateNew(1);
         rowIdsToDelete.setSafe(0, 1); // Delete row with ID 1
         rowIdsToDelete.setValueCount(1);
 
-        Schema deleteSchema = new Schema(List.of(ArrowSchemaUtils.ROW_ID_UINT64_FIELD));
+        Schema deleteSchema = new Schema(List.of(ArrowSchemaUtils.ROW_ID_FIELD));
         VectorSchemaRoot deleteVsr = new VectorSchemaRoot(deleteSchema, List.of(rowIdsToDelete), 1);
 
         // Perform deletion
@@ -1229,12 +1228,12 @@ public class TestIntegration
 
         // Prepare row IDs for deletion (delete row 1)
         RootAllocator deleteAllocator = new RootAllocator();
-        UInt8Vector rowIdsToDelete = new UInt8Vector(ArrowSchemaUtils.ROW_ID_FIELD_NAME, deleteAllocator);
+        UInt8Vector rowIdsToDelete = new UInt8Vector("$rowid", deleteAllocator);
         rowIdsToDelete.allocateNew(1);
         rowIdsToDelete.setSafe(0, 100); // Delete row with ID 1
         rowIdsToDelete.setValueCount(1);
 
-        Schema deleteSchema = new Schema(List.of(ArrowSchemaUtils.ROW_ID_UINT64_FIELD));
+        Schema deleteSchema = new Schema(List.of(ArrowSchemaUtils.ROW_ID_FIELD));
         VectorSchemaRoot deleteVsr = new VectorSchemaRoot(deleteSchema, List.of(rowIdsToDelete), 1);
 
         // Perform deletion
@@ -1299,13 +1298,13 @@ public class TestIntegration
 
         // Prepare row IDs for deletion (delete row 1)
         RootAllocator deleteAllocator = new RootAllocator();
-        UInt8Vector rowIdsToDelete = new UInt8Vector(ArrowSchemaUtils.ROW_ID_FIELD_NAME, deleteAllocator);
+        UInt8Vector rowIdsToDelete = new UInt8Vector("$rowid", deleteAllocator);
         rowIdsToDelete.allocateNew(2);
         rowIdsToDelete.setSafe(0, 0);
         rowIdsToDelete.setSafe(1, 2);
         rowIdsToDelete.setValueCount(2);
 
-        Schema deleteSchema = new Schema(List.of(ArrowSchemaUtils.ROW_ID_UINT64_FIELD));
+        Schema deleteSchema = new Schema(List.of(ArrowSchemaUtils.ROW_ID_FIELD));
         VectorSchemaRoot deleteVsr = new VectorSchemaRoot(deleteSchema, List.of(rowIdsToDelete), 2);
 
         // Perform deletion

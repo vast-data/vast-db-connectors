@@ -52,6 +52,7 @@
         <module>plugin/ndb-common</module>
         <module>plugin/spark3</module>
         <!--        <module>plugin/trino-vast</module>-->
+        <!-- <module>plugin/java-sdk</module> -->
     </modules>
 
     <repositories>

@@ -2,10 +2,10 @@
 
 package com.vastdata.trino;
 
-import com.vastdata.trino.rowid.BlockComparatorFunction;
 import io.airlift.log.Logger;
 import io.trino.spi.Page;
 import io.trino.spi.block.Block;
+import io.trino.spi.block.LongArrayBlock;
 
 import java.util.Arrays;
 import java.util.Comparator;
@@ -121,7 +121,8 @@ public class VastMergePage
     // Workaround for ORION-147374 (currently VAST backend requires ascending row IDs for UPDATE/DELETE)
     static int[] sortPositionsByRowId(int[] positions, int count, Block rowIdsBlock)
     {
-        Comparator<Integer> comparator = BlockComparatorFunction.INSTANCE.apply(rowIdsBlock);
+        LongArrayBlock longArrayBlock = (LongArrayBlock) rowIdsBlock;
+        Comparator<Integer> comparator = Comparator.comparing(longArrayBlock::getLong);
         return Arrays
                 .stream(positions, 0, count)
                 .boxed()

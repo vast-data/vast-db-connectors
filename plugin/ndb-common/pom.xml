@@ -104,11 +104,6 @@
             <version>${dep.arrow.version}</version>
         </dependency>
         <dependency>
-            <groupId>org.apache.arrow</groupId>
-            <artifactId>arrow-compression</artifactId>
-            <version>${dep.arrow.version}</version>
-        </dependency>
-        <dependency>
             <groupId>io.airlift</groupId>
             <artifactId>configuration</artifactId>
             <version>${common.airlift.version}</version>

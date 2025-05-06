@@ -8,9 +8,6 @@ import com.vastdata.client.tx.VastTransaction;
 import com.google.common.collect.Multimap;
 import com.vastdata.client.tx.VastTraceToken;
 
-import java.util.List;
-
-
 public interface VastRequestHeadersBuilder
 {
     String VAST_CLIENT_API_VERSION = "1";
@@ -32,6 +29,4 @@ public interface VastRequestHeadersBuilder
     VastRequestHeadersBuilder withExactMatch(String schemaNameWithoutBucket);
 
     VastRequestHeadersBuilder withTraceToken(VastTraceToken traceToken);
-
-    VastRequestHeadersBuilder withSorting(List<Integer> sorted_columns);
 }

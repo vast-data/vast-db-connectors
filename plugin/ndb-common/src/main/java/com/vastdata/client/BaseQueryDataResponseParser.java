@@ -9,7 +9,6 @@ import com.vastdata.client.error.VastIOException;
 import com.vastdata.client.tx.VastTraceToken;
 import com.vastdata.client.util.TypeUtils;
 import io.airlift.log.Logger;
-import org.apache.arrow.compression.CommonsCompressionFactory;
 import org.apache.arrow.flatbuf.Message;
 import org.apache.arrow.flatbuf.MessageHeader;
 import org.apache.arrow.memory.ArrowBuf;
@@ -184,19 +183,11 @@ abstract public class BaseQueryDataResponseParser<T>
                 }
 
                 VectorSchemaRoot root = VectorSchemaRoot.create(requestedSchema, allocator);
+                VectorLoader loader = new VectorLoader(root, NoCompressionCodec.Factory.INSTANCE);
                 try (ArrowRecordBatch batch = MessageSerializer.deserializeRecordBatch(message, bodyBuffer)) {
                     if (LOG.isDebugEnabled()) {
                         LOG.debug("QueryData(%s)(stream=%d): loading %d vectors (%s) from %s, body: %s)",
                                 traceStr, streamId, requestedSchema.getFields().size(), requestedSchema, batch, bodyBuffer);
-                    }
-                    VectorLoader loader;
-		    if (batch.getBodyCompression().equals(NoCompressionCodec.DEFAULT_BODY_COMPRESSION)) {
-			LOG.debug("No compression");
-                        loader = new VectorLoader(root, NoCompressionCodec.Factory.INSTANCE);
-                    }
-                    else {
-			LOG.debug("Compression : {}", batch.getBodyCompression());
-                        loader = new VectorLoader(root, CommonsCompressionFactory.INSTANCE);
                     }
                     loader.load(batch); // load `root` vectors from batch
                 }

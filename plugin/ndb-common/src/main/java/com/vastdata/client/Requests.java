@@ -32,10 +32,7 @@ enum Requests
     COMMIT_TRANSACTION("transaction"),
     GET_TRANSACTION("transaction"),
     GET_SCHEDULING_INFO("schedule"),
-    GET_TABLE_STATS("stats"),
-    LIST_SORTED_BY("sorted-columns"),
-    ROW_COLUMN_SECURITY("row-column-security"),
-    ;
+    GET_TABLE_STATS("stats");
 
     private final String requestName;
 

@@ -46,7 +46,6 @@ public class VastModule
         binder.bind(VastStatisticsManager.class).in(Scopes.SINGLETON);
         binder.bind(VastPageSourceProvider.class).in(Scopes.SINGLETON);
         binder.bind(VastPageSinkProvider.class).in(Scopes.SINGLETON);
-        binder.bind(VastSecurityAccessControl.class).in(Scopes.SINGLETON);
         configBinder(binder).bindConfig(VastConfig.class);
     }
 }
