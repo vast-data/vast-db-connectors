@@ -9,7 +9,7 @@
 
     <groupId>ndb</groupId>
     <artifactId>trino-vast</artifactId>
-    <version>5.3.0</version>
+    <version>5.3.0.1</version>
     <packaging>trino-plugin</packaging>
     <description>Trino - VAST Connector</description>
     <properties>
@@ -42,12 +42,12 @@
         <dep.docker.images.version>53</dep.docker.images.version>
 
         <!--
-          America/Bahia_Banderas has:
-           - offset change since 1970 (offset Jan 1970: -08:00, offset Jan 2018: -06:00)
-           - DST (e.g. at 2017-04-02 02:00:00 clocks turned forward 1 hour; 2017-10-29 02:00:00 clocks turned backward 1 hour)
-           - has forward offset change on first day of epoch (1970-01-01 00:00:00 clocks turned forward 1 hour)
-           - had forward change at midnight (1970-01-01 00:00:00 clocks turned forward 1 hour)
-          -->
+            America/Bahia_Banderas has:
+            - offset change since 1970 (offset Jan 1970: -08:00, offset Jan 2018: -06:00)
+            - DST (e.g. at 2017-04-02 02:00:00 clocks turned forward 1 hour; 2017-10-29 02:00:00 clocks turned backward 1 hour)
+            - has forward offset change on first day of epoch (1970-01-01 00:00:00 clocks turned forward 1 hour)
+            - had forward change at midnight (1970-01-01 00:00:00 clocks turned forward 1 hour)
+        -->
         <air.test.timezone>America/Bahia_Banderas</air.test.timezone>
         <air.test.parallel>classes</air.test.parallel>
         <air.test.thread-count>2</air.test.thread-count>
@@ -475,15 +475,15 @@
                         <exclude>**/*jmhType*.java</exclude>
                     </excludes>
                     <argLine>${argLine}
-                        -Dfile.encoding=UTF-8
-                        -Xmx3g
-                        -Xms3g
-                        -XX:+ExitOnOutOfMemoryError
-                        -XX:+HeapDumpOnOutOfMemoryError
-                        -XX:-OmitStackTraceInFastThrow
-                        --add-opens=java.base/java.lang=ALL-UNNAMED
-                        --add-opens=java.base/java.nio=ALL-UNNAMED
-                        -Djdk.attach.allowAttachSelf</argLine>
+                    -Dfile.encoding=UTF-8
+                    -Xmx3g
+                    -Xms3g
+                    -XX:+ExitOnOutOfMemoryError
+                    -XX:+HeapDumpOnOutOfMemoryError
+                    -XX:-OmitStackTraceInFastThrow
+                    --add-opens=java.base/java.lang=ALL-UNNAMED
+                    --add-opens=java.base/java.nio=ALL-UNNAMED
+                    -Djdk.attach.allowAttachSelf</argLine>
                 </configuration>
             </plugin>
             <plugin>
