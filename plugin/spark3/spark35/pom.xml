@@ -7,12 +7,12 @@
     <parent>
         <groupId>ndb</groupId>
         <artifactId>spark-vast</artifactId>
-        <version>5.3.0</version>
+        <version>5.3.0.1</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
     <artifactId>spark-vast-spark35</artifactId>
-    <version>5.3.0</version>
+    <version>5.3.0.1</version>
     <name>spark-35</name>
     <description>Spark - VAST for Spark 3.5</description>
     <packaging>jar</packaging>
@@ -204,12 +204,12 @@
                         <exclude>**/*jmhType*.java</exclude>
                     </excludes>
                     <argLine>${argLine}
-                        -Dfile.encoding=UTF-8
-                        -Xmx3g
-                        -Xms3g
-                        -XX:+ExitOnOutOfMemoryError
-                        -XX:+HeapDumpOnOutOfMemoryError
-                        -XX:-OmitStackTraceInFastThrow
+                    -Dfile.encoding=UTF-8
+                    -Xmx3g
+                    -Xms3g
+                    -XX:+ExitOnOutOfMemoryError
+                    -XX:+HeapDumpOnOutOfMemoryError
+                    -XX:-OmitStackTraceInFastThrow
                     </argLine>
                 </configuration>
             </plugin>

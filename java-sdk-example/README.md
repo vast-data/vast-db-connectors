@@ -28,7 +28,7 @@ Must be declared in addition to Maven Central (or other repository containing th
     <dependency>
         <groupId>com.vastdata.vdb</groupId>
         <artifactId>sdk</artifactId>
-        <version>5.3.0</version>
+        <version>5.3.0.1</version>
     </dependency>
 </dependencies>
 ```

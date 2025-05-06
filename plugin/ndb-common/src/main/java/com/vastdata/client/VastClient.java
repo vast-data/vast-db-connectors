@@ -851,10 +851,15 @@ public class VastClient
     {
         String path = format("/%s/%s", schema, table);
         for (byte[] body : splitter.split(root, maxRowsPerDelete.orElse(config.getMaxRowsPerDelete()))) {
-            Multimap<String, String> headers = dependenciesFactory.getHeadersFactory()
-                    .withTransaction(transaction)
-                    .withContentLength(body.length)
-                    .build();
+	    VastRequestHeadersBuilder headersFactory = dependenciesFactory
+		.getHeadersFactory()
+		.withContentLength(body.length);
+
+	    if (transaction != null) {
+		headersFactory = headersFactory.withTransaction(transaction);
+	    }
+	    
+	    final Multimap<String, String> headers = headersFactory.build();
 
             Request request = new VastRequestBuilder(dataEndpoint, config, DELETE, path, ImmutableMap.of(Requests.DELETE_ROWS.getRequestParam(), ""))
                     .addHeaders(headers)
