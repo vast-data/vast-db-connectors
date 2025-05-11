@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ /* Copyright (C) Vast Data Ltd. */
-  -->
+~ /* Copyright (C) Vast Data Ltd. */
+-->
 
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -12,12 +12,12 @@
     <parent>
         <groupId>ndb</groupId>
         <artifactId>ndb-root</artifactId>
-        <version>5.3.0</version>
+        <version>5.3.0.1</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
     <artifactId>ndb-common</artifactId>
-    <version>5.3.0</version>
+    <version>5.3.0.1</version>
     <description>VAST Connector - Common</description>
     <packaging>jar</packaging>
 
@@ -29,6 +29,14 @@
         <air.java.version>1.8.0-202</air.java.version>
         <common.airlift.version>206</common.airlift.version>
     </properties>
+    
+    <distributionManagement>
+        <repository>
+            <id>vast-maven-release</id>
+            <name>VAST Maven Release Repository</name>
+            <url>s3://vast-maven-repo/release</url>
+        </repository>
+    </distributionManagement>
 
     <dependencies>
         <dependency>
@@ -39,7 +47,7 @@
         <dependency>
             <groupId>com.amazonaws</groupId>
             <artifactId>aws-java-sdk-s3</artifactId>
-<!--            <scope>provided</scope>-->
+            <!--            <scope>provided</scope>-->
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
@@ -183,7 +191,7 @@
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>build-helper-maven-plugin</artifactId>
-<!--                <version>3.0.0</version>-->
+                <!--                <version>3.0.0</version>-->
                 <executions>
                     <execution>
                         <phase>generate-sources</phase>
@@ -230,12 +238,12 @@
                         <exclude>**/*jmhType*.java</exclude>
                     </excludes>
                     <argLine>${argLine}
-                        -Dfile.encoding=UTF-8
-                        -Xmx3g
-                        -Xms3g
-                        -XX:+ExitOnOutOfMemoryError
-                        -XX:+HeapDumpOnOutOfMemoryError
-                        -XX:-OmitStackTraceInFastThrow
+                    -Dfile.encoding=UTF-8
+                    -Xmx3g
+                    -Xms3g
+                    -XX:+ExitOnOutOfMemoryError
+                    -XX:+HeapDumpOnOutOfMemoryError
+                    -XX:-OmitStackTraceInFastThrow
                     </argLine>
                 </configuration>
             </plugin>
@@ -276,5 +284,13 @@
                 </configuration>
             </plugin>
         </plugins>
+
+	    <extensions>
+	        <extension>
+		        <groupId>com.github.seahen</groupId>
+		        <artifactId>maven-s3-wagon</artifactId>
+		        <version>1.3.3</version>
+	        </extension>
+	    </extensions>
     </build>
 </project>

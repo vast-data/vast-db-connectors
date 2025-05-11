@@ -7,12 +7,12 @@
     <parent>
         <groupId>ndb</groupId>
         <artifactId>spark-vast</artifactId>
-        <version>5.3.0</version>
+        <version>5.3.0.1</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
     <artifactId>spark-vast-common</artifactId>
-    <version>5.3.0</version>
+    <version>5.3.0.1</version>
     <name>spark-common</name>
     <description>Spark - VAST Common</description>
     <packaging>jar</packaging>
@@ -74,8 +74,8 @@
         </dependency>
     </dependencies>
     <build>
-      <sourceDirectory>./src/main/java</sourceDirectory>
-      <testSourceDirectory>./test/java</testSourceDirectory>
+        <sourceDirectory>./src/main/java</sourceDirectory>
+        <testSourceDirectory>./test/java</testSourceDirectory>
         <plugins>
             <plugin>
                 <artifactId>maven-checkstyle-plugin</artifactId>
@@ -109,12 +109,12 @@
                         <exclude>**/*jmhType*.java</exclude>
                     </excludes>
                     <argLine>${argLine}
-                        -Dfile.encoding=UTF-8
-                        -Xmx3g
-                        -Xms3g
-                        -XX:+ExitOnOutOfMemoryError
-                        -XX:+HeapDumpOnOutOfMemoryError
-                        -XX:-OmitStackTraceInFastThrow
+                    -Dfile.encoding=UTF-8
+                    -Xmx3g
+                    -Xms3g
+                    -XX:+ExitOnOutOfMemoryError
+                    -XX:+HeapDumpOnOutOfMemoryError
+                    -XX:-OmitStackTraceInFastThrow
                     </argLine>
                 </configuration>
             </plugin>
