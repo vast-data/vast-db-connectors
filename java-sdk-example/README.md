@@ -135,6 +135,15 @@ Inserts a batch of records into the table. The schema of the input `VectorSchema
 *   **Returns:** A `VectorSchemaRoot` containing the internal row IDs assigned to the inserted rows. This `VectorSchemaRoot` contains a single column named `vastdb_rowid` of type `UInt8Vector`.
 *   **Throws:** `VastException`: If an error occurs during the insert operation.
 
+```java
+public void delete(VectorSchemaRoot rowIds) throws VastException
+```
+
+Deletes rows from table using supplied rowIds. The schema of the input `VectorSchemaRoot` must be of a single vector of the row id type (Unsigned 64 bit Integer).
+
+*   `rowIds`: The `VectorSchemaRoot` containing row ids of rows to be removed.
+*   **Throws:** `VastException`: If an error occurs during the insert operation.
+
 ### Exceptions
 
 #### `com.vastdata.vdb.sdk.NoExternalRowIdColumnException`
