@@ -1,0 +1,18 @@
+include "defs.fbs";
+
+namespace vast_flatbuf.tabular;
+
+table VipRange {
+   start_address: string;
+   address_count: uint16;
+}
+
+table GetTableStatsResponse {
+  num_rows: int64;
+  size_in_bytes: int64;
+  is_external_rowid_alloc: bool;
+  address_type: string;
+  vips: [VipRange];
+}
+
+root_type GetTableStatsResponse;

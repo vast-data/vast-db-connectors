@@ -1,0 +1,16 @@
+include "defs.fbs";
+
+namespace vast_flatbuf.tabular;
+
+enum ColumnType : byte { Unsorted, Sorted }
+
+table Column {
+  name: string;
+  type: ColumnType;
+}
+
+table CreateProjectionRequest {
+  columns: [Column];
+}
+
+root_type CreateProjectionRequest;

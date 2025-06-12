@@ -1,0 +1,13 @@
+namespace vast_flatbuf.tabular;
+
+/// used by `ListSchemas` and `ListTables` API
+
+table ObjectDetails {
+  name: string;
+  properties: string;
+  handle: string;
+  num_rows: uint64;
+  size_in_bytes: uint64;
+  num_partitions: uint64;
+  sorting_key_enabled: bool = false;
+}

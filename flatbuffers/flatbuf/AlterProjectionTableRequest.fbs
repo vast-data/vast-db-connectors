@@ -1,0 +1,10 @@
+include "defs.fbs";
+
+namespace vast_flatbuf.tabular;
+
+table AlterProjectionTableRequest {
+  new_name: string;
+  properties: string;
+}
+
+root_type AlterProjectionTableRequest;

@@ -1,0 +1,9 @@
+include "defs.fbs";
+
+namespace vast_flatbuf.tabular;
+
+table AlterSchemaRequest {
+  properties: string;
+}
+
+root_type AlterSchemaRequest;

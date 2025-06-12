@@ -1,0 +1,25 @@
+include "defs.fbs";
+
+namespace vast_flatbuf.tabular;
+
+table S3File {
+  /// currently supported only parquet
+  format: string;
+  bucket_name: string;
+  /// name includes path
+  file_name: string;
+
+  /// https://arrow.apache.org/docs/format/Columnar.html#ipc-streaming-format
+  /// serialized as a Arrow schema + single-row Arrow page, if exist
+  /// A page of partitions including one or more column:type:value per file.
+  /// We should validate that column exists in table layout and type is valid
+  /// when importing we should use insert this column value for
+  /// all the rows in the table
+  partitions: [ubyte];
+}
+
+table ImportDataRequest {
+  s3_files: [S3File];
+}
+
+root_type ImportDataRequest;

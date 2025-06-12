@@ -1,0 +1,12 @@
+include "defs.fbs";
+
+namespace vast_flatbuf.tabular;
+
+table ListProjectionsResponse {
+  bucket_name: string;
+  schema_name: string;
+  table_name:  string;
+  projections: [ObjectDetails];
+}
+
+root_type ListProjectionsResponse;
