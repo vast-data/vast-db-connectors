@@ -1,0 +1,10 @@
+include "defs.fbs";
+
+namespace vast_flatbuf.tabular;
+
+table ListSchemasResponse {
+  bucket_name: string;
+  schemas: [ObjectDetails];
+}
+
+root_type ListSchemasResponse;

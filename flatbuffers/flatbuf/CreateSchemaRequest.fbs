@@ -1,0 +1,9 @@
+include "defs.fbs";
+
+namespace vast_flatbuf.tabular;
+
+table CreateSchemaRequest {
+  properties: string;
+}
+
+root_type CreateSchemaRequest;

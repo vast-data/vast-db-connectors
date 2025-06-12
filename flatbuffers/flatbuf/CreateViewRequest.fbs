@@ -1,0 +1,10 @@
+include "defs.fbs";
+
+namespace vast_flatbuf.tabular;
+
+table CreateViewRequest {
+  view_metadata_arrow_buffer: [ubyte];
+  view_data_arrow_schema: [ubyte];
+}
+
+root_type CreateViewRequest;

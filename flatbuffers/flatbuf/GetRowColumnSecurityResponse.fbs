@@ -1,0 +1,25 @@
+include "defs.fbs";
+
+namespace vast_flatbuf.tabular;
+
+table ColumnDetails {
+  name: string;
+  mask: string;
+}
+
+table NameString {
+  name: string;
+}
+
+table FilterString {
+  filter: string;
+}
+
+table GetRowColumnSecurityResponse {
+  row_filter: [FilterString];
+  column_mask: [ColumnDetails];
+  column_allow: [NameString];
+  column_deny: [NameString];
+}
+
+root_type GetRowColumnSecurityResponse;

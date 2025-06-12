@@ -1,0 +1,9 @@
+include "defs.fbs";
+
+namespace vast_flatbuf.tabular;
+
+table AlterTableRequest {
+  properties: string;
+}
+
+root_type AlterTableRequest;

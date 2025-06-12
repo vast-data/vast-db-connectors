@@ -1,0 +1,10 @@
+include "defs.fbs";
+
+namespace vast_flatbuf.tabular;
+
+table AlterColumnRequest {
+  properties: string;
+  stats: string;
+}
+
+root_type AlterColumnRequest;
