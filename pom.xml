@@ -57,15 +57,22 @@
 
     <repositories>
         <repository>
-            <id>internal-vast-maven-repository</id>
-            <name>VAST Internal Repo</name>
-            <url>https://artifactory.vastdata.com/artifactory/maven2</url>
+            <id>maven-central</id>
+            <name>Maven Central Repository</name>
+            <url>https://repo1.maven.org/maven2/</url>
         </repository>
-        <repository>
-            <id>internal-vast--thrift-repository</id>
-            <name>VAST Internal Repo</name>
-            <url>https://artifactory.vastdata.com/artifactory/spark-hive-thrift</url>
-        </repository>
+            <repository>
+      <id>apache releases</id>
+      <name>Apache Releases</name>
+      <url>https://repository.apache.org/content/repositories/releases/</url>
+      <releases>
+        <enabled>true</enabled>
+        <updatePolicy>never</updatePolicy>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+    </repository>
         <repository>
             <id>local-repo</id>
             <name>Local Repository</name>
@@ -87,9 +94,9 @@
 
     <pluginRepositories>
         <pluginRepository>
-            <id>internal-vast-maven-repository</id>
-            <name>VAST Internal Repo</name>
-            <url>https://artifactory.vastdata.com/artifactory/maven2</url>
+            <id>maven-central</id>
+            <name>Maven Central Repository</name>
+            <url>https://repo1.maven.org/maven2/</url>
         </pluginRepository>
         <pluginRepository>
             <id>local-repo</id>
