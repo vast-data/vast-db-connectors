@@ -7,10 +7,9 @@ package com.vastdata.spark.write;
 import com.vastdata.ListShuffler;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.error.VastUserException;
-import com.vastdata.client.schema.StartTransactionContext;
 import com.vastdata.spark.VastTable;
-import com.vastdata.spark.tx.VastAutocommitTransaction;
-import com.vastdata.spark.tx.VastSimpleTransactionFactory;
+import com.vastdata.client.tx.VastAutocommitTransaction;
+import com.vastdata.client.tx.VastTransactionFactory;
 import com.vastdata.spark.tx.VastSparkTransactionsManager;
 import ndb.NDB;
 import org.apache.spark.sql.connector.write.BatchWrite;
@@ -38,15 +37,16 @@ public class VastBatchWriter
     public VastBatchWriter(VastClient client, VastTable table) {
         this.table = table;
         this.client = client;
-        this.transactionsManager = VastSparkTransactionsManager.getInstance(client, new VastSimpleTransactionFactory());
+        this.transactionsManager = VastSparkTransactionsManager.getInstance(client, new VastTransactionFactory());
 
     }
 
     @Override
     public DataWriterFactory createBatchWriterFactory(PhysicalWriteInfo info)
     {
+        final String endUser = null;
         LOG.info("createBatchWriterFactory() number of partitions: {}", info.numPartitions());
-        this.tx = VastAutocommitTransaction.wrap(client, () -> transactionsManager.startTransaction(new StartTransactionContext(false, true)));
+        this.tx = VastAutocommitTransaction.createNewOrReuseFromEnv(client, () -> transactionsManager.startTransaction(endUser), endUser);
         try {
             ListShuffler<URI> listShuffler = new ListShuffler<>(Optional.ofNullable(NDB.getConfig().getSeedForShufflingEndpoints()));
             return new VastDataWriteFactory(tx.getTransaction(), NDB.getConfig(), table, listShuffler.randomizeList(NDB.getConfig().getDataEndpoints()));

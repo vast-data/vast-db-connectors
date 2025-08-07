@@ -7,8 +7,8 @@ package com.vastdata.trino;
 import com.vastdata.client.tx.VastTraceToken;
 import io.airlift.log.Logger;
 import io.trino.plugin.base.metrics.LongCount;
-import io.trino.spi.Page;
 import io.trino.spi.connector.ConnectorPageSource;
+import io.trino.spi.connector.SourcePage;
 import io.trino.spi.metrics.Metrics;
 
 import java.util.Map;
@@ -31,16 +31,19 @@ public class VastPageSource
     private boolean isFinished;
 
     private long readRows;
-    private long completedBytes;
+    private long completedBytes = 0;
     private long getNextPageNanos;
-    private final long startedNanos;
+    private Long startedNanos;
+    private long startDelayNanos = System.nanoTime();
     private long parsedPages;
     private long nullPages;
+    private long pageFetchGap = 0;
+    private long lastFetchEndTime = 0;
+
     private final Metrics.Accumulator parserMetrics;
 
     public VastPageSource(VastTraceToken traceToken, VastSplit split, Supplier<QueryDataResponseParser> fetchPages, Optional<Long> limitRows)
     {
-        this.startedNanos = System.nanoTime();
         this.traceToken = traceToken;
         this.split = split;
         this.fetchPages = fetchPages;
@@ -52,7 +55,9 @@ public class VastPageSource
     {
         return new Metrics(Map.of(
                 "getNextPageNanos", new LongCount(getNextPageNanos),
-                "pageSourceDurationNanos", new LongCount(System.nanoTime() - startedNanos),
+                "pageSourceDurationNanos", new LongCount(startedNanos != null ? System.nanoTime() - startedNanos : 0),
+                "pageSourceStartDelayNanos", new LongCount(startDelayNanos),
+                "pageSourcePageFetchGap", new LongCount(pageFetchGap),
                 "nullPages", new LongCount(nullPages),
                 "parsedPages", new LongCount(parsedPages),
                 "readRows", new LongCount(readRows)));
@@ -61,7 +66,8 @@ public class VastPageSource
     @Override
     public long getCompletedBytes()
     {
-        return completedBytes;
+        LOG.debug("completed bytes: %d",completedBytes + (parser != null? parser.getBytesRead() : 0));
+        return completedBytes + (parser != null? parser.getBytesRead() : 0);
     }
 
     @Override
@@ -77,13 +83,20 @@ public class VastPageSource
     }
 
     @Override
-    public Page getNextPage()
-    {
+    public SourcePage getNextSourcePage() {
         long start = System.nanoTime();
+        if (parser == null && parsedPages == 0) {
+            LOG.debug("QueryData(%s) First page fetch", traceToken);
+            this.startDelayNanos = start - startDelayNanos;
+            this.startedNanos = start;
+        }
+        else {
+            this.pageFetchGap += start - lastFetchEndTime;
+        }
         try {
             if (isFinished) {
                 nullPages += 1;
-                LOG.debug("Finished page source");
+                LOG.debug("QueryData(%s) Finished page source", traceToken);
                 return null;
             }
             if (parser == null) {
@@ -91,23 +104,28 @@ public class VastPageSource
                 parserMetrics.add(parser.getMetrics());
             }
             if (parser.hasNext()) {
-                Page page = parser.next();
+                SourcePage page = parser.next();
                 parsedPages += 1;
-                completedBytes += page.getSizeInBytes();
                 readRows += page.getPositionCount();
                 return page;
             }
             if (parser.isSplitFinished()) {
                 isFinished = true;
             }
+            completedBytes += parser.getBytesRead();
             parser = null;
-            LOG.debug("Returning null page");
+            LOG.debug("QueryData(%s) Returning null page", traceToken);
             nullPages += 1;
             return null;
         }
         finally {
-            getNextPageNanos += (System.nanoTime() - start);
+            long pageFetchEndTime = System.nanoTime();
+            lastFetchEndTime = pageFetchEndTime;
+            getNextPageNanos += (pageFetchEndTime - start);
             if (limitRows.map(limit -> readRows >= limit).orElse(false)) {
+                if (parser != null) {
+                    completedBytes += parser.getBytesRead();
+                }
                 isFinished = true;
                 parser = null;
             }
@@ -123,7 +141,7 @@ public class VastPageSource
     @Override
     public void close()
     {
-        LOG.info("QueryData(%s) closing %s: %s", traceToken, split, getMetrics().getMetrics());
+        LOG.debug("QueryData(%s) closing %s: %s", traceToken, split, getMetrics().getMetrics());
     }
 
     @Override

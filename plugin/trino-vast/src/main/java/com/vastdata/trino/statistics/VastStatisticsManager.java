@@ -4,13 +4,11 @@
 
 package com.vastdata.trino.statistics;
 
-import com.google.inject.Inject;
 import com.google.common.base.VerifyException;
-import com.google.common.collect.Streams;
+import com.google.common.collect.ImmutableSet;
+import com.google.inject.Inject;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastConfig;
-import com.vastdata.client.error.VastServerException;
-import com.vastdata.client.error.VastUserException;
 import com.vastdata.trino.TypeUtils;
 import com.vastdata.trino.VastColumnHandle;
 import com.vastdata.trino.VastTableHandle;
@@ -29,13 +27,19 @@ import io.trino.spi.statistics.Estimate;
 import io.trino.spi.statistics.TableStatisticType;
 import io.trino.spi.statistics.TableStatistics;
 import io.trino.spi.statistics.TableStatisticsMetadata;
+import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.CharType;
 import io.trino.spi.type.DecimalType;
 import io.trino.spi.type.Decimals;
 import io.trino.spi.type.Int128;
+import io.trino.spi.type.MapType;
+import io.trino.spi.type.RowType;
 import io.trino.spi.type.TimeType;
 import io.trino.spi.type.TimestampType;
+import io.trino.spi.type.TimestampWithTimeZoneType;
 import io.trino.spi.type.Type;
+import io.trino.spi.type.UuidType;
+import io.trino.spi.type.VarcharType;
 import org.apache.arrow.vector.types.TimeUnit;
 import org.apache.arrow.vector.types.pojo.Field;
 
@@ -50,15 +54,15 @@ import java.util.stream.Stream;
 import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
-import static com.vastdata.trino.TypeUtils.convertTrinoTypeToArrowField;
-import static io.trino.spi.statistics.ColumnStatisticType.MAX_VALUE;
-import static io.trino.spi.statistics.ColumnStatisticType.MIN_VALUE;
-import static io.trino.spi.statistics.ColumnStatisticType.NUMBER_OF_DISTINCT_VALUES;
-import static io.trino.spi.statistics.ColumnStatisticType.NUMBER_OF_NON_NULL_VALUES;
-import static io.trino.spi.statistics.ColumnStatisticType.TOTAL_SIZE_IN_BYTES;
+import static com.vastdata.trino.statistics.VastColumnStatisticType.MAX_VALUE;
+import static com.vastdata.trino.statistics.VastColumnStatisticType.MIN_VALUE;
+import static com.vastdata.trino.statistics.VastColumnStatisticType.NUMBER_OF_DISTINCT_VALUES;
+import static com.vastdata.trino.statistics.VastColumnStatisticType.NUMBER_OF_NON_NULL_VALUES;
+import static com.vastdata.trino.statistics.VastColumnStatisticType.TOTAL_SIZE_IN_BYTES;
 import static io.trino.spi.statistics.TableStatisticType.ROW_COUNT;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
+import static io.trino.spi.type.DateTimeEncoding.unpackMillisUtc;
 import static io.trino.spi.type.DateType.DATE;
 import static io.trino.spi.type.DecimalConversions.longDecimalToDouble;
 import static io.trino.spi.type.DoubleType.DOUBLE;
@@ -66,6 +70,7 @@ import static io.trino.spi.type.IntegerType.INTEGER;
 import static io.trino.spi.type.RealType.REAL;
 import static io.trino.spi.type.SmallintType.SMALLINT;
 import static io.trino.spi.type.TinyintType.TINYINT;
+import static io.trino.spi.type.UuidType.UUID;
 import static io.trino.spi.type.VarbinaryType.VARBINARY;
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static java.lang.Float.intBitsToFloat;
@@ -101,7 +106,7 @@ public class VastStatisticsManager
         return new TableStatisticsMetadata(columnStatistics, tableStatistics, List.of());
     }
 
-    public void applyTableStatistics(VastTableHandle table, List<Field> tableColumnFields, ComputedStatistics statistics) throws VastServerException, VastUserException {
+    public void applyTableStatistics(VastTableHandle table, List<Field> tableColumnFields, ComputedStatistics statistics) {
         long rowCount = getTableRowCount(statistics.getTableStatistics());
         Map<ColumnHandle, ColumnStatistics> transformedColumnStatistics = transformColumnsStatistics(rowCount, tableColumnFields, statistics.getColumnStatistics());
         this.storage.setTableStatistics(table, new TableStatistics(Estimate.of(rowCount), transformedColumnStatistics));
@@ -122,7 +127,7 @@ public class VastStatisticsManager
             PerColumnStatsBuilder perColumnStatsBuilder = new PerColumnStatsBuilder(rowCount);
             columnStatistics.entrySet().stream().filter(columnStatsMapEntry -> columnStatsMapEntry.getKey().getColumnName().equals(field.getName()))
                     .forEach(columnStatsMapEntry -> {
-                        ColumnStatisticType statisticType = columnStatsMapEntry.getKey().getStatisticType();
+                        ColumnStatisticType statisticType = ColumnStatisticType.valueOf(columnStatsMapEntry.getKey().getConnectorAggregationId());
                         Optional<Double> optionalDouble = supportedStatisticsValueExtractors.getOrDefault(statisticType, getUnsupportedStatisticsTypeThrower(statisticType)).apply(field, columnStatsMapEntry.getValue());
                         optionalDouble.ifPresent(doubleValue -> perColumnStatsBuilder.accept(statisticType, doubleValue));
                     });
@@ -153,7 +158,7 @@ public class VastStatisticsManager
             ByteArrayBlock byteArrayBlock = (ByteArrayBlock) block;
             return Optional.of(((Byte) byteArrayBlock.getByte(0)).doubleValue());
         }
-        else if (type.equals(VARCHAR) || type instanceof CharType || type == VARBINARY) {
+        else if (type.equals(VARCHAR) || type instanceof CharType || type == VARBINARY || type == UUID) {
             return Optional.empty(); // Trino does not support non-numeric min/max values
         }
         if (type instanceof DecimalType decimalType) {
@@ -171,6 +176,14 @@ public class VastStatisticsManager
             }
             LongArrayBlock longArrayBlock = (LongArrayBlock) block;
             return Optional.of(((Long) longArrayBlock.getLong(0)).doubleValue());
+        }
+        if (type instanceof TimestampWithTimeZoneType ts) {
+            TimeUnit timeUnit = TypeUtils.precisionToTimeUnit(ts.getPrecision());
+            if (timeUnit == TimeUnit.NANOSECOND || timeUnit == TimeUnit.MICROSECOND) {
+                return Optional.empty(); // Trino doesn't support min/max values for these precisions
+            }
+            LongArrayBlock longArrayBlock = (LongArrayBlock) block;
+            return Optional.of(((Long) unpackMillisUtc(longArrayBlock.getLong(0))).doubleValue());
         }
         if (type instanceof TimeType) {
             return Optional.empty(); // Trino does not support displaying time types in show stats
@@ -193,22 +206,43 @@ public class VastStatisticsManager
         return Optional.of(((Long) longArrayBlock.getLong(0)).doubleValue());
     };
 
-    private static final Map<ColumnStatisticType, BiFunction<Field, Block, Optional<Double>>> supportedStatisticsValueExtractors = Map.of(
-            MIN_VALUE, minMaxValueExtractorForColumnStatistics,
-            MAX_VALUE, minMaxValueExtractorForColumnStatistics,
-            NUMBER_OF_DISTINCT_VALUES, longValExtractor,
-            NUMBER_OF_NON_NULL_VALUES, longValExtractor,
-            TOTAL_SIZE_IN_BYTES, longValExtractor);
-
     private List<ColumnStatisticMetadata> getColumnStatisticMetadata(ColumnMetadata columnMetadata)
     {
-        Stream<ColumnStatisticType> supportedStatistics = Stream.of(NUMBER_OF_DISTINCT_VALUES, NUMBER_OF_NON_NULL_VALUES, TOTAL_SIZE_IN_BYTES);
-        Field field = convertTrinoTypeToArrowField(columnMetadata.getType(), columnMetadata.getName(), columnMetadata.isNullable());
-        if (field.getChildren().isEmpty()) { // we don't collect min/max statistics over nested types
-            supportedStatistics = Streams.concat(supportedStatistics, Stream.of(MIN_VALUE, MAX_VALUE));
-        }
-        return supportedStatistics
-                .map(type -> new ColumnStatisticMetadata(columnMetadata.getName(), type))
+        String columnName = columnMetadata.getName();
+        return getSupportedColumnStatistics(columnMetadata.getType()).stream()
+                .map(type -> type.createColumnStatisticMetadata(columnName))
                 .collect(toImmutableList());
+    }
+
+    private static final Map<ColumnStatisticType, BiFunction<Field, Block, Optional<Double>>> supportedStatisticsValueExtractors = Map.of(
+            ColumnStatisticType.MIN_VALUE, minMaxValueExtractorForColumnStatistics,
+            ColumnStatisticType.MAX_VALUE, minMaxValueExtractorForColumnStatistics,
+            ColumnStatisticType.NUMBER_OF_DISTINCT_VALUES, longValExtractor,
+            ColumnStatisticType.NUMBER_OF_NON_NULL_VALUES, longValExtractor,
+            ColumnStatisticType.TOTAL_SIZE_IN_BYTES, longValExtractor);
+
+    public static Set<VastColumnStatisticType> getSupportedColumnStatistics(Type type)
+    {
+        if (type.equals(BOOLEAN) || isNumericType(type) || type.equals(DATE) || type instanceof TimeType ||
+                type instanceof TimestampType || type instanceof TimestampWithTimeZoneType) {
+            return ImmutableSet.of(MIN_VALUE, MAX_VALUE, NUMBER_OF_DISTINCT_VALUES, NUMBER_OF_NON_NULL_VALUES);
+        }
+        if (type instanceof VarcharType || type instanceof CharType || type.equals(VARBINARY)) {
+            return ImmutableSet.of(MIN_VALUE, MAX_VALUE, NUMBER_OF_DISTINCT_VALUES, NUMBER_OF_NON_NULL_VALUES, TOTAL_SIZE_IN_BYTES);
+        }
+        if (type instanceof ArrayType ||
+                type instanceof RowType ||
+                type instanceof UuidType ||
+                type instanceof MapType) {
+            return ImmutableSet.of(NUMBER_OF_NON_NULL_VALUES, NUMBER_OF_DISTINCT_VALUES, TOTAL_SIZE_IN_BYTES);
+        }
+        LOG.warn("Unsupported column type: %s. using default stats", type);
+        return ImmutableSet.of(NUMBER_OF_NON_NULL_VALUES, NUMBER_OF_DISTINCT_VALUES, TOTAL_SIZE_IN_BYTES);
+    }
+
+    private static boolean isNumericType(Type type) {
+        return type.equals(BIGINT) || type.equals(INTEGER) || type.equals(SMALLINT) || type.equals(TINYINT) ||
+                type.equals(DOUBLE) || type.equals(REAL) ||
+                type instanceof DecimalType;
     }
 }

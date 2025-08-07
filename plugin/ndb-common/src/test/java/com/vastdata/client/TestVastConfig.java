@@ -28,9 +28,9 @@ public class TestVastConfig
                 .setAccessKeyId(null)
                 .setSecretAccessKey(null)
                 .setNumOfSplits(1)
-                .setNumOfSubSplits(1)
+                .setNumOfSubSplits(20)
                 .setRowGroupsPerSubSplit(8)
-                .setQueryDataRowsPerSplit(4000000)
+                .setQueryDataRowsPerSplit(10485760)
                 .setQueryDataRowsPerPage(131072)
                 .setAdvisoryPartitionSize(256 * 1024 * 1024)
                 .setAdaptivePartitioning(true)
@@ -40,8 +40,10 @@ public class TestVastConfig
                 .setParallelImport(true)
                 .setMinMaxCompactionMinValuesThreshold(VastConfig.MIN_MAX_COMPACTION_MIN_VALUES_DEFAULT_VALUE)
                 .setDynamicFilterCompactionThreshold(VastConfig.DYNAMIC_FILTER_COMPACTION_THRESHOLD_DEFAULT_VALUE)
-                .setDynamicFilterMaxValuesThreshold(1000)
+                .setDynamicFilterMaxValuesThreshold(10000)
                 .setDynamicFilteringWaitTimeout(2 * 1000)
+                .setDynamicFilterElysiumCompactionMultiplier(30)
+                .setDynamicFilterPushdownThreshold(99)
                 .setPredicatePushdownEnabled(true)
                 .setMatchSubstringPushdown(true)
                 .setComplexPredicatePushdown(false)
@@ -57,7 +59,12 @@ public class TestVastConfig
                 .setVastTransactionKeepAliveIntervalSeconds(60)
                 .setVastTransactionKeepAliveEnabled(true)
                 .setEstimateSplitsFromRowIdPredicate(false)
-                .setSeedForShufflingEndpoints(null));
+                .setEstimateSplitsFromElysium(true)
+                .setSeedForShufflingEndpoints(null)
+                .setCompression("none")
+                .setCompressionMinSavings(30)
+                .setSplitSizeMultiplier(3)
+                .setCompressionLevel(1));
     }
 
     @Test
@@ -83,9 +90,11 @@ public class TestVastConfig
                 .put("retry_sleep_duration", "30000")
                 .put("parallel_import", "false")
                 .put("min_max_compaction_min_values_threshold", "300")
-                .put("dynamic_filter_compaction_threshold", "1000")
+                .put("dynamic_filter_compaction_threshold", "2000")
                 .put("dynamic_filter_max_values_threshold", "2000")
                 .put("dynamic_filtering_wait_timeout", "10000")
+                .put("dynamic_filter_elysium_compaction_multiplier", "50")
+                .put("dynamic_filter_pushdown_threshold", "100")
                 .put("enable_predicate_pushdown", "false")
                 .put("match_substring_pushdown", "false")
                 .put("complex_predicate_pushdown", "true")
@@ -101,7 +110,12 @@ public class TestVastConfig
                 .put("vast_transaction_keep_alive_enabled", "false")
                 .put("vast_transaction_keep_alive_interval_seconds", "150")
                 .put("estimate_splits_from_row_id_predicate", "true")
+                .put("estimate_splits_from_elysium", "false")
                 .put("seed_for_shuffling_endpoints", "123")
+                .put("compression", "zstd")
+                .put("compression_min_savings", "40")
+                .put("compression_level", "3")
+                .put("split_size_multiplier", "30")
                 .buildOrThrow();
 
         VastConfig expected = new VastConfig()
@@ -124,9 +138,11 @@ public class TestVastConfig
                 .setRetrySleepDuration(30000)
                 .setParallelImport(false)
                 .setMinMaxCompactionMinValuesThreshold(300)
-                .setDynamicFilterCompactionThreshold(1000)
+                .setDynamicFilterCompactionThreshold(2000)
                 .setDynamicFilterMaxValuesThreshold(2000)
                 .setDynamicFilteringWaitTimeout(10000)
+                .setDynamicFilterElysiumCompactionMultiplier(50)
+                .setDynamicFilterPushdownThreshold(100)
                 .setPredicatePushdownEnabled(false)
                 .setMatchSubstringPushdown(false)
                 .setComplexPredicatePushdown(true)
@@ -142,7 +158,12 @@ public class TestVastConfig
                 .setVastTransactionKeepAliveEnabled(false)
                 .setVastTransactionKeepAliveIntervalSeconds(150)
                 .setEstimateSplitsFromRowIdPredicate(true)
-                .setSeedForShufflingEndpoints(123L);
+                .setEstimateSplitsFromElysium(false)
+                .setSeedForShufflingEndpoints(123L)
+                .setCompression("zstd")
+                .setCompressionMinSavings(40)
+                .setSplitSizeMultiplier(30)
+                .setCompressionLevel(3);
 
         assertFullMapping(properties, expected);
     }

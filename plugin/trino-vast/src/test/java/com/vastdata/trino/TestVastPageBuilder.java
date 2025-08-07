@@ -8,20 +8,19 @@ import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.IntVector;
-import org.testng.annotations.DataProvider;
-import org.testng.annotations.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 
-import static org.testng.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class TestVastPageBuilder
 {
-    @DataProvider
-    public Object[][] buildIsNullProvider()
+    public static Object[][] buildIsNullProvider()
     {
         return new Object[][] {
                 {0, 1},
@@ -37,7 +36,8 @@ public class TestVastPageBuilder
         };
     }
 
-    @Test(dataProvider = "buildIsNullProvider")
+    @ParameterizedTest
+    @MethodSource("buildIsNullProvider")
     public void testBuildIsNull(int vectorSize, int iterations)
     {
         try (

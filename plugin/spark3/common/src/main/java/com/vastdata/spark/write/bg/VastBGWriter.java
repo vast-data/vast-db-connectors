@@ -78,6 +78,7 @@ public class VastBGWriter
     @Override
     public void doRun()
     {
+        final String endUser = null;
         VectorSchemaRoot nextChunk = null;
         VastTraceToken traceToken = tx.generateTraceToken(Optional.of(modeTraceToken));
         try {
@@ -107,7 +108,7 @@ public class VastBGWriter
                                     .withChunkLimit(vastConfig.getImportChunkLimit());
                             try {
                                 new ImportDataExecutor<>(vastClientSupplier.apply(vastConfig)).execute(
-                                        ctx, tx, traceToken, Collections.singletonList(dataEndpoint), retryStrategy, parallelImport);
+                                        ctx, tx, traceToken, Collections.singletonList(dataEndpoint), retryStrategy, parallelImport, null);
                             }
                             finally {
                                 toClose.forEach(VectorSchemaRoot::close);
@@ -115,15 +116,15 @@ public class VastBGWriter
                             break;
                         case INSERT:
                             LOG.debug("{}{} Inserting next chunk of {} rows, hash={}, schema: {}", modeTraceToken, dataWriteTraceToken, nextChunk.getRowCount(), nextChunk.hashCode(), nextChunk.getSchema());
-                            vastClientSupplier.apply(this.vastConfig).insertRows(tx, schemaName, tableName, nextChunk, dataEndpoint, Optional.empty());
+                            vastClientSupplier.apply(this.vastConfig).insertRows(tx, schemaName, tableName, nextChunk, dataEndpoint, Optional.empty(), endUser);
                             break;
                         case DELETE:
                             LOG.debug("{}{} Deleting next chunk of {} rows, hash={}, schema: {}", modeTraceToken, dataWriteTraceToken, nextChunk.getRowCount(), nextChunk.hashCode(), nextChunk.getSchema());
-                            vastClientSupplier.apply(this.vastConfig).deleteRows(tx, schemaName, tableName, nextChunk, dataEndpoint, Optional.empty());
+                            vastClientSupplier.apply(this.vastConfig).deleteRows(tx, schemaName, tableName, nextChunk, dataEndpoint, Optional.empty(), endUser);
                             break;
                         case UPDATE:
                             LOG.debug("{}{} Updating next chunk of {} rows, hash={}, schema: {}", modeTraceToken, dataWriteTraceToken, nextChunk.getRowCount(), nextChunk.hashCode(), nextChunk.getSchema());
-                            vastClientSupplier.apply(this.vastConfig).updateRows(tx, schemaName, tableName, nextChunk, dataEndpoint, Optional.empty());
+                            vastClientSupplier.apply(this.vastConfig).updateRows(tx, schemaName, tableName, nextChunk, dataEndpoint, Optional.empty(), endUser);
                             break;
 
                     }

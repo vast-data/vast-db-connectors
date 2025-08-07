@@ -15,6 +15,7 @@ import io.trino.spi.block.LongArrayBlock;
 import io.trino.spi.block.MapBlock;
 import io.trino.spi.block.RowBlock;
 import io.trino.spi.block.VariableWidthBlock;
+import io.trino.spi.connector.SourcePage;
 import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.BigintType;
 import io.trino.spi.type.BooleanType;
@@ -31,7 +32,7 @@ import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.FieldType;
 import org.apache.arrow.vector.types.pojo.Schema;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -42,7 +43,7 @@ import java.util.stream.IntStream;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.IntegerType.INTEGER;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.testng.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class TestVastRecordBatchBuilder
 {
@@ -186,7 +187,7 @@ public class TestVastRecordBatchBuilder
                             .put(row1ArrowField, List.of())
                             .build();
             QueryDataResponseSchemaConstructor deconstruct = QueryDataResponseSchemaConstructor.deconstruct(traceStr, new Schema(List.of(row1ArrowField)), List.of(3), baseFieldWithProjections);
-            Page construct = deconstruct.construct(new Block[] {actual}, 2);
+            SourcePage construct = deconstruct.construct(new Block[] {actual}, 2);
             assertEquals(construct.getChannelCount(), expectedPage.getChannelCount());
             assertEquals(construct.getPositionCount(), expectedPage.getPositionCount());
             assertEquals(construct.getBlock(0).getPositionCount(), expectedPage.getBlock(0).getPositionCount());

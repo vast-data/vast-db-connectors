@@ -4,9 +4,14 @@ spark.ndb.data_endpoints=
 spark.ndb.access_key_id=
 spark.ndb.secret_access_key=
 spark.ndb.num_of_splits=16
+
 spark.ndb.num_of_sub_splits=8
 spark.ndb.rowgroups_per_subsplit=1
-spark.ndb.query_data_rows_per_split=4000000
+# spark.ndb.query_data_rows_per_split MUST be a multiple of
+# 2^16 * spark.ndb.num_of_sub_splits * spark.ndb.rowgroups_per_subsplit
+spark.ndb.query_data_rows_per_split=1048576
+
+spark.ndb.split_size_multiplier=3
 spark.ndb.retry_max_count=3
 spark.ndb.retry_sleep_duration=1
 spark.ndb.parallel_import=true

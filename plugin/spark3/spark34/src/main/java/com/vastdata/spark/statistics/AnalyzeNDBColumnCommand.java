@@ -37,9 +37,12 @@ import scala.math.BigInt;
 
 import java.util.HashMap;
 import java.util.Optional;
+import java.util.stream.IntStream;
 
 import static com.vastdata.spark.statistics.StatsUtils.getVastClient;
 import static java.lang.String.format;
+import static java.util.Collections.emptyList;
+import static scala.collection.JavaConverters.seqAsJavaList;
 
 public class AnalyzeNDBColumnCommand
         extends V2CommandExec
@@ -50,11 +53,18 @@ public class AnalyzeNDBColumnCommand
 
     private final ResolvedTable relation;
     private final VastTable table;
+    private final java.util.List<String> columnNames;
 
-    private AnalyzeNDBColumnCommand(ResolvedTable relation) {
+    private AnalyzeNDBColumnCommand(ResolvedTable relation, Option<Seq<String>> columnNames) {
         super();
         this.relation = relation;
         this.table = (VastTable) relation.table();
+        if (columnNames.isEmpty()) {
+            this.columnNames = emptyList();
+        }
+        else {
+            this.columnNames = seqAsJavaList(columnNames.get());
+        }
     }
 
     @Override
@@ -79,8 +89,12 @@ public class AnalyzeNDBColumnCommand
         final SparkSession session = session();
         final LogicalPlan rel = session.table(relation.name()).logicalPlan();
         final Seq<Attribute> columns = rel.output();
-        LOG.info("Running analyze command with columns: {}", columns);
-        final Tuple2<Object, Map<Attribute, ColumnStat>> calculatedStats = CommandUtils$.MODULE$.computeColumnStats(session, rel, columns);
+        Builder<Attribute, List<Attribute>> newOutputBuilder = List.newBuilder();
+        IntStream.range(0, columns.size()).mapToObj(columns::apply).filter(ar -> { return columnNames.contains( ar.name()); }).forEach(newOutputBuilder::$plus$eq);
+        List<Attribute> newColumns = newOutputBuilder.result();
+
+        LOG.info("Running analyze command with columns: {}", newColumns);
+        final Tuple2<Object, Map<Attribute, ColumnStat>> calculatedStats = CommandUtils$.MODULE$.computeColumnStats(session, rel, newColumns);
         final long rowCount = (Long) calculatedStats._1;
         final VastStatistics tableStats = StatsUtils.getTableLevelStats(getVastClient(), this.table.getTableMD().schemaName, this.table.getTableMD().tableName);
         final BigInt sizeInBytes = BigInt.apply(tableStats.getSizeInBytes());
@@ -167,7 +181,7 @@ public class AnalyzeNDBColumnCommand
         // TODO: support "ANALYZE TABLE t COMPUTE STATISTICS FOR COLUMNS c1,...cN" (see AnalyzeColumn#columnNames)
         LogicalPlan child = plan.child();
         if (child instanceof ResolvedTable) {
-            return new AnalyzeNDBColumnCommand((ResolvedTable) child);
+            return new AnalyzeNDBColumnCommand((ResolvedTable) child, plan.columnNames());
         }
         else {
             throw new RuntimeException(format("Unexpected child plan type: %s", plan));

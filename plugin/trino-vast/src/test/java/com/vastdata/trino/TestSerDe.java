@@ -10,12 +10,12 @@ import com.vastdata.client.VastDebugConfig;
 import com.vastdata.client.schema.EnumeratedSchema;
 import com.vastdata.client.tx.VastTraceToken;
 import io.trino.plugin.base.metrics.LongCount;
-import io.trino.spi.Page;
 import io.trino.spi.block.ByteArrayBlock;
 import io.trino.spi.block.LongArrayBlock;
+import io.trino.spi.connector.SourcePage;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
 import java.util.HexFormat;
@@ -67,11 +67,11 @@ public class TestSerDe
 
         parser.parse(new ByteArrayInputStream(response));
 
-        List<Page> pages = Streams.stream(parser).toList();
+        List<SourcePage> pages = Streams.stream(parser).toList();
         assertThat(pages.size()).isEqualTo(1);
         assertThat(pagination.isFinished()).isEqualTo(false);
 
-        Page page = pages.get(0);
+        SourcePage page = pages.getFirst();
         assertThat(page.getPositionCount()).isEqualTo(6);
         assertThat(page.getChannelCount()).isEqualTo(2);
         {

@@ -34,6 +34,7 @@ import org.apache.spark.sql.types.ShortType;
 import org.apache.spark.sql.types.StringType;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
+import org.apache.spark.sql.types.TimestampNTZType;
 import org.apache.spark.sql.types.TimestampType;
 import org.apache.spark.unsafe.types.UTF8String;
 import org.slf4j.Logger;
@@ -189,6 +190,7 @@ public class SparkStatisticsDeserializer extends JsonDeserializer<Statistics> {
         typesMap.put(dataType -> dataType instanceof DecimalType, new DecimalValueReader());
         typesMap.put(dataType -> dataType instanceof DateType, new TypedValueReader(Integer.class));
         typesMap.put(dataType -> dataType instanceof TimestampType, new TypedValueReader(Long.class));
+        typesMap.put(dataType -> dataType instanceof TimestampNTZType, new TypedValueReader(Long.class));
         typesMap.put(dataType -> dataType instanceof StringType, new TypedValueReader(UTF8String.class));
         typesMap.put(dataType -> dataType instanceof CharType, new TypedValueReader(UTF8String.class));
         typesMap.put(dataType -> dataType instanceof BinaryType, new TypedValueReader(byte[].class));

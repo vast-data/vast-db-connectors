@@ -28,6 +28,6 @@ public class VastStatistics
 
     @Override
     public String toString() {
-        return String.format("num_rows={}, size_in_bytes={}", this.getNumRows(), this.getSizeInBytes());
+        return String.format("num_rows=%s, size_in_bytes=%s", this.getNumRows(), this.getSizeInBytes());
     }
 }

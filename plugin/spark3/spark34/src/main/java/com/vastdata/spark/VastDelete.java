@@ -12,13 +12,12 @@ import com.vastdata.client.error.VastException;
 import com.vastdata.client.error.VastRuntimeException;
 import com.vastdata.client.error.VastUserException;
 import com.vastdata.client.schema.EnumeratedSchema;
-import com.vastdata.client.schema.StartTransactionContext;
 import com.vastdata.client.tx.SimpleVastTransaction;
 import com.vastdata.client.tx.VastTraceToken;
 import com.vastdata.spark.predicate.VastPredicate;
 import com.vastdata.spark.predicate.VastPredicatePushdown;
-import com.vastdata.spark.tx.VastAutocommitTransaction;
-import com.vastdata.spark.tx.VastSimpleTransactionFactory;
+import com.vastdata.client.tx.VastAutocommitTransaction;
+import com.vastdata.client.tx.VastTransactionFactory;
 import com.vastdata.spark.tx.VastSparkTransactionsManager;
 import ndb.NDB;
 import ndb.ka.NDBJobsListener;
@@ -64,7 +63,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
-import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_FIELD;
+import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_UINT64_FIELD;
 import static com.vastdata.client.schema.RowIDVectorCopy.copyVectorBuffers;
 import static java.lang.String.format;
 
@@ -214,7 +213,7 @@ public class VastDelete
         LinkedBlockingQueue<FieldVector> pages = new LinkedBlockingQueue<>(1000);
 
         Optional<VastTraceToken> tokenHolder = Optional.empty();
-        VastSparkTransactionsManager transactionsManager = VastSparkTransactionsManager.getInstance(client, new VastSimpleTransactionFactory());
+        VastSparkTransactionsManager transactionsManager = VastSparkTransactionsManager.getInstance(client, new VastTransactionFactory());
         AtomicReference<Throwable> errorRef = new AtomicReference<>();
         try (VastAutocommitTransaction tx = getTransaction(client, transactionsManager)) {
             SparkListenerJobStart jobStart = new SparkListenerJobStart(-1, System.currentTimeMillis(), (Seq<StageInfo>) Seq$.MODULE$.empty(), null);
@@ -223,7 +222,7 @@ public class VastDelete
             tokenHolder = Optional.of(token);
             VastBatch batch = (VastBatch) getBatch(filters);
             VastInputPartition[] inputPartitions = (VastInputPartition[]) batch.planInputPartitions();
-            VastPartitionReaderFactory readerFactory = (VastPartitionReaderFactory) batch.createReaderFactory(new SimpleVastTransaction(tx.getId(), tx.isReadOnly(), false));
+            VastPartitionReaderFactory readerFactory = (VastPartitionReaderFactory) batch.createReaderFactory(new SimpleVastTransaction(tx.getId()));
             readerFactory.setForAlter();
             Function<VastInputPartition, ForkJoinTask<Boolean>> queryDataSplit = inputPartition -> forkJoinPool.submit(() -> {
                 try (VastColumnarBatchReader reader = (VastColumnarBatchReader) readerFactory.createColumnarReader(inputPartition)) {
@@ -327,26 +326,28 @@ public class VastDelete
     @NotNull
     private static VastAutocommitTransaction getTransaction(VastClient client, VastSparkTransactionsManager transactionsManager)
     {
-        return VastAutocommitTransaction.wrap(client, () -> transactionsManager.startTransaction(new StartTransactionContext(false, true)));
+        final String endUser = null;
+        return VastAutocommitTransaction.createNewOrReuseFromEnv(client, () -> transactionsManager.startTransaction(endUser), endUser);
     }
 
     @NotNull
     private static FieldVector transformColumnarBatchToNewUnsignedRowIDVector(VastColumnarBatchReader reader, ColumnarBatch columnarBatch)
     {
         return copyVectorBuffers((FieldVector) ((ArrowColumnVector) columnarBatch.column(0)).getValueVector(),
-                ROW_ID_FIELD.createVector(reader.getAllocator()));
+                ROW_ID_UINT64_FIELD.createVector(reader.getAllocator()));
     }
 
     private void deleteSelectedPages(VastClient client, Supplier<URI> endpointsSupplier, VastAutocommitTransaction tx, LinkedBlockingQueue<FieldVector> pages, VastTraceToken token)
     {
+        final String endUser = null;
         FieldVector fieldVector = null;
         try {
             while ((fieldVector = pages.poll(1, TimeUnit.SECONDS)) != null) {
                 LOG.debug("{} Polled next page of {} rows to delete: {}, field: {}", token, fieldVector.getValueCount(), fieldVector.getField(), fieldVector);
 
-                try (VectorSchemaRoot root = new VectorSchemaRoot(ImmutableList.of(ROW_ID_FIELD), ImmutableList.of(fieldVector))) {
+                try (VectorSchemaRoot root = new VectorSchemaRoot(ImmutableList.of(ROW_ID_UINT64_FIELD), ImmutableList.of(fieldVector))) {
                     LOG.debug("{} Deleting next page of {} rows to delete: {}, fields: {}", token, root.getRowCount(), root.getSchema(), root.getFieldVectors());
-                    client.deleteRows(tx, table.getTableMD().schemaName, table.getTableMD().tableName, root, endpointsSupplier.get(), Optional.empty());
+                    client.deleteRows(tx, table.getTableMD().schemaName, table.getTableMD().tableName, root, endpointsSupplier.get(), Optional.empty(), endUser);
                 }
                 fieldVector.close();
             }

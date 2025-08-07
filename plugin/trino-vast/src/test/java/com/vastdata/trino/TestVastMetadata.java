@@ -11,24 +11,25 @@ import io.trino.spi.connector.ConnectorTableSchema;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.FieldType;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.Test;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.MockitoAnnotations.openMocks;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNull;
 
 public class TestVastMetadata
 {
@@ -37,13 +38,13 @@ public class TestVastMetadata
 
     private AutoCloseable autoCloseable;
 
-    @BeforeMethod
+    @BeforeEach
     public void setup()
     {
         autoCloseable = openMocks(this);
     }
 
-    @AfterMethod
+    @AfterEach
     public void tearDown()
             throws Exception
     {
@@ -58,7 +59,7 @@ public class TestVastMetadata
         Field field2 = new Field("col2", FieldType.notNullable(ArrowType.Utf8.INSTANCE), null);
         List<Field> columnsList = List.of(field1, field2);
         List<VastColumnHandle> columnHandlesList = columnsList.stream().map(VastColumnHandle::fromField).collect(Collectors.toList());
-        when(mockClient.listColumns(any(), any(String.class), any(String.class), anyInt(), anyMap())).thenReturn(columnsList);
+        when(mockClient.listColumns(any(), any(String.class), any(String.class), anyInt(), anyMap(), isNull())).thenReturn(columnsList);
         when(session.getProperty(eq("client_page_size"), eq(Integer.class))).thenReturn(5);
 
         VastMetadata unit = new VastMetadata(mockClient, null, null);
@@ -72,7 +73,7 @@ public class TestVastMetadata
         ConnectorTableSchema tableSchema3 = unit.getTableSchema(session, tableHandle.forDelete());
         assertEquals(tableSchema1.getColumns(), tableSchema3.getColumns());
         assertEquals(tableSchema3.getColumns().size(), columnHandlesList.size());
-        verify(mockClient, times(1)).listColumns(any(), any(String.class), any(String.class), anyInt(), anyMap());
+        verify(mockClient, times(1)).listColumns(any(), any(String.class), any(String.class), anyInt(), anyMap(), isNull());
     }
 
     @Test
@@ -83,7 +84,7 @@ public class TestVastMetadata
         Field field2 = new Field("col2", FieldType.notNullable(ArrowType.Utf8.INSTANCE), null);
         List<Field> columnsList = List.of(field1, field2);
         List<VastColumnHandle> columnHandlesList = columnsList.stream().map(VastColumnHandle::fromField).collect(Collectors.toList());
-        when(mockClient.listColumns(any(), any(String.class), any(String.class), anyInt(), anyMap())).thenReturn(columnsList);
+        when(mockClient.listColumns(any(), any(String.class), any(String.class), anyInt(), anyMap(), isNull())).thenReturn(columnsList);
         when(session.getProperty(eq("client_page_size"), eq(Integer.class))).thenReturn(5);
 
         VastMetadata unit = new VastMetadata(mockClient, null, null);
@@ -94,6 +95,6 @@ public class TestVastMetadata
         ConnectorTableSchema tableSchema2 = unit.getTableSchema(session, tableHandle);
         assertEquals(tableSchema1.getColumns(), tableSchema2.getColumns());
         assertEquals(tableSchema2.getColumns().size(), columnHandlesList.size() + 1);
-        verify(mockClient, times(1)).listColumns(any(), any(String.class), any(String.class), anyInt(), anyMap());
+        verify(mockClient, times(1)).listColumns(any(), any(String.class), any(String.class), anyInt(), anyMap(), isNull());
     }
 }

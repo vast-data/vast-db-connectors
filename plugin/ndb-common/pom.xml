@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-~ /* Copyright (C) Vast Data Ltd. */
--->
+  ~ /* Copyright (C) Vast Data Ltd. */
+  -->
 
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -12,12 +12,12 @@
     <parent>
         <groupId>ndb</groupId>
         <artifactId>ndb-root</artifactId>
-        <version>5.3.0.1</version>
+        <version>5.4.0</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
     <artifactId>ndb-common</artifactId>
-    <version>5.3.0.1</version>
+    <version>5.4.0</version>
     <description>VAST Connector - Common</description>
     <packaging>jar</packaging>
 
@@ -47,7 +47,7 @@
         <dependency>
             <groupId>com.amazonaws</groupId>
             <artifactId>aws-java-sdk-s3</artifactId>
-            <!--            <scope>provided</scope>-->
+<!--            <scope>provided</scope>-->
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
@@ -104,6 +104,11 @@
             <version>${dep.arrow.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>arrow-compression</artifactId>
+            <version>${dep.arrow.version}</version>
+        </dependency>
+        <dependency>
             <groupId>io.airlift</groupId>
             <artifactId>configuration</artifactId>
             <version>${common.airlift.version}</version>
@@ -126,6 +131,10 @@
             <artifactId>stats</artifactId>
             <version>${common.airlift.version}</version>
             <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>javax.annotation</groupId>
+            <artifactId>javax.annotation-api</artifactId>
         </dependency>
         <dependency>
             <groupId>ch.qos.logback</groupId>
@@ -191,7 +200,7 @@
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>build-helper-maven-plugin</artifactId>
-                <!--                <version>3.0.0</version>-->
+<!--                <version>3.0.0</version>-->
                 <executions>
                     <execution>
                         <phase>generate-sources</phase>
@@ -238,12 +247,12 @@
                         <exclude>**/*jmhType*.java</exclude>
                     </excludes>
                     <argLine>${argLine}
-                    -Dfile.encoding=UTF-8
-                    -Xmx3g
-                    -Xms3g
-                    -XX:+ExitOnOutOfMemoryError
-                    -XX:+HeapDumpOnOutOfMemoryError
-                    -XX:-OmitStackTraceInFastThrow
+                        -Dfile.encoding=UTF-8
+                        -Xmx3g
+                        -Xms3g
+                        -XX:+ExitOnOutOfMemoryError
+                        -XX:+HeapDumpOnOutOfMemoryError
+                        -XX:-OmitStackTraceInFastThrow
                     </argLine>
                 </configuration>
             </plugin>
@@ -281,6 +290,22 @@
                         <!-- [org.eclipse.jetty.http2:http2-client, org.eclipse.jetty.http2:http2-common, org.eclipse.jetty.http2:http2-hpack, org.eclipse.jetty.http2:http2-http-client-transport, org.eclipse.jetty:jetty-alpn-client, org.eclipse.jetty:jetty-alpn-java-client, org.eclipse.jetty:jetty-client, org.eclipse.jetty:jetty-http, org.eclipse.jetty:jetty-io, org.eclipse.jetty:jetty-util] -->
                         <ignoredResourcePattern>about.html</ignoredResourcePattern>
                     </ignoredResourcePatterns>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>com.mycila</groupId>
+                <artifactId>license-maven-plugin</artifactId>
+                <version>4.2</version>
+                <configuration>
+                    <skip>false</skip>
+                    <licenseSets>
+                        <licenseSet>
+                            <header>${project.basedir}/../../vast-license.txt</header>
+                            <includes>
+                                <include>src/**/*.java</include>
+                            </includes>
+                        </licenseSet>
+                    </licenseSets>
                 </configuration>
             </plugin>
         </plugins>

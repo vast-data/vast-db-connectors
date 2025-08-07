@@ -17,7 +17,7 @@ import org.apache.arrow.computeir.flatbuf.Relation;
 import org.apache.arrow.computeir.flatbuf.Source;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
 import java.util.HexFormat;

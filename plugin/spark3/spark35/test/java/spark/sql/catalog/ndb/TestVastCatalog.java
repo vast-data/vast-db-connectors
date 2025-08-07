@@ -20,6 +20,7 @@ import com.vastdata.mockserver.VastMockS3Server;
 import com.vastdata.mockserver.VastRootHandler;
 import com.vastdata.spark.SparkTestUtils;
 import com.vastdata.spark.VastArrowAllocator;
+import com.vastdata.spark.VastScan;
 import com.vastdata.spark.VastTable;
 import com.vastdata.spark.VastTableReadOnly;
 import com.vastdata.spark.statistics.FilterEstimator;
@@ -114,6 +115,7 @@ import static java.lang.String.join;
 import static org.apache.spark.sql.types.DataTypes.createStructField;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
 import static org.mockito.MockitoAnnotations.openMocks;
@@ -461,7 +463,7 @@ public class TestVastCatalog
     @Test(dataProvider = "sparkConfigurationAllowWrite")
     public void testRequireSafeSparkConfigurationAllowWrite(final boolean disableSparkDuplicateWritesProtection,
                                                             final int maxFailures, final boolean speculation)
-            throws IOException, VastUserException
+            throws IOException
     {
         final MockUtils mockUtils = new MockUtils();
         final String testBucket = "buck";
@@ -693,6 +695,22 @@ public class TestVastCatalog
             String path = "buck/schem/tab";
             testGracefulVastException(session, format, path, POST, "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>InvalidBucketState</Code><Message>The request is not valid with the current state of the bucket.</Message><Resource>aresource</Resource><RequestId>a00100000006</RequestId></Error>", 409, VastConflictException.class);
             testGracefulVastException(session, format, path, POST, "Forbidden", 403, VastUserException.class);
+        }
+        assertEquals(VastArrowAllocator.writeAllocator().getAllocatedMemory(), 0);
+    }
+
+    @Test(enabled = false)
+    public void testInsertTSTypes()
+            throws IOException
+    {
+        MockUtils mockUtils = new MockUtils();
+        String testBucket = "buck";
+        mockUtils.createBucket(this.testPort, testBucket);
+
+        try (SparkSession session = SparkTestUtils.getSession(testPort)) {
+            session.sql("create database ndb.buck.schem").show();
+            session.sql("create table ndb.buck.schem.tab as select timestamp '2008-11-09 15:45:21' as ts, timestamp_ntz '2008-11-09 15:45:21' as tsntz").show();
+            session.sql("describe table ndb.buck.schem.tab").show();
         }
         assertEquals(VastArrowAllocator.writeAllocator().getAllocatedMemory(), 0);
     }
@@ -1302,16 +1320,10 @@ public class TestVastCatalog
             Tuple2<Attribute, ColumnStat> y2stat = getColumnStats(0, 99, 100, 0, "y2", IntegerType$.MODULE$, 1);
             AttributeMap<ColumnStat> t1Stats = getColumnStatsAttrMap(ImmutableSet.of(x1stat, x2stat));
             AttributeMap<ColumnStat> t2Stats = getColumnStatsAttrMap(ImmutableSet.of(y1stat, y2stat));
-//            Statistics t1MockStats = new Statistics(BigInt.apply(40), Option.apply(BigInt.apply(10)), t1Stats, false);
-//            Statistics t2MockStats = new Statistics(BigInt.apply(400), Option.apply(BigInt.apply(100)), t2Stats, false);
             Statistics t1MockStats = new Statistics(BigInt.apply(40), Option.empty(), t1Stats, false);
             Statistics t2MockStats = new Statistics(BigInt.apply(400), Option.empty(), t2Stats, false);
             SparkVastStatisticsManager.getInstance().setTableStatistics(t1, t1MockStats);
             SparkVastStatisticsManager.getInstance().setTableStatistics(t2, t2MockStats);
-//            session.sql("select * from ndb.buck.schem.t1 a where a.x1 <= 2").explain("cost");
-//            session.sql("select a.x1 from ndb.buck.schem.t1 a where a.x1 <= 2").explain("cost");
-//            session.sql("select a.x2 from ndb.buck.schem.t1 a where a.x1 <= 2").explain("cost");
-//            session.sql("select t1.x1 from ndb.buck.schem.t1 join ndb.buck.schem.t2 on t1.x1 = t2.y1 where cos(t1.x2) == 1.0 and (t1.x1 > 1 or t1.x2 > 1) and t2.y1 > 6 and t2.y2 <= 2").explain("cost");
             session.sql("select t1.x1 from ndb.buck.schem.t1 join ndb.buck.schem.t2 on t1.x1 = t2.y1").explain("cost");
         }
     }
@@ -1445,7 +1457,7 @@ public class TestVastCatalog
         VastStatistics vastStatistics = new VastStatistics(numRows, sizeInBytes);
         when(mockClient.s3GetObj(anyString(), anyString()))
                 .thenReturn(Optional.empty());
-        when(mockClient.getTableStats(any(), anyString(), anyString()))
+        when(mockClient.getTableStats(any(), anyString(), anyString(), nullable(String.class)))
                 .thenReturn(vastStatistics);
         Supplier<VastClient> supplier = () -> mockClient;
         StructField charNField = new StructField("x", IntegerType$.MODULE$, true, Metadata.empty());
@@ -1580,6 +1592,78 @@ public class TestVastCatalog
             activeTx = JobEventService.getInstance().orElseThrow(IllegalStateException::new).getActiveTransactions();
             assertTrue(activeTx.isEmpty(), format("activeTransactions: %s", activeTx));
             assertTrue(getTxCtr.get() > 0);
+        }
+    }
+
+    private static void testPushedDownPredicates(SparkPlan sparkPlan,
+            String expectedPushedDownPredicates, Optional<String> expectedPostScanFilter)
+    {
+        SparkPlan last = sparkPlan.collectLeaves().last();
+        assertTrue(last instanceof AdaptiveSparkPlanExec, format("last was of class: %s", last.getClass()));
+        AdaptiveSparkPlanExec a = (AdaptiveSparkPlanExec) last;
+        final SparkPlan project = a.inputPlan().children().head().children().head();
+        BatchScanExec vastBatchScanFilter;
+
+        if (expectedPostScanFilter.isPresent()) { // not pushed down
+            FilterExec postFilter = (FilterExec) project;
+            assertTrue(postFilter.condition().toString().matches(expectedPostScanFilter.get()));
+
+            vastBatchScanFilter = (BatchScanExec) postFilter.children().head();
+        }
+        else { // pushed down
+            vastBatchScanFilter = (BatchScanExec) project;
+        }
+
+        VastScan scan = (VastScan) vastBatchScanFilter.scan();
+        String description = scan.description();
+        assertTrue(description.contains(expectedPushedDownPredicates));
+    }
+
+    @DataProvider(name = "nan-not-pushdown-test-cases")
+    public Object[][] nanNotPushdownTestCases()
+    {
+        return new Object[][] {
+            {"f = 'nan'", "\\(f#\\d+ = NaN\\)"},
+            {"f != 'nan'", "NOT \\(f#\\d+ = NaN\\)"},
+            {"f <> 'nan'", "NOT \\(f#\\d+ = NaN\\)"},
+            {"f < 'nan'", "\\(f#\\d+ < NaN\\)"},
+            {"f > 'nan'", "\\(f#\\d+ > NaN\\)"},
+            {"f <= 'nan'", "\\(f#\\d+ <= NaN\\)"},
+            {"f >= 'nan'", "\\(f#\\d+ >= NaN\\)"}
+        };
+    }
+
+    @Test(dataProvider = "nan-not-pushdown-test-cases")
+    public void testNanNotPushedDown(String whereString, String postFilterRegex)
+            throws IOException
+    {
+        MockUtils mockUtils = new MockUtils();
+        String testBucket = "buck";
+        mockUtils.createBucket(this.testPort, testBucket);
+
+        try (SparkSession session = SparkTestUtils.getSession(testPort)) {
+            session.sql("select ndb.create_tx()").show();
+            session.sql("create database ndb.buck.schem").show();
+            session.sql("create table ndb.buck.schem.tab (f float)").show();
+
+            testPushedDownPredicates(
+                    session.sql(format("select distinct f from ndb.buck.schem.tab where %s", whereString))
+                            .queryExecution().executedPlan(),
+                    "f IS NOT NULL", Optional.of(postFilterRegex));
+        }
+    }
+
+    @Test
+    public void testSplitMultiplierConf()
+            throws IOException, VastUserException
+    {
+        MockUtils mockUtils = new MockUtils();
+        String testBucket = "buck";
+        mockUtils.createBucket(this.testPort, testBucket);
+        HashMap<String, Object> extraConf = new HashMap<>();
+        extraConf.put("spark.ndb.split_size_multiplier", 7);
+        try (SparkSession session = SparkTestUtils.getSession(testPort, extraConf)) {
+            assertEquals(NDB.getConfig().getSplitSizeMultiplier(), 7);
         }
     }
 }

@@ -5,12 +5,11 @@
 package com.vastdata.spark;
 
 import com.vastdata.client.VastConfig;
-import com.vastdata.client.error.VastIOException;
 import com.vastdata.client.error.VastUserException;
 import com.vastdata.client.tx.SimpleVastTransaction;
+import com.vastdata.client.tx.VastAutocommitTransaction;
 import com.vastdata.spark.predicate.VastPredicate;
 import com.vastdata.spark.statistics.SparkVastStatisticsManager;
-import com.vastdata.spark.tx.VastAutocommitTransaction;
 import ndb.NDB;
 import org.apache.spark.sql.catalyst.plans.logical.Statistics;
 import org.apache.spark.sql.connector.read.Batch;
@@ -23,16 +22,18 @@ import org.slf4j.LoggerFactory;
 import java.security.SecureRandom;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
+import java.util.function.DoubleSupplier;
 import java.util.function.IntSupplier;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
-import static com.vastdata.client.util.NumOfSplitsEstimator.estimateNumberOfSplits;
+import static com.vastdata.client.util.NumOfSplitsEstimator.getNumOfSplitsEstimation;
 import static com.vastdata.spark.statistics.FilterEstimator.estimateSelectivity;
-import static com.vastdata.spark.statistics.FilterEstimator.getSizePerRow;
 import static com.vastdata.spark.statistics.StatsUtils.sparkCatalystStatsToTableStatistics;
 import static java.lang.String.format;
 import static java.util.Objects.hash;
@@ -78,22 +79,17 @@ public class VastBatch
         }
         LOG.info("planInputPartitions() initializing for batchID={}, table={}, predicates={}", batchID, table.name(), predicates);
         final IntSupplier numOfSplitsConfSupplier = vastConfig::getNumOfSplits;
-        final LongSupplier rowPerSplitSupplier = vastConfig::getQueryDataRowsPerSplit;
-        final LongSupplier advisoryPartitionSizeSupplier = vastConfig::getAdvisoryPartitionSize;
-        final Optional<Statistics> statistics = SparkVastStatisticsManager.getInstance().getTableStatistics(table);
-        final double factor = statistics
-                .filter(_stats -> vastConfig.getAdaptivePartitioning())
-                .map(stats -> estimateSelectivity(predicates, sparkCatalystStatsToTableStatistics(stats)))
-                .orElse(1.0);
-        final Supplier<Optional<Double>> rowsEstimateSupplier = () -> statistics
-                        .map(s -> s.rowCount().map(rowCount -> (rowCount.toLong() * factor)))
-                        .flatMap(option -> Optional.ofNullable(option.getOrElse(() -> null)));
-        final long rowSize = statistics
-                .filter(_stats -> vastConfig.getAdvisoryPartitionSize() > 0)
-                .map(stats -> getSizePerRow(schema, sparkCatalystStatsToTableStatistics(stats)))
-                .orElse(0L);
+        final LongSupplier rowsPerSplitConf = vastConfig::getQueryDataRowsPerSplit;
+        Optional<Statistics> statistics = SparkVastStatisticsManager.getInstance().getTableStatistics(table);
+	final OptionalLong rowCount = (statistics.isPresent() && !statistics.get().rowCount().isEmpty())?
+	    OptionalLong.of(statistics.get().rowCount().get().longValue()) : OptionalLong.empty();
+        Supplier<Optional<Double>> rowsEstimateSupplier =
+	    () -> rowCount.isPresent()? Optional.of((double)rowCount.getAsLong()) : Optional.empty();
+        BooleanSupplier useMultiplier = () -> rowCount.isPresent() && vastConfig.getAdaptivePartitioning();
+        DoubleSupplier selectivityEstimation = () -> estimateSelectivity(predicates, sparkCatalystStatsToTableStatistics(statistics.get()));
+        LongSupplier multiplierConf = vastConfig::getSplitSizeMultiplier;
         final int numOfSplits =
-            estimateNumberOfSplits(numOfSplitsConfSupplier, rowPerSplitSupplier, advisoryPartitionSizeSupplier, rowsEstimateSupplier, rowSize);
+            getNumOfSplitsEstimation(useMultiplier, selectivityEstimation, numOfSplitsConfSupplier, rowsPerSplitConf, multiplierConf, rowsEstimateSupplier);
         final int numOfSplitsConf = numOfSplitsConfSupplier.getAsInt();
         if (numOfSplits < numOfSplitsConf) {
             LOG.info("Reduced splits number for batchID={}, table={} from {} to {}", batchID, table.name(), numOfSplitsConf, numOfSplits);
@@ -126,12 +122,7 @@ public class VastBatch
         if (tx != null) {
             return tx;
         }
-        try {
-            return VastAutocommitTransaction.getExisting();
-        }
-        catch (VastIOException e) {
-            throw new IllegalStateException("Failed getting existing transaction", e);
-        }
+        return VastAutocommitTransaction.getExisting();
     }
 
     void updatePushdownPredicates(List<List<VastPredicate>> pushDownPredicates)

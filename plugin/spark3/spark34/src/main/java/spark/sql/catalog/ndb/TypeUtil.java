@@ -15,6 +15,7 @@ import org.apache.arrow.vector.Float8Vector;
 import org.apache.arrow.vector.IntVector;
 import org.apache.arrow.vector.SmallIntVector;
 import org.apache.arrow.vector.TimeStampMicroTZVector;
+import org.apache.arrow.vector.TimeStampMicroVector;
 import org.apache.arrow.vector.TimeStampVector;
 import org.apache.arrow.vector.TinyIntVector;
 import org.apache.arrow.vector.ValueVector;
@@ -44,6 +45,7 @@ import org.apache.spark.sql.execution.arrow.MapWriter;
 import org.apache.spark.sql.execution.arrow.ShortWriter;
 import org.apache.spark.sql.execution.arrow.StringWriter;
 import org.apache.spark.sql.execution.arrow.StructWriter;
+import org.apache.spark.sql.execution.arrow.TimestampNTZWriter;
 import org.apache.spark.sql.execution.arrow.TimestampWriter;
 import org.apache.spark.sql.types.ArrayType;
 import org.apache.spark.sql.types.CharType;
@@ -65,6 +67,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static java.lang.String.format;
+import static org.apache.spark.sql.types.DataTypes.TimestampNTZType;
 import static org.apache.spark.sql.types.DataTypes.TimestampType;
 import static org.apache.spark.sql.types.DataTypes.createStructField;
 import static spark.sql.catalog.ndb.TimestampPrecision.MICROSECONDS;
@@ -88,7 +91,6 @@ public final class TypeUtil
         if (fieldList.stream().anyMatch(field -> !field.isNullable())) {
             throw new UnsupportedOperationException(NDB_CATALOG_DOES_NOT_SUPPORT_NON_NULL_COLUMNS);
         }
-
 
         List<Field> unsupportedFields = fieldList.stream().filter(UNSUPPORTED_TYPE_PREDICATE).collect(Collectors.toList());
         if (!unsupportedFields.isEmpty()) {
@@ -143,7 +145,7 @@ public final class TypeUtil
                 TimeUnit unit = type.getUnit();
                 int timeUnitPrecisionID = getTimeUnitPrecisionID(unit);
                 metadataBuilder.putLong(TIMESTAMP_PRECISION, timeUnitPrecisionID);
-                dataType = TimestampType;
+                dataType = type.getTimezone() == null ? TimestampNTZType : TimestampType;
             }
             else {
                 dataType = ArrowUtils.fromArrowField(arrowField);
@@ -220,7 +222,7 @@ public final class TypeUtil
         }
         else {
             try {
-                if (sparkType.equals(DataTypes.TimestampType)) {
+                if (sparkType.equals(DataTypes.TimestampType) || sparkType.equals(DataTypes.TimestampNTZType)) {
                     TimestampPrecision timestampPrecision = MICROSECONDS;
                     if (metadata.contains(TIMESTAMP_PRECISION)) {
                         long aLong = metadata.getLong(TIMESTAMP_PRECISION);
@@ -345,7 +347,15 @@ public final class TypeUtil
                     case NANOSECOND:
                         return new NonMicroTimestampWriter((TimeStampVector) vector);
                     case MICROSECOND:
-                        return new TimestampWriter((TimeStampMicroTZVector) vector);
+                        if (vector instanceof TimeStampMicroTZVector) {
+                            return new TimestampWriter((TimeStampMicroTZVector) vector);
+                        }
+                        else if (vector instanceof TimeStampMicroVector) {
+                            return new TimestampNTZWriter((TimeStampMicroVector) vector);
+                        }
+                        else {
+                            throw new RuntimeException(format("Unexpected arrow vector class for TimestampMicro type: %s", vector.getClass()));
+                        }
                 }
                 throw new RuntimeException("Unexpected arrow timestamp type: %s");
             }

@@ -25,6 +25,7 @@ import scala.collection.mutable.Builder;
 
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -187,7 +188,7 @@ public class TestVastPredicatePushdown
         int maxNotInclusive = 678100;
         Predicate lteMax = new Predicate("<=", new Expression[]{refInt, new LiteralValue<>(maxNotInclusive - 1, DataTypes.IntegerType)});
         Predicate gteMin = new Predicate(">=", new Expression[]{refInt, new LiteralValue<>(minInclusive, DataTypes.IntegerType)});
-        java.util.List<Predicate> expectedCompacted = Arrays.asList(MIN_MAX_PREDICATE.apply(gteMin, lteMax));
+        java.util.List<Predicate> expectedCompacted = Collections.singletonList(MIN_MAX_PREDICATE.apply(gteMin, lteMax));
         Integer[] vals = IntStream.range(minInclusive, maxNotInclusive).boxed().toArray(Integer[]::new);
         assertFilterCompactionPositive(schemaInt, expectedCompacted, vals);
 

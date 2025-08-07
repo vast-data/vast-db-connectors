@@ -5,12 +5,11 @@
 package ndb.view;
 
 import com.vastdata.client.VastClient;
-import com.vastdata.client.schema.StartTransactionContext;
 import com.vastdata.client.tx.VastTransaction;
 import com.vastdata.spark.SparkViewMetadata;
 import com.vastdata.spark.VastView;
-import com.vastdata.spark.tx.VastAutocommitTransaction;
-import com.vastdata.spark.tx.VastSimpleTransactionFactory;
+import com.vastdata.client.tx.VastAutocommitTransaction;
+import com.vastdata.client.tx.VastTransactionFactory;
 import com.vastdata.spark.tx.VastSparkTransactionsManager;
 import ndb.NDB;
 import org.apache.spark.sql.SparkSession;
@@ -57,12 +56,13 @@ public class RenameNDBViewCommand
 
     @Override
     public Seq<InternalRow> run() {
+        final String endUser = null;
         final VastCatalog catalog = InitializedVastCatalog.getVastCatalog();
         Identifier oldIdentifier = resolvedView.identifier();
         try {
             VastClient vastClient = NDB.getVastClient(NDB.getConfig());
-            VastSparkTransactionsManager transactionsManager = VastSparkTransactionsManager.getInstance(vastClient, new VastSimpleTransactionFactory());
-            try (final VastAutocommitTransaction tx = VastAutocommitTransaction.wrap(vastClient, () -> transactionsManager.startTransaction(new StartTransactionContext(false, true)))) {
+            VastSparkTransactionsManager transactionsManager = VastSparkTransactionsManager.getInstance(vastClient, new VastTransactionFactory());
+            try (final VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(vastClient, () -> transactionsManager.startTransaction(endUser), endUser)) {
                 try {
                     Optional<VastTransaction> txOptional = Optional.of(tx);
                     VastView vastView = catalog.loadView(oldIdentifier, txOptional);

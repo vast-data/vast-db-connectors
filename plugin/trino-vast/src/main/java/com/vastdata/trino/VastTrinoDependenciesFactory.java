@@ -13,12 +13,14 @@ import com.vastdata.client.VastVersion;
 import com.vastdata.client.stats.StatisticsUrlExtractor;
 import io.airlift.configuration.ConfigDefaults;
 import io.airlift.http.client.HttpClientConfig;
+import io.airlift.log.Logger;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.trino.spi.connector.Connector;
 
 import java.util.function.Predicate;
 
+import static com.vastdata.client.RequestsHeaders.END_USER;
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -26,7 +28,9 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 public class VastTrinoDependenciesFactory
         implements VastDependenciesFactory
 {
-    static ConfigDefaults<HttpClientConfig> HTTP_CLIENT_CONFIG_CONFIG_DEFAULTS = cfg -> {
+    private static final Logger LOG = Logger.get(VastTrinoDependenciesFactory.class);
+
+    static final ConfigDefaults<HttpClientConfig> HTTP_CLIENT_CONFIG_CONFIG_DEFAULTS = cfg -> {
         cfg.setConnectTimeout(new Duration(1, MINUTES));
         cfg.setIdleTimeout(new Duration(3600, SECONDS));
         cfg.setRequestTimeout(new Duration(360000, SECONDS));
@@ -37,6 +41,7 @@ public class VastTrinoDependenciesFactory
         cfg.setTimeoutConcurrency(4);
         cfg.setKeyStorePath(null); // explicit overwrite the keyStorePath (used by jetty sslContextFactory)
     };
+
     @VisibleForTesting protected static final String VAST_TRINO_CLIENT_TAG = "VastTrinoPlugin-" + VastVersion.SYS_VERSION;
     private final Predicate<String> schemaNamePredicate = new ValidSchemaNamePredicate();
 
@@ -47,10 +52,18 @@ public class VastTrinoDependenciesFactory
     }
 
     @Override
-    public VastRequestHeadersBuilder getHeadersFactory()
+    public VastRequestHeadersBuilder getHeadersFactory(final String endUser)
     {
         String trinoVersion = Connector.class.getPackage().getImplementationVersion();
-        return new CommonRequestHeadersBuilder(() -> VAST_TRINO_CLIENT_TAG + "-trino-" + trinoVersion);
+        final VastRequestHeadersBuilder builder = new CommonRequestHeadersBuilder(() -> VAST_TRINO_CLIENT_TAG + "-trino-" + trinoVersion);
+        if (endUser != null) {
+            if (VastSecurityAccessControl.isEndUserImpersonationEnabled()) {
+                LOG.debug("end-user-impersonation is enabled, adding header %s=%s", END_USER.getHeaderName(), endUser);
+                return builder.withEndUser(endUser);
+            }
+            LOG.warn("end-user-impersonation is disabled, omitting header %s=%s", END_USER.getHeaderName(), endUser);
+        }
+        return builder;
     }
 
     @Override

@@ -89,7 +89,7 @@ public class VastDataWriteFactory
             this.bgTaskPhasesCompletionListener.registerFailureAction(() -> {
                 DATA_WRITER_LOG.info("{} Rolling back tx: {}", dataWriteTraceToken, tx);
                 VastClient vastClient = NDB.getVastClient(vastConfig);
-                vastClient.rollbackTransaction(tx);
+                vastClient.rollbackTransaction(tx, null);
                 return null;
             });
             this.status = new Status(true, null);
@@ -188,7 +188,7 @@ public class VastDataWriteFactory
             }
             DATA_WRITER_LOG.debug("VastDataWriter{} BG tasks threadpool shutdown", dataWriteTraceToken);
             terminateBackgroundProcesses();
-            return new VastCommitMessage(dataWriterIndex);
+            return new VastCommitMessage(new WriteCommitInfo(dataWriterIndex, dataWriteTraceToken, ctr).toString());
         }
 
         @Override
@@ -262,7 +262,6 @@ public class VastDataWriteFactory
 
 
     public VastDataWriteFactory(VastTransaction tx, VastConfig vastConfig, VastTable vastTable, List<URI> dataEndpoints)
-            throws VastUserException
     {
         this.tx = tx;
         this.vastConfig = vastConfig;

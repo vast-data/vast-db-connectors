@@ -22,8 +22,8 @@ import java.util.List;
 
 import static org.apache.spark.sql.types.DataTypes.createStructField;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.assertNotEquals;
+import static org.testng.Assert.assertNotSame;
 
 public class TestVastPredicate
 {
@@ -65,10 +65,10 @@ public class TestVastPredicate
                 buildBinaryPred("=", buildFieldRef("i"), buildLit(6, DataTypes.IntegerType))
         };
         List<List<VastPredicate>> pushdown3 = VastPredicatePushdown.parse(predicates3, schema).getPushedDown();
-        assertTrue(pushdown1.hashCode() == pushdown2.hashCode());
-        assertTrue(pushdown1.equals(pushdown2));
-        assertFalse(pushdown1 == pushdown2);
-        assertFalse(pushdown1.equals(pushdown3));
+        assertEquals(pushdown2.hashCode(), pushdown1.hashCode());
+        assertEquals(pushdown2, pushdown1);
+        assertNotSame(pushdown1, pushdown2);
+        assertNotEquals(pushdown3, pushdown1);
     }
 
     @Test
@@ -90,10 +90,10 @@ public class TestVastPredicate
                         buildBinaryPred("=", buildFieldRef("i"), buildLit(4, DataTypes.IntegerType)))
         };
         List<List<VastPredicate>> pushdown3 = VastPredicatePushdown.parse(predicates3, schema).getPushedDown();
-        assertTrue(pushdown1.hashCode() == pushdown2.hashCode());
+        assertEquals(pushdown2.hashCode(), pushdown1.hashCode());
         assertEquals(pushdown1, pushdown2);
-        assertFalse(pushdown1 == pushdown2);
-        assertFalse(pushdown1.equals(pushdown3));
+        assertNotSame(pushdown1, pushdown2);
+        assertNotEquals(pushdown3, pushdown1);
     }
 
     @Test
@@ -115,10 +115,10 @@ public class TestVastPredicate
                         buildBinaryPred("<", buildFieldRef("i"), buildLit(10, DataTypes.IntegerType)))
         };
         List<List<VastPredicate>> pushdown3 = VastPredicatePushdown.parse(predicates3, schema).getPushedDown();
-        assertTrue(pushdown1.hashCode() == pushdown2.hashCode());
+        assertEquals(pushdown2.hashCode(), pushdown1.hashCode());
         assertEquals(pushdown1, pushdown2);
-        assertFalse(pushdown1 == pushdown2);
-        assertFalse(pushdown1.equals(pushdown3));
+        assertNotSame(pushdown1, pushdown2);
+        assertNotEquals(pushdown3, pushdown1);
     }
 
     @Test
@@ -138,10 +138,10 @@ public class TestVastPredicate
                 buildBinaryPred("<", buildFieldRef("i"), buildLit(6, DataTypes.IntegerType)),
         };
         List<List<VastPredicate>> pushdown3 = VastPredicatePushdown.parse(predicates3, schema).getPushedDown();
-        assertTrue(pushdown1.hashCode() == pushdown2.hashCode());
+        assertEquals(pushdown2.hashCode(), pushdown1.hashCode());
         assertEquals(pushdown1, pushdown2);
-        assertFalse(pushdown1 == pushdown2);
-        assertFalse(pushdown1.equals(pushdown3));
+        assertNotSame(pushdown1, pushdown2);
+        assertNotEquals(pushdown3, pushdown1);
     }
 
     @Test
@@ -168,10 +168,10 @@ public class TestVastPredicate
                 buildUnaryPred("IS_NOT_NULL", buildFieldRef("l"))
         };
         List<List<VastPredicate>> pushdown3 = VastPredicatePushdown.parse(predicates3, schema).getPushedDown();
-        assertTrue(pushdown1.hashCode() == pushdown2.hashCode());
+        assertEquals(pushdown2.hashCode(), pushdown1.hashCode());
         assertEquals(pushdown1, pushdown2);
-        assertFalse(pushdown1 == pushdown2);
-        assertFalse(pushdown1.equals(pushdown3));
+        assertNotSame(pushdown1, pushdown2);
+        assertNotEquals(pushdown3, pushdown1);
     }
 
     @Test
@@ -190,8 +190,8 @@ public class TestVastPredicate
                 buildBinaryPred("<>", buildFieldRef("i"), buildLit(5, DataTypes.IntegerType))
         };
         List<List<VastPredicate>> pushdown2 = VastPredicatePushdown.parse(predicates1, schema).getPushedDown();
-        assertTrue(pushdown1.hashCode() == pushdown2.hashCode());
+        assertEquals(pushdown2.hashCode(), pushdown1.hashCode());
         assertEquals(pushdown1, pushdown2);
-        assertFalse(pushdown1 == pushdown2);
+        assertNotSame(pushdown1, pushdown2);
     }
 }

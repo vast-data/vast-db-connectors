@@ -16,8 +16,8 @@ import java.util.Objects;
 public class LogicalFunction
         implements ComplexPredicate
 {
-    String name;
-    List<ComplexPredicate> children;
+    final String name;
+    final List<ComplexPredicate> children;
 
     @JsonCreator
     public LogicalFunction(

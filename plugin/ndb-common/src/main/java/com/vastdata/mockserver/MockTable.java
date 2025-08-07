@@ -10,7 +10,6 @@ import org.apache.arrow.vector.types.pojo.Field;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.StringJoiner;
 
 import static com.google.common.base.Preconditions.checkArgument;
 

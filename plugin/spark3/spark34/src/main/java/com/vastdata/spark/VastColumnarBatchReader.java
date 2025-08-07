@@ -12,7 +12,6 @@ import com.vastdata.client.VastSchedulingInfo;
 import com.vastdata.client.VastSplitContext;
 import com.vastdata.client.error.VastUserException;
 import com.vastdata.client.schema.EnumeratedSchema;
-import com.vastdata.client.schema.StartTransactionContext;
 import com.vastdata.client.tx.SimpleVastTransaction;
 import com.vastdata.client.tx.VastTraceToken;
 import com.vastdata.spark.metrics.EmptyPagesCount;
@@ -22,7 +21,7 @@ import com.vastdata.spark.metrics.SplitFetchIdleTimeMetric;
 import com.vastdata.spark.metrics.SplitFetchTimeMetric;
 import com.vastdata.spark.metrics.SplitGetIdleTime;
 import com.vastdata.spark.predicate.VastPredicate;
-import com.vastdata.spark.tx.VastSimpleTransactionFactory;
+import com.vastdata.client.tx.VastTransactionFactory;
 import com.vastdata.spark.tx.VastSparkTransactionsManager;
 import ndb.NDB;
 import org.apache.arrow.memory.BufferAllocator;
@@ -49,7 +48,7 @@ import java.util.Optional;
 import java.util.function.Function;
 
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
-import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_FIELD;
+import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_UINT64_FIELD;
 import static com.vastdata.spark.metrics.CustomTaskMetricFactory.customTaskMetric;
 import static java.lang.String.format;
 
@@ -73,7 +72,7 @@ public class VastColumnarBatchReader
     {
         Schema projectionSchema;
         if (forAlter) {
-            projectionSchema = new Schema(Lists.newArrayList(ROW_ID_FIELD));
+            projectionSchema = new Schema(Lists.newArrayList(ROW_ID_UINT64_FIELD));
         }
         else {
             projectionSchema = new Schema(TypeUtil.sparkSchemaToArrowFieldsList(schema));
@@ -89,9 +88,9 @@ public class VastColumnarBatchReader
         try {
             config = vastConfig;
             vastClient = NDB.getVastClient(config);
-            transactionsManager = VastSparkTransactionsManager.getInstance(vastClient, new VastSimpleTransactionFactory());
+            transactionsManager = VastSparkTransactionsManager.getInstance(vastClient, new VastTransactionFactory());
             autoClosable = tx == null;
-            txToUse = tx != null ? tx : transactionsManager.startTransaction(new StartTransactionContext(true, true));
+            txToUse = tx != null ? tx : transactionsManager.startTransaction(null);
         }
         catch (VastUserException e) {
             throw toRuntime(e);

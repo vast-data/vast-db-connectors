@@ -1,3 +1,6 @@
+/*
+ *  Copyright (C) Vast Data Ltd.
+ */
 package ndb.view;
 
 import com.vastdata.spark.VastView;
@@ -72,7 +75,7 @@ public class NDBViewsResolutionRule
            else throw new RuntimeException("Unexpected class for unresolved identifier resolution: " + p.getClass());
     };
 
-    BiFunction<Seq<String>, String[], VastView> viewLoader = (uRelName, currentNamespace) -> {
+    final BiFunction<Seq<String>, String[], VastView> viewLoader = (uRelName, currentNamespace) -> {
         String[] namespaceForLookup;
         try {
             namespaceForLookup = new VastNamespaceResolver().apply(uRelName, currentNamespace);

@@ -8,23 +8,21 @@ import com.vastdata.client.VastClient;
 import com.vastdata.trino.tx.VastTransactionHandle;
 import io.trino.spi.connector.ConnectorInsertTableHandle;
 import io.trino.spi.connector.ConnectorSession;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.Test;
 
 import java.net.URI;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.mockito.MockitoAnnotations.openMocks;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotEquals;
 
 public class TestVastPageSink
 {
@@ -35,13 +33,13 @@ public class TestVastPageSink
 
     private AutoCloseable autoCloseable;
 
-    @BeforeMethod
+    @BeforeEach
     public void setup()
     {
         autoCloseable = openMocks(this);
     }
 
-    @AfterMethod
+    @AfterEach
     public void tearDown()
             throws Exception
     {
@@ -51,7 +49,7 @@ public class TestVastPageSink
     private VastPageSink createDummyPageSink()
     {
         VastPageSinkProvider pageSinkProvider = new VastPageSinkProvider(mockClient);
-        VastTransactionHandle transactionHandle = new VastTransactionHandle(1L, true, false);
+        VastTransactionHandle transactionHandle = new VastTransactionHandle(1L);
         VastInsertTableHandle insertTableHandle = new VastInsertTableHandle(null, List.of(), false, false);
         return (VastPageSink) pageSinkProvider.createPageSink(
                 transactionHandle,
@@ -63,9 +61,7 @@ public class TestVastPageSink
     @Test
     public void testShuffledDataEndpoints()
     {
-        List<URI> uriList = new ArrayList<>();
-        IntStream.range(0, 10).mapToObj(i ->
-                uriList.add(URI.create("uri-" + i))).collect(Collectors.toList());
+        List<URI> uriList = IntStream.range(0, 10).mapToObj(i -> URI.create("uri-" + i)).toList();
         when(session.getProperty("data_endpoints", List.class)).thenReturn(uriList);
         when(session.getProperty("max_rows_per_insert", Integer.class)).thenReturn(1000);
         when(session.getProperty("import_chunk_limit", Integer.class)).thenReturn(1);

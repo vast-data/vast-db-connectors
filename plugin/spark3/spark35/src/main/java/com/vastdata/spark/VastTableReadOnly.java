@@ -14,7 +14,7 @@ import org.slf4j.LoggerFactory;
 import java.util.function.Supplier;
 
 final public class VastTableReadOnly extends VastTable {
-    private static final Logger LOG = LoggerFactory.getLogger(VastTable.class);
+    private static final Logger LOG = LoggerFactory.getLogger(VastTableReadOnly.class);
     private final RuntimeException notSafeToWrite;
 
     public VastTableReadOnly(final String schemaName,

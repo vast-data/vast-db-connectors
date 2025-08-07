@@ -16,7 +16,7 @@ import static java.lang.String.format;
 
 public class ParsedURL
 {
-    public static String PATH_SEPERATOR = "/";
+    public final static String PATH_SEPERATOR = "/";
     private final String[] parts;
 
     private ParsedURL(String[] parts)

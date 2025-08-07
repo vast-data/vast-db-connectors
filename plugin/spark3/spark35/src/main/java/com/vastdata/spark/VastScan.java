@@ -72,7 +72,6 @@ public class VastScan
     private final boolean verbose = describeFlag.getAndSet(false);
 
     public VastScan(int scanBuilderID, VastTable table, StructType schema, Integer limit, List<List<VastPredicate>> predicates)
-            throws VastUserException
     {
         this.table = table;
         this.schema = schema;

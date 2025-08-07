@@ -4,11 +4,9 @@
 
 package com.vastdata.client.tx;
 
-import com.vastdata.client.schema.StartTransactionContext;
-
-import java.util.function.BiFunction;
+import java.util.function.Function;
 
 public interface VastTransactionInstantiator<T>
-        extends BiFunction<StartTransactionContext, ParsedStartTransactionResponse, T>
+        extends Function<ParsedStartTransactionResponse, T>
 {
 }

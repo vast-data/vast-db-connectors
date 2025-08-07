@@ -6,7 +6,6 @@ package com.vastdata.spark;
 
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
-import com.vastdata.client.error.VastUserException;
 import com.vastdata.spark.predicate.VastPredicate;
 import ndb.NDB;
 import org.apache.spark.sql.connector.expressions.Expression;
@@ -86,7 +85,6 @@ public class TestVastScan
 
     @BeforeMethod
     public void clearMockServer()
-            throws VastUserException
     {
         when(tableMock.name()).thenReturn("dummy");
         unit = new VastScan(777, tableMock, SCHEMA, 2000, new ArrayList<>(0));
@@ -144,7 +142,7 @@ public class TestVastScan
     @Test
     public void testFilterCompactionPartialListMinMaxOpt()
     {
-        Integer[] intVals = IntStream.range(0, 500).boxed().filter(i -> i % 2 == 0).toArray(Integer[]::new);
+        Integer[] intVals = IntStream.range(0, 5000).boxed().filter(i -> i % 2 == 0).toArray(Integer[]::new);
         intVals[0] = null; // null, 2, 4, ..., 498
         assertMinMaxCompaction(intVals, COL_INT, DataTypes.IntegerType, intVals[intVals.length - 1], 2, true);
     }
@@ -152,7 +150,7 @@ public class TestVastScan
     @Test
     public void testFilterCompactionTooLongList()
     {
-        Integer[] intVals = IntStream.range(0, 3000).boxed().toArray(Integer[]::new);
+        Integer[] intVals = IntStream.range(0, 30000).boxed().toArray(Integer[]::new);
         assertSkippedFilterCompactionResult(intVals, 0, COL_INT);
     }
 
@@ -219,7 +217,7 @@ public class TestVastScan
         List<Predicate> expectedCompacted = hasNull ?
                 Arrays.asList(MIN_MAX_PREDICATE.apply(gteMin, lteMax), IS_NULL_PREDICATE.apply(ref)) :
                 Arrays.asList(MIN_MAX_PREDICATE.apply(gteMin, lteMax));
-        assertEquals(minMaxPredicates, expectedCompacted, format("Actual: %s, Expected: %s", minMaxPredicates, expectedCompacted));
+        assertEquals(minMaxPredicates, expectedCompacted, format("Actual: %s, Expected: %s, Raw: %s", minMaxPredicates, expectedCompacted, unit.pushDownPredicates));
     }
 
     @Test

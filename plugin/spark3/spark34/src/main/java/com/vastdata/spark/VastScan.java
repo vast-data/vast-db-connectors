@@ -40,11 +40,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.OptionalLong;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
-import static com.vastdata.OptionalPrimitiveHelpers.map;
 import static com.vastdata.client.VastConfig.DYNAMIC_FILTER_COMPACTION_THRESHOLD;
 import static com.vastdata.client.VastConfig.MIN_MAX_COMPACTION_MIN_VALUES_THRESHOLD;
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
@@ -74,7 +72,6 @@ public class VastScan
     private final boolean verbose = describeFlag.getAndSet(false);
 
     public VastScan(int scanBuilderID, VastTable table, StructType schema, Integer limit, List<List<VastPredicate>> predicates)
-            throws VastUserException
     {
         this.table = table;
         this.schema = schema;

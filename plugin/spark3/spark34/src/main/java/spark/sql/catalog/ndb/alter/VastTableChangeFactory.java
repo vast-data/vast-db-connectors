@@ -59,7 +59,7 @@ public class VastTableChangeFactory
         {
             if (fields == null) {
                 try {
-                    fields = vastClient.listColumns(tx, schemaName, tableName, PAGE_SIZE, Collections.emptyMap());
+                    fields = vastClient.listColumns(tx, schemaName, tableName, PAGE_SIZE, Collections.emptyMap(), null);
                 }
                 catch (VastException e) {
                     throw toRuntime(e);
@@ -145,7 +145,7 @@ public class VastTableChangeFactory
         String oldName = oldNames[0];
         return (client, tx) -> {
             try {
-                client.alterColumn(tx, schemaName, tableName, new AlterColumnContext(oldName, rename.newName(), ImmutableMap.of(), null));
+                client.alterColumn(tx, schemaName, tableName, new AlterColumnContext(oldName, rename.newName(), ImmutableMap.of(), null), null);
             }
             catch (VastException e) {
                 throw toRuntime(e);
@@ -182,7 +182,7 @@ public class VastTableChangeFactory
         if (!nullable) {
             throw new UnsupportedOperationException(NDB_CATALOG_DOES_NOT_SUPPORT_NON_NULL_COLUMNS);
         }
-        List<Field> fields = Arrays.stream(add.fieldNames()).map(name -> TypeUtil.sparkFieldToArrowField(name, dataType, nullable, Metadata.empty())).collect(Collectors.toList());
+        List<Field> fields = Arrays.stream(add.fieldNames()).map(name -> TypeUtil.sparkFieldToArrowField(name, dataType, true, Metadata.empty())).collect(Collectors.toList());
         return (client, tx) -> new AddColumn(streamFieldsAsDropColumnContext.apply(fields)).accept(client, tx);
     }
 }

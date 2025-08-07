@@ -1,3 +1,6 @@
+/*
+ *  Copyright (C) Vast Data Ltd.
+ */
 package spark.sql.catalog.ndb;
 
 import org.slf4j.Logger;

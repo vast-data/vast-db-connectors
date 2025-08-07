@@ -5,19 +5,19 @@
 package com.vastdata.trino.tx;
 
 import io.airlift.json.JsonCodec;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;
 
 import static io.airlift.json.JsonCodec.jsonCodec;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class TestVastTransactionHandle
 {
     public static final long TRANS_ID = Long.parseUnsignedLong("514026084031791104");
-    private final VastTransactionHandle trans = new VastTransactionHandle(TRANS_ID, false, true);
+    private final VastTransactionHandle trans = new VastTransactionHandle(TRANS_ID);
 
     @Test
     public void testJsonRoundTrip()
@@ -33,9 +33,9 @@ public class TestVastTransactionHandle
     {
         HashSet<VastTransactionHandle> transSet = new HashSet<>();
         transSet.add(trans);
-        VastTransactionHandle testTrans1 = new VastTransactionHandle(Long.parseUnsignedLong("514026084031791105"), false, true);
+        VastTransactionHandle testTrans1 = new VastTransactionHandle(Long.parseUnsignedLong("514026084031791105"));
         assertFalse(transSet.contains(testTrans1));
-        VastTransactionHandle testTrans2 = new VastTransactionHandle(TRANS_ID, true, false);
+        VastTransactionHandle testTrans2 = new VastTransactionHandle(TRANS_ID);
         assertTrue(transSet.contains(testTrans2));
     }
 }

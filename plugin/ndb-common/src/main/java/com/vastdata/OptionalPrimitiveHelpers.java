@@ -1,3 +1,6 @@
+/*
+ *  Copyright (C) Vast Data Ltd.
+ */
 package com.vastdata;
 
 import java.util.OptionalLong;
