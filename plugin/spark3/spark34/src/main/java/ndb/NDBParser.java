@@ -1,3 +1,6 @@
+/*
+ *  Copyright (C) Vast Data Ltd.
+ */
 package ndb;
 
 import ndb.view.AlterNDBViewAsPlan;
@@ -19,7 +22,6 @@ import org.apache.spark.sql.catalyst.plans.logical.DropView;
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan;
 import org.apache.spark.sql.catalyst.plans.logical.RenameTable;
 import org.apache.spark.sql.catalyst.plans.logical.ShowViews;
-import org.apache.spark.sql.catalyst.plans.logical.UpdateTable;
 import org.apache.spark.sql.types.DataType;
 import org.apache.spark.sql.types.StructType;
 import org.slf4j.Logger;

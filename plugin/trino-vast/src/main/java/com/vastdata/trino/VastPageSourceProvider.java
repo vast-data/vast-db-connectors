@@ -40,7 +40,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-import static com.vastdata.trino.VastSessionProperties.getDynamicFilterCompactionThreshold;
+import static com.vastdata.trino.VastSessionProperties.getCompression;
 import static com.vastdata.trino.VastSessionProperties.getEnableSortedProjections;
 import static com.vastdata.trino.VastSessionProperties.getQueryDataRowsPerPage;
 import static com.vastdata.trino.VastSessionProperties.getRetryMaxCount;
@@ -64,10 +64,11 @@ public class VastPageSourceProvider
             ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorSplit split,
             ConnectorTableHandle tableHandle, List<ColumnHandle> columns, DynamicFilter dynamicFilter)
     {
+        final String endUser = session.getUser();
         VastTransaction tx = (VastTransaction) transactionHandle;
         VastTraceToken traceToken = tx.generateTraceToken(session.getTraceToken());
         String traceStr = traceToken.toString();
-        LOG.info("QueryData(%s) createPageSource(%s, %s, %s, %s)", traceStr, transactionHandle, split, tableHandle, columns);
+        LOG.debug("QueryData(%s) createPageSource(%s, %s, %s, %s) endUser=%s", traceStr, transactionHandle, split, tableHandle, columns, endUser);
         VastTableHandle table = (VastTableHandle) tableHandle;
         VastSplit vastSplit = (VastSplit) split;
         List<VastColumnHandle> projectedColumns = columns
@@ -75,15 +76,10 @@ public class VastPageSourceProvider
                 .map(VastColumnHandle.class::cast)
                 .collect(Collectors.toList());
 
-        TupleDomain<VastColumnHandle> enforcedPredicate = table.getPredicate();
+        TupleDomain<VastColumnHandle> predicate = vastSplit.getFilters();
 
-        // Poll current dynamic filter predicate (may return more filters during selective joins)
-        // https://trino.io/docs/current/admin/dynamic-filtering.html
-        TupleDomain<VastColumnHandle> dynamicPredicate = dynamicFilter
-                .getCurrentPredicate()
-                .transformKeys(VastColumnHandle.class::cast)
-                .simplify(getDynamicFilterCompactionThreshold(session));
-        TupleDomain<VastColumnHandle> predicate = enforcedPredicate.intersect(dynamicPredicate);
+        // Even though the current dynamic filters can be more up-to-date, we ignore them, as we don't want to repeate
+        // the fanyc dynamic filter processing we did in VastSplitManager
         if (predicate.isNone()) {
             LOG.debug("QueryData(%s) returning EmptyPageSource", traceStr);
             return new EmptyPageSource();
@@ -108,15 +104,14 @@ public class VastPageSourceProvider
             pred.collectColumns(builder);
             builder.build().forEach(column -> schemaFields.add(column.getBaseField()));
         });
-
-        LOG.debug("schemaFields: %s", schemaFields);
+        LOG.debug("QueryData(%s) schemaFields: %s, predicate: %s", traceToken, schemaFields, predicate);
         EnumeratedSchema enumeratedSchema = new EnumeratedSchema(schemaFields);
 
         TrinoPredicateSerializer predicateSerializer = new TrinoPredicateSerializer(predicate, complexPredicate, substringMatches, enumeratedSchema);
         TrinoProjectionSerializer projectionSerializer = new TrinoProjectionSerializer(projectedColumns, enumeratedSchema);
         List<Integer> projections = projectionSerializer.getProjectionIndices();
         LinkedHashMap<Field, LinkedHashMap<List<Integer>, Integer>> baseFieldWithProjections = projectionSerializer.getBaseFieldWithProjections();
-        LOG.info("QueryData(%s) schema: %s, projections: %s, projectedColumns=%s, filteredColumns=%s", traceToken, enumeratedSchema, projections, projectedColumns, filteredColumns);
+        LOG.debug("QueryData(%s) schema: %s, projections: %s, projectedColumns=%s, filteredColumns=%s", traceToken, enumeratedSchema, projections, projectedColumns, filteredColumns);
 
         VastDebugConfig debugConfig = new VastDebugConfig(
                 VastSessionProperties.getDebugDisableArrowParsing(session),
@@ -152,14 +147,10 @@ public class VastPageSourceProvider
                     usedDataEndpoint,
                     vastSplit.getContext(), vastSplit.getSchedulingInfo(),
                     dataEndpoints, retryConfig, batchSize, table.getBigCatalogSearchPath(), pagination,
-                    getEnableSortedProjections(session), Collections.emptyMap());
+                    getEnableSortedProjections(session), getCompression(session), Collections.emptyMap(), endUser);
             return result.get();
         };
 
-        VastPageSource source = new VastPageSource(traceToken, vastSplit, fetchPages, table.getLimit());
-//        if (table.getUpdatable()) {
-//            return new VastMergablePageSource();?
-//        }
-        return source;
+        return new VastPageSource(traceToken, vastSplit, fetchPages, table.getLimit());
     }
 }

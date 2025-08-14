@@ -1,3 +1,6 @@
+/*
+ *  Copyright (C) Vast Data Ltd.
+ */
 package com.vastdata.spark;
 
 import com.google.common.collect.Streams;
@@ -66,6 +69,7 @@ class CommonVastColumnarBatchReader<T extends AutoCloseable>
     private final Map<String, String> extraQueryParams;
     private Optional<Integer> pageSize;
     private final boolean enableSortedProjections;
+    private final int compression;
     private QueryDataResponseParser parser;
     private T current;
     private long totalRows;
@@ -94,6 +98,7 @@ class CommonVastColumnarBatchReader<T extends AutoCloseable>
         retryConfig = new VastRetryConfig(config.getRetryMaxCount(), config.getRetrySleepDuration());
         pageSize = Optional.of(config.getQueryDataRowsPerPage());
         enableSortedProjections = config.isEnableSortedProjections();
+        compression = config.getCompression();
         pagination = new QueryDataPagination(config.getNumOfSubSplits());
         this.projectionSerializer = projectionSerializer;
         this.predicateSerializer = predicateSerializer;
@@ -116,6 +121,7 @@ class CommonVastColumnarBatchReader<T extends AutoCloseable>
 
     private void fetchNextBatch()
     {
+        final String endUser = null;
         try {
             AtomicReference<URI> usedDataEndpoint = new AtomicReference<>(); // can be used for sending UPDATE/DELETE to the same endpoint as SELECT
             VastDebugConfig debugConfig = new VastDebugConfig(false, false); // TODO: allow setting via config
@@ -133,7 +139,7 @@ class CommonVastColumnarBatchReader<T extends AutoCloseable>
             vastClient.queryData(
                     tx, token, schemaName, tableName, enumeratedSchema.getSchema(),
                     projectionSerializer, predicateSerializer, handlerSupplier, usedDataEndpoint, split, schedulingInfo, dataEndpoints,
-                    retryConfig, pageSize, bigCatalogSearchPath, pagination, enableSortedProjections, extraQueryParams);
+                    retryConfig, pageSize, bigCatalogSearchPath, pagination, enableSortedProjections, compression, extraQueryParams, endUser);
         }
         catch (Exception e) {
             throw toRuntime(e);
@@ -207,10 +213,11 @@ class CommonVastColumnarBatchReader<T extends AutoCloseable>
     {
         LOG.info("{} close: {} totalRows={}, totalFetchTime={}, totalIdleFetchTime={}, totalIdleGetTime={}",
                 token, split, totalRows, totalFetchTime, totalIdleFetchTime, totalIdleGetTime);
+        final String endUser = null;
         Optional<RuntimeException> toThrow = Optional.empty();
         if (autoClosable) {
             try {
-                this.transactionsManager.commit(this.tx);
+                this.transactionsManager.commit(this.tx, endUser);
             }
             catch (RuntimeException any) {
                 LOG.error(format("%s: Failed committing transaction: %s", this.token, this.tx), any);

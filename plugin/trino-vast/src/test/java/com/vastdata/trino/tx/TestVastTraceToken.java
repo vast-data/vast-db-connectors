@@ -5,11 +5,11 @@
 package com.vastdata.trino.tx;
 
 import com.vastdata.client.tx.VastTraceToken;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
 
-import static org.testng.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class TestVastTraceToken
 {

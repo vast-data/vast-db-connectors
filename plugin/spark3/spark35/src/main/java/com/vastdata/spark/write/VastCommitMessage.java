@@ -12,8 +12,8 @@ public class VastCommitMessage
         implements WriterCommitMessage
 {
     private final String toString;
-    public VastCommitMessage(int splitNo) {
-        this.toString = format("VastCommitMessage[%s]", splitNo);
+    public VastCommitMessage(String info) {
+        this.toString = format("VastCommitMessage[%s]", info);
     }
 
     @Override

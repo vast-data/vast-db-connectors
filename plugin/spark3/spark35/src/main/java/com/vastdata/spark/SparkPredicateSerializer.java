@@ -233,7 +233,7 @@ public class SparkPredicateSerializer
                     fieldOffset
             );
         }
-        if (type.equals(DataTypes.TimestampType)) {
+        if (type.equals(DataTypes.TimestampType) || type.equals(DataTypes.TimestampNTZType)) {
             long longValue = ((LiteralValue<Long>) value).value().longValue();
             if (structField.metadata().contains(TIMESTAMP_PRECISION)) {
                 long precisionID = structField.metadata().getLong(TIMESTAMP_PRECISION);

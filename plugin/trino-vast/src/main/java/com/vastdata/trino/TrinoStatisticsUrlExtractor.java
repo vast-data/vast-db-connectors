@@ -26,7 +26,7 @@ public class TrinoStatisticsUrlExtractor extends StatisticsUrlExtractor<VastTabl
         }, VastTableHandle::getHandleID);
     }
 
-    public static StatisticsUrlExtractor<VastTableHandle> instance()
+    public static synchronized StatisticsUrlExtractor<VastTableHandle> instance()
     {
         return instance;
     }

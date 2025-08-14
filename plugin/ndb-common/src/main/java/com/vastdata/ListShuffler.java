@@ -1,4 +1,3 @@
-
 /*
  *  Copyright (C) Vast Data Ltd.
  */

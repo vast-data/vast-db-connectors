@@ -7,7 +7,6 @@ package com.vastdata.spark;
 import com.google.common.base.VerifyException;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
-import com.vastdata.client.error.VastUserException;
 import com.vastdata.spark.predicate.VastPredicate;
 import com.vastdata.spark.predicate.VastPredicatePushdown;
 import org.apache.arrow.vector.types.pojo.Field;
@@ -30,7 +29,6 @@ import java.util.Map;
 import java.util.function.BinaryOperator;
 import java.util.stream.Collectors;
 
-import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 import static java.lang.String.format;
 import static java.util.Objects.isNull;
 import static spark.sql.catalog.ndb.TypeUtil.schemaHasCharNType;
@@ -52,14 +50,14 @@ public class VastScanBuilder
 
     public VastScanBuilder(VastTable table)
     {
-        this(table, table.schema(), null);
+        this(table, table.schema());
     }
 
-    private VastScanBuilder(VastTable table, StructType schema, Integer limit)
+    private VastScanBuilder(VastTable table, StructType schema)
     {
         this.table = table;
         this.schema = schema;
-        this.limit = limit;
+        this.limit = null;
         this.pushedDownPredicates = EMPTY_LIST;
         LOG.debug("new VastScanBuilder({}, {}), scanBuilderID={}", table.name(), schema, scanBuilderID);
     }
@@ -73,12 +71,7 @@ public class VastScanBuilder
     public Scan build()
     {
         LOG.debug("{}:{} build new VastScan", table.name(), scanBuilderID);
-        try {
-            return new VastScan(scanBuilderID, table, schema, limit, pushedDownPredicates);
-        }
-        catch (VastUserException e) {
-            throw toRuntime(e);
-        }
+        return new VastScan(scanBuilderID, table, schema, limit, pushedDownPredicates);
     }
 
     @Override

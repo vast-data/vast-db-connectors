@@ -8,8 +8,6 @@ import ndb.view.NDBViewsResolutionRule;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.SparkSessionExtensions;
 import org.apache.spark.sql.execution.SparkStrategy;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import scala.Function1;
 import scala.Unit;
 

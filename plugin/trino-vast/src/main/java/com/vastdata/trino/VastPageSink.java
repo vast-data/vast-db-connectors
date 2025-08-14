@@ -95,6 +95,7 @@ public class VastPageSink
     @Override
     public CompletableFuture<?> appendPage(Page page)
     {
+        final String endUser = session.getUser();
         try {
             VastTableHandle table = handle.getTable();
             if (handle.isForImportData()) {
@@ -107,7 +108,7 @@ public class VastPageSink
                     final int retrySleepDuration = getRetrySleepDuration(session);
                     boolean parallelImport = getParallelImport(session);
                     Supplier<RetryStrategy> retryStrategy = () -> RetryStrategyFactory.fixedSleepBetweenRetries(retryMaxCount, retrySleepDuration);
-                    new ImportDataExecutor<VastTransactionHandle>(client).execute(ctx, transaction, traceToken, dataEndpoints, retryStrategy, parallelImport);
+                    new ImportDataExecutor<VastTransactionHandle>(client).execute(ctx, transaction, traceToken, dataEndpoints, retryStrategy, parallelImport, endUser);
                 }
                 catch (VastException e) {
                     throw vastTrinoExceptionFactory.fromVastException(e);
@@ -122,7 +123,7 @@ public class VastPageSink
             else {
                 URI endpoint = dataEndpoints.get((int) (pageCount % dataEndpoints.size()));
                 try (VectorSchemaRoot root = builder.build(page)) {
-                    client.insertRows(transaction, table.getSchemaName(), table.getTableName(), root, endpoint, Optional.of(maxRowsPerInsert));
+                    client.insertRows(transaction, table.getSchemaName(), table.getTableName(), root, endpoint, Optional.of(maxRowsPerInsert), endUser);
                 }
                 catch (VastTooLargePageException e) {
                     throw new TrinoException(StandardErrorCode.PAGE_TOO_LARGE, e);

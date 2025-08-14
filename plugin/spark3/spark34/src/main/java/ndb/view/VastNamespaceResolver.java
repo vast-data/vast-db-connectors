@@ -1,3 +1,6 @@
+/*
+ *  Copyright (C) Vast Data Ltd.
+ */
 package ndb.view;
 
 import org.slf4j.Logger;

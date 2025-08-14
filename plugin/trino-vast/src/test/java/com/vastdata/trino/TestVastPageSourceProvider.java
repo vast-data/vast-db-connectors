@@ -10,8 +10,8 @@ import io.trino.spi.type.ArrayType;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.FieldType;
-import org.testng.annotations.DataProvider;
-import org.testng.annotations.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.List;
 
@@ -19,7 +19,7 @@ import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.SmallintType.SMALLINT;
 import static io.trino.spi.type.TinyintType.TINYINT;
 import static io.trino.spi.type.VarcharType.VARCHAR;
-import static org.testng.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class TestVastPageSourceProvider
 {
@@ -34,7 +34,8 @@ public class TestVastPageSourceProvider
     private static final Field ROW_WITH_PLAIN_FIELD_AND_ARRAY = new Field("complex_row_with_array", new FieldType(true, ArrowType.Struct.INSTANCE, null), List.of(BOOL_FIELD, ARRAY_FIELD_SMALLINT));
     private static final Field ROW_WITH_ROW_AND_PLAIN_FIELD_AND_ARRAY = new Field("complex_row_with_array", new FieldType(true, ArrowType.Struct.INSTANCE, null), List.of(ROW_WITH_PLAIN_FIELD_AND_ARRAY, BIGINT_FIELD, ARRAY_FIELD_TINYINT));
 
-    @Test(dataProvider = "fieldsProjectionsProvider")
+    @ParameterizedTest
+    @MethodSource("fieldsProjectionsProvider")
     public void testBuildProjectionsArray(List<Field> projectedFields, List<Integer> expectedProjections)
     {
         EnumeratedSchema enumeratedSchema = new EnumeratedSchema(projectedFields);
@@ -45,8 +46,7 @@ public class TestVastPageSourceProvider
         assertEquals(builder.build(), expectedProjections);
     }
 
-    @DataProvider
-    public Object[][] fieldsProjectionsProvider()
+    public static Object[][] fieldsProjectionsProvider()
     {
         return new Object[][] {
                 {List.of(), List.of()},

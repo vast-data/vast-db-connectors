@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -42,10 +43,12 @@ public class VastPredicatePushdown
 
     public static final String MIN_MAX_FULL_RANGE_ONLY = "min_max_full_range_only";
     private static final ImmutableMap<String, Object> DEFAULT_PARSE_RULES_MAP = ImmutableMap.of(MIN_MAX_FULL_RANGE_ONLY, true);
-    private static final ImmutableSet<String> Set_OF_COMPARISON = ImmutableSet.of(">", "=", "<", "<=", ">=", "<>", "!=");
+    private static final ImmutableSet<String> SET_OF_COMPARISON = ImmutableSet.of(">", "=", "<", "<=", ">=", "<>", "!=");
     private static final ImmutableSet<String> SET_OF_BIGGER_COMPARISON = ImmutableSet.of(">", ">=");
     private static final ImmutableSet<String> SET_OF_LESSER_COMPARISON = ImmutableSet.of("<", "<=");
     private static final ImmutableSet<String> SET_OF_NULL_COMPARISON = ImmutableSet.of("IS_NULL", "IS_NOT_NULL");
+
+    private static final String NAN_LITERAL = "NaN";
 
     // Spark is using AND semantics (i.e. predicate entries are AND-ed together)
     private final List<List<VastPredicate>> pushedDown; // will be performed by Debbie (in VAST)
@@ -136,7 +139,7 @@ public class VastPredicatePushdown
 
     static Optional<NamedReference> parseRange(Predicate predicate)
     {
-        Optional<NamedReference> result = parseComparison(predicate, Set_OF_COMPARISON);
+        Optional<NamedReference> result = parseComparison(predicate, SET_OF_COMPARISON);
         if (result.isPresent()) {
             return result;
         }
@@ -160,7 +163,9 @@ public class VastPredicatePushdown
     {
         if (supportedOperators.contains(predicate.name())) {
             Expression[] children = predicate.children();
-            if (children.length == 2 && (children[0] instanceof NamedReference) && (children[1] instanceof LiteralValue)) {
+            if (children.length == 2 && (children[0] instanceof NamedReference)
+                && (children[1] instanceof LiteralValue)
+                && (!Objects.equals(children[1].toString(), NAN_LITERAL))) {
                 return Optional.of((NamedReference) children[0]);
             }
         }

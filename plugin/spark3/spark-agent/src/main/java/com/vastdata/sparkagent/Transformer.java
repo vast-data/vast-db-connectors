@@ -1,28 +1,29 @@
+/*
+ *  Copyright (C) Vast Data Ltd.
+ */
 package com.vastdata.sparkagent;
+
+import javassist.ClassPool;
+import javassist.CtClass;
+import javassist.CtMethod;
+import javassist.LoaderClassPath;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.IllegalClassFormatException;
 import java.security.ProtectionDomain;
 
-import javassist.ClassPool;
-import javassist.CtClass;
-import javassist.CtMethod;
-import javassist.CtConstructor;
-import javassist.LoaderClassPath;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 public class Transformer implements ClassFileTransformer {
     private static final Logger LOG = LoggerFactory.getLogger(Transformer.class);
-    private final String patchClassName = "org/apache/spark/sql/execution/dynamicpruning/PartitionPruning$";
-    private final String methodName = "$anonfun$hasSelectivePredicate$1";
+    private static final String PATCH_CLASS_NAME = "org/apache/spark/sql/execution/dynamicpruning/PartitionPruning$";
+    private static final String METHOD_NAME = "$anonfun$hasSelectivePredicate$1";
     // javaassist has a java 5- compiler ...
     // about its quirks please see the javassist documentation here: https://www.javassist.org/tutorial/tutorial2.html
     // $1 below is the first parameter of the function, while @r is the type of the return value.
     // This patch is supposed to fix issue ORION-162386
-    private final String methodBody =
+    private static final String METHOD_BODY =
 "{\n" +
 "    org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(com.vastdata.sparkagent.Transformer.class);\n" +
 "    if ($1 instanceof org.apache.spark.sql.catalyst.plans.logical.Filter) {\n" +
@@ -55,20 +56,20 @@ public class Transformer implements ClassFileTransformer {
         if (className == null) {
             return null;
         }
-        if (className.equals(this.patchClassName)) {
+        if (className.equals(PATCH_CLASS_NAME)) {
             ClassPool classPool = ClassPool.getDefault();
             classPool.appendClassPath(new LoaderClassPath(loader));
             classPool.appendSystemPath();
             try {
                 CtClass ctClass = classPool.makeClass(new ByteArrayInputStream(classfileBuffer));
-                CtMethod declaredMethod = ctClass.getDeclaredMethod(this.methodName);
+                CtMethod declaredMethod = ctClass.getDeclaredMethod(METHOD_NAME);
                 if (declaredMethod != null) {
-                    declaredMethod.setBody(this.methodBody);
-                    LOG.info("Patching: " + this.methodName);
+                    declaredMethod.setBody(METHOD_BODY);
+                    LOG.info("Patching: " + METHOD_NAME);
                     return ctClass.toBytecode();
                 }
             } catch (Exception e) {
-                LOG.warn("Failed to instrument " + this.patchClassName, e);
+                LOG.warn("Failed to instrument " + PATCH_CLASS_NAME, e);
             }
         }
 

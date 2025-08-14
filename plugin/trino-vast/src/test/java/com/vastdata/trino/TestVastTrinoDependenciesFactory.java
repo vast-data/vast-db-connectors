@@ -9,17 +9,19 @@ import com.vastdata.client.RequestsHeaders;
 import com.vastdata.client.VastRequestHeadersBuilder;
 import com.vastdata.client.tx.VastTransaction;
 import com.vastdata.trino.tx.VastTransactionHandle;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.Collection;
 import java.util.function.Predicate;
 
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class TestVastTrinoDependenciesFactory
 {
+    private static final String DEFAULT_END_USER = "default-end-user";
+
     @Test
     public void testSchemaNameValidator()
     {
@@ -41,7 +43,7 @@ public class TestVastTrinoDependenciesFactory
     @Test
     public void testDefaultHeaders()
     {
-        VastRequestHeadersBuilder unit = new VastTrinoDependenciesFactory().getHeadersFactory();
+        VastRequestHeadersBuilder unit = new VastTrinoDependenciesFactory().getHeadersFactory(DEFAULT_END_USER);
         Multimap<String, String> headers = unit.build();
 
         assertMapKeyValue(headers, RequestsHeaders.TABULAR_API_VERSION_ID.getHeaderName(), VastRequestHeadersBuilder.VAST_CLIENT_API_VERSION);
@@ -52,9 +54,9 @@ public class TestVastTrinoDependenciesFactory
     @Test
     public void testAllHeaders()
     {
-        VastRequestHeadersBuilder unit = new VastTrinoDependenciesFactory().getHeadersFactory();
+        VastRequestHeadersBuilder unit = new VastTrinoDependenciesFactory().getHeadersFactory(DEFAULT_END_USER);
         String testTxidStr = "514026084031791104";
-        VastTransaction testTx = new VastTransactionHandle(Long.parseUnsignedLong(testTxidStr), false, true);
+        VastTransaction testTx = new VastTransactionHandle(Long.parseUnsignedLong(testTxidStr));
         unit.withTransaction(testTx);
         Long testNextKey = 777L;
         unit.withNextKey(testNextKey);

@@ -1,3 +1,6 @@
+/*
+ *  Copyright (C) Vast Data Ltd.
+ */
 package com.vastdata.spark;
 
 import com.vastdata.spark.adaptor.SparkVectorAdaptorFactory;

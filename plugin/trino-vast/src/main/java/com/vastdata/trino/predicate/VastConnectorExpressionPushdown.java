@@ -80,7 +80,7 @@ public class VastConnectorExpressionPushdown
             if (!(name.equals(AND_FUNCTION_NAME) || name.equals(OR_FUNCTION_NAME))) {
                 return Optional.empty();
             }
-            if (call.getArguments().size() < 1) {
+            if (call.getArguments().isEmpty()) {
                 return Optional.empty();
             }
 
@@ -131,7 +131,7 @@ public class VastConnectorExpressionPushdown
     {
         FunctionName name = call.getFunctionName();
         List<ConnectorExpression> args = call.getArguments();
-        if (args.size() < 1) {
+        if (args.isEmpty()) {
             return Optional.empty();
         }
         if (args.size() == 1 && name.equals(NOT_FUNCTION_NAME)) {

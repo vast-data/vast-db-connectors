@@ -13,11 +13,9 @@ public class VastTransactionHandle extends SimpleVastTransaction implements Conn
 {
 
     @JsonCreator
-    public VastTransactionHandle(@JsonProperty("id") long id,
-            @JsonProperty("readOnly") boolean readOnly,
-            @JsonProperty("autoCommit") boolean autocommit)
+    public VastTransactionHandle(@JsonProperty("id") long id)
     {
-        super(id, readOnly, autocommit);
+        super(id);
     }
 
     @Override
@@ -27,26 +25,13 @@ public class VastTransactionHandle extends SimpleVastTransaction implements Conn
         return super.getId();
     }
 
-    @Override
-    @JsonProperty("readOnly")
-    public boolean isReadOnly()
-    {
-        return super.isReadOnly();
-    }
 
-    @JsonProperty("autoCommit")
-    public boolean isAutocommit()
-    {
-        return super.isAutocommit();
-    }
 
     @Override
     public String toString()
     {
         return "VastTransactionHandle{" +
                 "id='" + getId() + '\'' +
-                ", readOnly=" + isReadOnly() +
-                ", autocommit=" + isAutocommit() +
                 '}';
     }
 }

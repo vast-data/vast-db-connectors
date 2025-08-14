@@ -27,20 +27,21 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.when;
 import static org.mockito.MockitoAnnotations.openMocks;
 
 public class TestImportDataExecutor
 {
     private static final int NUMBER_OF_RETRIES = 2;
+    private static final URI uri1 = URI.create("http://localhost:8080");
+    private static final URI uri2 = URI.create("http://127.0.0.1:8080");
     @Mock VastClient mockClient;
     @Mock ImportDataContext mockCtx;
     @Mock VastTransaction mockTrans;
     @Mock ImportDataFile mockImportDataFile;
     @Mock VastResponse mockResponse;
     @Mock VastTraceToken mockTraceToken;
-    URI uri1 = URI.create("http://localhost:8080");
-    URI uri2 = URI.create("http://127.0.0.1:8080");
 
     private AutoCloseable autoCloseable;
 
@@ -86,7 +87,7 @@ public class TestImportDataExecutor
         when(mockResponse.getRequestUri()).thenReturn(uri1);
         when(mockResponse.getErrorMessage()).thenReturn(Optional.empty());
         when(mockResponse.getBytes()).thenReturn("dummy".getBytes(StandardCharsets.UTF_8));
-        when(mockClient.importData(any(VastTransaction.class), any(VastTraceToken.class), any(ImportDataContext.class), any(), any(URI.class)))
+        when(mockClient.importData(any(VastTransaction.class), any(VastTraceToken.class), any(ImportDataContext.class), any(), any(URI.class), nullable(String.class)))
                 .thenReturn(mockResponse);
         when(mockCtx.getSourceFiles()).thenReturn(ImmutableList.of(mockImportDataFile));
         when(mockCtx.getDest()).thenReturn("bucket/schema/table");
@@ -94,7 +95,7 @@ public class TestImportDataExecutor
         when(mockImportDataFile.hasSchemaRoot()).thenReturn(Boolean.TRUE);
         ImportDataExecutor<VastTransaction> unit = new ImportDataExecutor<>(mockClient);
         Supplier<RetryStrategy> retryStrategy = this::getRetryStrategy;
-        unit.execute(mockCtx, mockTrans, mockTraceToken, ImmutableList.of(uri1, uri2), retryStrategy, true);
+        unit.execute(mockCtx, mockTrans, mockTraceToken, ImmutableList.of(uri1, uri2), retryStrategy, true, null);
     }
 
     private RetryStrategy getRetryStrategy()

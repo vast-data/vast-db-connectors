@@ -11,8 +11,8 @@ import com.vastdata.client.VastDebugConfig;
 import com.vastdata.client.tx.VastTraceToken;
 import io.airlift.log.Logger;
 import io.trino.plugin.base.metrics.LongCount;
-import io.trino.spi.Page;
 import io.trino.spi.block.Block;
+import io.trino.spi.connector.SourcePage;
 import io.trino.spi.metrics.Metrics;
 import org.apache.arrow.vector.types.pojo.Schema;
 
@@ -23,7 +23,7 @@ import java.util.Optional;
 import static com.google.common.base.Verify.verify;
 
 public class QueryDataResponseParser
-        extends BaseQueryDataResponseParser<Page>
+        extends BaseQueryDataResponseParser<SourcePage>
 {
     private static final Logger LOG = Logger.get(QueryDataResponseParser.class);
 
@@ -35,31 +35,31 @@ public class QueryDataResponseParser
     {
         super(traceToken, querySchema.getFields(), pagination, limitTotalRows, debugConfig);
         this.querySchema = querySchema;
-        LOG.info("QueryData(%s) QueryDataResponseParser init: schema=%s, requested fields=%s", traceStr, querySchema, fields);
+        LOG.debug("QueryData(%s) QueryDataResponseParser init: schema=%s, requested fields=%s", traceStr, querySchema, fields);
     }
 
     @Override
-    protected QueryDataPageBuilder<Page> createPageBuilder(Schema requestedSchema)
+    protected QueryDataPageBuilder<SourcePage> createPageBuilder(Schema requestedSchema)
     {
         return new VastPageBuilder(traceStr, requestedSchema);
     }
 
     @Override
-    protected Page joinPages(List<Page> pages)
+    protected SourcePage joinPages(List<SourcePage> pages)
     {
         verify(!pages.isEmpty());
         int rows = pages.getFirst().getPositionCount();
-        int columnCount = pages.stream().mapToInt(Page::getChannelCount).sum();
+        int columnCount = pages.stream().mapToInt(SourcePage::getChannelCount).sum();
         Block[] blocks = new Block[columnCount];
         int blockIndex = 0;
-        for (Page page : pages) {
+        for (SourcePage page : pages) {
             verify(page.getPositionCount() == rows, "QueryData(%s): row count mismatch: %s != %s", traceStr, page.getPositionCount(), rows);
             for (int i = 0; i < page.getChannelCount(); ++i) {
                 blocks[blockIndex] = page.getBlock(i);
                 blockIndex += 1;
             }
         }
-        Page page = querySchema.construct(blocks, rows);
+        SourcePage page = querySchema.construct(blocks, rows);
         totalPositions.addAndGet(page.getPositionCount());
         return page;
     }

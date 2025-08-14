@@ -11,8 +11,6 @@ import com.vastdata.spark.statistics.SparkVastStatisticsManager;
 import com.vastdata.spark.statistics.StatsUtils;
 import com.vastdata.spark.statistics.TableLevelStatistics;
 import com.vastdata.spark.write.VastWriteBuilder;
-import org.apache.spark.SparkConf;
-import org.apache.spark.SparkContext$;
 import org.apache.spark.sql.connector.catalog.SupportsDeleteV2;
 import org.apache.spark.sql.connector.catalog.SupportsRead;
 import org.apache.spark.sql.connector.catalog.SupportsRowLevelOperations;
@@ -194,11 +192,5 @@ public class VastTable
     public Map<String, String> properties()
     {
         return ImmutableMap.of(HANDLE_ID_PROPERTY, this.tableMD.handleID);
-    }
-
-    private static boolean isGlutenEnabled()
-    {
-        SparkConf conf = SparkContext$.MODULE$.getActive().get().getConf();
-        return conf.get("spark.plugins", "").contains("io.glutenproject.GlutenPlugin");
     }
 }

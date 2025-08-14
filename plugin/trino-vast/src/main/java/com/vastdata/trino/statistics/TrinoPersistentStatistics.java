@@ -166,7 +166,7 @@ public class TrinoPersistentStatistics
 // and redundant s3 calls to fetch the statists files from Vast (ORION-148783)
     public static class CacheKey
     {
-        private VastTableHandle tableHandle;
+        private final VastTableHandle tableHandle;
 
         public CacheKey(VastTableHandle tableHandle)
         {

@@ -10,6 +10,7 @@ import com.vastdata.client.VastSchedulingInfo;
 import com.vastdata.client.VastSplitContext;
 import io.trino.spi.HostAddress;
 import io.trino.spi.connector.ConnectorSplit;
+import io.trino.spi.predicate.TupleDomain;
 
 import java.net.URI;
 import java.util.List;
@@ -28,16 +29,19 @@ public class VastSplit
     private final VastSplitContext context;
     private final List<URI> endpoints;
     private final VastSchedulingInfo schedulingInfo;
+    private final TupleDomain<VastColumnHandle> filters;
 
     @JsonCreator
     public VastSplit(
             @JsonProperty("endpoints") List<URI> endpoints,
             @JsonProperty("context") VastSplitContext context,
-            @JsonProperty("schedulingInfo") VastSchedulingInfo schedulingInfo)
+            @JsonProperty("schedulingInfo") VastSchedulingInfo schedulingInfo,
+            @JsonProperty("filters") TupleDomain<VastColumnHandle> filters)
     {
         this.endpoints = requireNonNull(endpoints, "addresses is null");
         this.context = requireNonNull(context, "context is null");
         this.schedulingInfo = requireNonNull(schedulingInfo, "schedulingInfo is null");
+        this.filters = requireNonNull(filters, "filters is null");
     }
 
     @JsonProperty
@@ -56,6 +60,12 @@ public class VastSplit
     public VastSchedulingInfo getSchedulingInfo()
     {
         return schedulingInfo;
+    }
+
+    @JsonProperty
+    public TupleDomain<VastColumnHandle> getFilters()
+    {
+        return filters;
     }
 
     @Override

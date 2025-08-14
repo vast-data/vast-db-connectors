@@ -21,6 +21,10 @@ import java.util.Optional;
 
 import static com.vastdata.client.VastConfig.DYNAMIC_FILTER_COMPACTION_THRESHOLD_DEFAULT_VALUE;
 import static com.vastdata.client.VastConfig.MIN_MAX_COMPACTION_MIN_VALUES_DEFAULT_VALUE;
+import static com.vastdata.client.VastConfig.SPLIT_SIZE_MULTIPLIER_DEFAULT;
+import static com.vastdata.client.VastConfig.QUERY_DATA_ROWS_PER_SPLIT_DEFAULT;
+import static com.vastdata.client.VastConfig.NUM_OF_SUB_SPLITS_DEFAULT;
+import static com.vastdata.client.VastConfig.ROW_GROUPS_PER_SUB_SPLIT_DEFAULT;;
 import static com.vastdata.client.VastConfig.TX_KEEP_ALIVE_ENABLED_DEFAULT;
 import static com.vastdata.client.VastConfig.TX_KEEP_ALIVE_INTERVAL_DEFAULT;
 
@@ -104,10 +108,10 @@ public final class NDB
         logConfEntry("spark.ndb.access_key_id", accessKeyId);
         String secretAccessKey = conf.get("spark.ndb.secret_access_key");
         int numOfSplits = conf.getInt("spark.ndb.num_of_splits", 256);
-        int numOfSubSplits = conf.getInt("spark.ndb.num_of_sub_splits", 20);
-        int rowGroupsPerSubSplit = conf.getInt("spark.ndb.rowgroups_per_subsplit", 8);
+        int numOfSubSplits = conf.getInt("spark.ndb.num_of_sub_splits", NUM_OF_SUB_SPLITS_DEFAULT);
+        int rowGroupsPerSubSplit = conf.getInt("spark.ndb.rowgroups_per_subsplit", ROW_GROUPS_PER_SUB_SPLIT_DEFAULT);
         int queryDataRowsPerPage = conf.getInt("spark.ndb.query_data_rows_per_page", 100000);
-        int queryDataRowsPerSplit = conf.getInt("spark.ndb.query_data_rows_per_split", 4000000);
+        long queryDataRowsPerSplit = conf.getLong("spark.ndb.query_data_rows_per_split", QUERY_DATA_ROWS_PER_SPLIT_DEFAULT);
         int maxInsertRows = conf.getInt("spark.ndb.max_row_count_per_insert", 16000);
         int maxUpdateRows = conf.getInt("spark.ndb.max_row_count_per_update", 2048);
         int maxDeleteRows = conf.getInt("spark.ndb.max_row_count_per_delete", 2048);
@@ -121,6 +125,7 @@ public final class NDB
         int dynamicFilterWaitTimeout = conf.getInt("spark.ndb.dynamic_filtering_wait_timeout", 2 * 1000);
         int keepAliveInterval = conf.getInt("spark.ndb.vast_transaction_keep_alive_interval_seconds", TX_KEEP_ALIVE_INTERVAL_DEFAULT);
         boolean keepAliveEnabled = conf.getBoolean("spark.ndb.vast_transaction_keep_alive_enabled", TX_KEEP_ALIVE_ENABLED_DEFAULT);
+        int splitSizeMultiplier = conf.getInt("spark.ndb.split_size_multiplier", SPLIT_SIZE_MULTIPLIER_DEFAULT);
         return new VastConfig()
                 .setEndpoint(URI.create(vastEndpoint))
                 .setDataEndpoints(endPointsList)
@@ -145,6 +150,7 @@ public final class NDB
                 .setDynamicFilteringWaitTimeout(dynamicFilterWaitTimeout)
                 .setVastTransactionKeepAliveEnabled(keepAliveEnabled)
                 .setVastTransactionKeepAliveIntervalSeconds(keepAliveInterval)
+                .setSplitSizeMultiplier(splitSizeMultiplier)
                 .setEngineVersion(engineVersion);
     }
 

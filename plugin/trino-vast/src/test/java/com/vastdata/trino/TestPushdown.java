@@ -1,4 +1,6 @@
-/* Copyright (C) Vast Data Ltd. */
+/*
+ *  Copyright (C) Vast Data Ltd.
+ */
 
 package com.vastdata.trino;
 
@@ -9,8 +11,9 @@ import io.trino.spi.expression.Constant;
 import io.trino.spi.expression.Variable;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
-import org.testng.annotations.DataProvider;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.List;
 import java.util.Map;
@@ -53,8 +56,7 @@ public class TestPushdown
         assertThat(tryParseSubstringMatch(expr, Set.of(variable.getName()), assignments)).isEqualTo(Optional.empty());
     }
 
-    @DataProvider
-    public Object[][] unsupportedPatterns()
+    public static Object[][] unsupportedPatterns()
     {
         return new Object[][] {
                 {"%123"},
@@ -69,7 +71,8 @@ public class TestPushdown
         };
     }
 
-    @Test(dataProvider = "unsupportedPatterns")
+    @ParameterizedTest
+    @MethodSource("unsupportedPatterns")
     public void testParseUnsupportedPatterns(String pattern)
     {
         Variable variable = new Variable("i", VARCHAR);

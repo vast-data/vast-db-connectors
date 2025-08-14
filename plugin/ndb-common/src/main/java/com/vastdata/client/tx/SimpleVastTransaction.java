@@ -18,23 +18,17 @@ public class SimpleVastTransaction
 {
     public static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private final long id;
-    private final boolean readOnly;
-    private final boolean autocommit;
 
     private static final AtomicInteger operationCount = new AtomicInteger(0);
 
-    public SimpleVastTransaction(long id, boolean readOnly, boolean autocommit)
+    public SimpleVastTransaction(long id)
     {
         this.id = id;
-        this.readOnly = readOnly;
-        this.autocommit = autocommit;
     }
 
     public SimpleVastTransaction()
     {
         this.id = 0;
-        this.readOnly = true;
-        this.autocommit = false;
     }
 
     @Override
@@ -43,16 +37,6 @@ public class SimpleVastTransaction
         return id;
     }
 
-    @Override
-    public boolean isReadOnly()
-    {
-        return readOnly;
-    }
-
-    public boolean isAutocommit()
-    {
-        return autocommit;
-    }
 
     @Override
     public boolean equals(Object o)

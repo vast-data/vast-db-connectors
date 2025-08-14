@@ -7,12 +7,11 @@ package com.vastdata.spark.statistics;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.error.VastExceptionFactory;
 import com.vastdata.client.error.VastUserException;
-import com.vastdata.client.schema.StartTransactionContext;
 import com.vastdata.client.stats.VastStatistics;
 import com.vastdata.client.tx.SimpleVastTransaction;
 import com.vastdata.client.tx.VastTransactionHandleManager;
-import com.vastdata.spark.tx.VastAutocommitTransaction;
-import com.vastdata.spark.tx.VastSimpleTransactionFactory;
+import com.vastdata.client.tx.VastAutocommitTransaction;
+import com.vastdata.client.tx.VastTransactionFactory;
 import com.vastdata.spark.tx.VastSparkTransactionsManager;
 import ndb.NDB;
 import org.apache.spark.sql.catalyst.expressions.Attribute;
@@ -77,11 +76,11 @@ public final class StatsUtils
 
     public static VastStatistics getTableLevelStats(VastClient client, String schemaName, String tableName)
     {
-        VastTransactionHandleManager<SimpleVastTransaction> transactionsManager = VastSparkTransactionsManager.getInstance(client, new VastSimpleTransactionFactory());
-        try (VastAutocommitTransaction tx = VastAutocommitTransaction.wrap(client,
-                () -> transactionsManager.startTransaction(new StartTransactionContext(true, true)))) {
+        final String endUser = null;
+        VastTransactionHandleManager<SimpleVastTransaction> transactionsManager = VastSparkTransactionsManager.getInstance(client, new VastTransactionFactory());
+        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(client, () -> transactionsManager.startTransaction(endUser), endUser)) {
             // compute statistics via RPC
-            VastStatistics tableStats = client.getTableStats(tx, schemaName, tableName);
+            VastStatistics tableStats = client.getTableStats(tx, schemaName, tableName, endUser);
             if (tableStats != null) {
                 LOG.debug("Fetched statistics for table {}, statistics: numRows={}, sizeInBytes={}",
                         tableName, tableStats.getNumRows(), tableStats.getSizeInBytes());

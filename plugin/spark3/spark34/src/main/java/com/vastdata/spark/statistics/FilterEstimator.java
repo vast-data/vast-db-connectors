@@ -1,7 +1,9 @@
+/*
+ *  Copyright (C) Vast Data Ltd.
+ */
 package com.vastdata.spark.statistics;
 
 import com.vastdata.spark.predicate.VastPredicate;
-
 import org.apache.spark.sql.catalyst.plans.logical.statsEstimation.EstimationUtils;
 import org.apache.spark.sql.catalyst.plans.logical.statsEstimation.ValueInterval;
 import org.apache.spark.sql.connector.expressions.Expression;
@@ -18,6 +20,7 @@ import org.apache.spark.sql.types.NumericType;
 import org.apache.spark.sql.types.StringType;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
+import org.apache.spark.sql.types.TimestampNTZType;
 import org.apache.spark.sql.types.TimestampType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,7 +53,7 @@ public final class FilterEstimator
         final org.apache.spark.sql.connector.expressions.Literal jLiteral =
             (org.apache.spark.sql.connector.expressions.Literal) predicate.children()[1];
         final org.apache.spark.sql.catalyst.expressions.Literal sLiteral =
-                new org.apache.spark.sql.catalyst.expressions.Literal(jLiteral.value(), jLiteral.dataType());
+            new org.apache.spark.sql.catalyst.expressions.Literal(jLiteral.value(), jLiteral.dataType());
         return statsInterval.contains(sLiteral);
     }
 
@@ -68,10 +71,10 @@ public final class FilterEstimator
         case "!=":
         case "=":
         {
-            double percent = 1.0;
+            double percent;
             if (isStringOrBinaryOrWithinRange(colStats, field, predicate)) {
                 if (updateStatistics && "=".equals(predicate.name())) {
-                    ColumnStatistics newStat = null;
+                    ColumnStatistics newStat;
                     if ((dt instanceof StringType) || (dt instanceof BinaryType)) {
                         newStat =
                             new ColumnLevelStatistics(OptionalLong.of(1), colStats.min(), colStats.max(),
@@ -105,7 +108,7 @@ public final class FilterEstimator
         case ">=":
         {
             // Non-numeric types???
-            if (!((dt instanceof NumericType) || (dt instanceof DateType) || (dt instanceof TimestampType) || (dt instanceof BooleanType))  ||
+            if (!((dt instanceof NumericType) || (dt instanceof DateType) || (dt instanceof TimestampType) || (dt instanceof TimestampNTZType) || (dt instanceof BooleanType))  ||
                 !colStats.min().isPresent() || !colStats.max().isPresent() || !colStats.distinctCount().isPresent()) {
                 return 1.0;
             }
@@ -208,7 +211,7 @@ public final class FilterEstimator
             final long nullCount = colStats.nullCount().getAsLong();
             final double nullPercent = rowCount == 0? 0.0 : (nullCount >= rowCount? 1.0 : (double) nullCount/(double) rowCount);
             if (updateStatistics) {
-                ColumnStatistics newStat = null;
+                ColumnStatistics newStat;
                 if ("IS_NULL".equals(predicate.name())) {
                     newStat =
                         new ColumnLevelStatistics(OptionalLong.of(0), Optional.empty(), Optional.empty(),
@@ -252,11 +255,11 @@ public final class FilterEstimator
         if (!statistics.numRows().isPresent())
             return 1.0;
         if (!(statistics instanceof TableLevelStatistics)) {
-            LOG.warn("No statistics");
+            LOG.warn("estimateSelectivity: No statistics");
             return 1.0;
         }
         Map<NamedReference, ColumnStatistics> statsMap =
-            new HashMap<NamedReference, ColumnStatistics>(((TableLevelStatistics)statistics).columnStats()); // shallow copy, because we might change it
+                new HashMap<>(statistics.columnStats()); // shallow copy, because we might change it
         return predicates.stream()
             .mapToDouble(l -> estimateOrSelectivity(l, statistics, statsMap))
             .reduce(1.0, (l, r) -> l * r);
@@ -292,7 +295,7 @@ public final class FilterEstimator
         if (!statistics.numRows().isPresent())
             return statistics;
         if (!(statistics instanceof TableLevelStatistics)) {
-            LOG.warn("No statistics");
+            LOG.warn("estimateStatistics: No statistics");
             return statistics;
         }
         Map<NamedReference, ColumnStatistics> colStats =

@@ -1,3 +1,6 @@
+/*
+ *  Copyright (C) Vast Data Ltd.
+ */
 package com.vastdata.spark;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -23,7 +26,7 @@ public abstract class VastSparkCommonDependenciesFactory
 {
     @VisibleForTesting protected static final String VAST_SPARK_CLIENT_TAG = "VastSparkPlugin/" + VastVersion.SYS_VERSION;
     public static final String VAST_SPARK_PLUGIN_V_1 = "VastSparkPlugin.v1";
-    ConfigDefaults<HttpClientConfig> HTTP_CLIENT_CONFIG_CONFIG_DEFAULTS = cfg -> {
+    protected final ConfigDefaults<HttpClientConfig> HTTP_CLIENT_CONFIG_CONFIG_DEFAULTS = cfg -> {
         cfg.setConnectTimeout(new Duration(1, MINUTES));
         cfg.setIdleTimeout(new Duration(3600, SECONDS));
         cfg.setRequestTimeout(new Duration(360000, SECONDS));
@@ -50,9 +53,13 @@ public abstract class VastSparkCommonDependenciesFactory
     }
 
     @Override
-    public VastRequestHeadersBuilder getHeadersFactory()
+    public VastRequestHeadersBuilder getHeadersFactory(final String endUser)
     {
-        return new CommonRequestHeadersBuilder(() -> VAST_SPARK_CLIENT_TAG + "-spark-" + vastConfig.getEngineVersion());
+        final VastRequestHeadersBuilder builder = new CommonRequestHeadersBuilder(() -> VAST_SPARK_CLIENT_TAG + "-spark-" + vastConfig.getEngineVersion());
+        if (endUser != null) {
+            return builder.withEndUser(endUser);
+        }
+        return builder;
     }
 
     @Override

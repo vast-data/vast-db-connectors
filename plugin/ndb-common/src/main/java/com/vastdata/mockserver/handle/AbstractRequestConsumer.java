@@ -203,25 +203,5 @@ public abstract class AbstractRequestConsumer
                 throw new RuntimeException(e);
             }
         }
-//        transactionHeader.ifPresentOrElse(txid -> {
-//            try {
-//                if (this.openTransactions.remove(txid)) {
-//                    respondOK(he);
-//                }
-//                else {
-//                    respondError(String.format("%s is not open", txid), he);
-//                }
-//            }
-//            catch (IOException e) {
-//                throw new RuntimeException(e);
-//            }
-//        }, () -> {
-//            try {
-//                respondError("Transaction ID was not provided", he);
-//            }
-//            catch (IOException e) {
-//                throw new RuntimeException(e);
-//            }
-//        });
     }
 }

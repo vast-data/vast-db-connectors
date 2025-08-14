@@ -8,12 +8,11 @@ import com.vastdata.client.VastClient;
 import com.vastdata.client.VastConfig;
 import com.vastdata.client.VastSchedulingInfo;
 import com.vastdata.client.error.VastUserException;
-import com.vastdata.client.schema.StartTransactionContext;
 import com.vastdata.client.tx.SimpleVastTransaction;
 import com.vastdata.client.tx.VastTraceToken;
 import com.vastdata.spark.predicate.VastPredicate;
-import com.vastdata.spark.tx.VastAutocommitTransaction;
-import com.vastdata.spark.tx.VastSimpleTransactionFactory;
+import com.vastdata.client.tx.VastAutocommitTransaction;
+import com.vastdata.client.tx.VastTransactionFactory;
 import com.vastdata.spark.tx.VastSparkTransactionsManager;
 import ndb.NDB;
 import org.apache.spark.sql.catalyst.InternalRow;
@@ -62,6 +61,7 @@ public class VastPartitionReaderFactory
 
     private VastSchedulingInfo getSchedInfo(SimpleVastTransaction tx, String schemaName, String tableName)
     {
+        final String endUser = null;
         VastClient vastClient;
         try {
             vastClient = NDB.getVastClient(vastConfig);
@@ -69,10 +69,10 @@ public class VastPartitionReaderFactory
         catch (VastUserException e) {
             throw toRuntime(e);
         }
-        VastSparkTransactionsManager transactionsManager = VastSparkTransactionsManager.getInstance(vastClient, new VastSimpleTransactionFactory());
-        try (VastAutocommitTransaction schedTx = VastAutocommitTransaction.wrap(Optional.ofNullable(tx), vastClient, () -> transactionsManager.startTransaction(new StartTransactionContext(false, true)))) {
+        VastSparkTransactionsManager transactionsManager = VastSparkTransactionsManager.getInstance(vastClient, new VastTransactionFactory());
+        try (VastAutocommitTransaction schedTx = VastAutocommitTransaction.wrapVastTransactionOrCreateNew(Optional.ofNullable(tx), vastClient, () -> transactionsManager.startTransaction(endUser), endUser)) {
             VastTraceToken traceToken = schedTx.generateTraceToken(Optional.empty());
-            return vastClient.getSchedulingInfo(schedTx, traceToken, schemaName, tableName);
+            return vastClient.getSchedulingInfo(schedTx, traceToken, schemaName, tableName, endUser);
         }
     }
 

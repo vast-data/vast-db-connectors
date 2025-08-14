@@ -4,10 +4,9 @@ import com.vastdata.client.VastClient;
 import com.vastdata.client.error.VastException;
 import com.vastdata.client.schema.ArrowSchemaUtils;
 import com.vastdata.client.schema.CreateTableContext;
-import com.vastdata.client.schema.DropTableContext;
-import com.vastdata.client.schema.StartTransactionContext;
 import com.vastdata.client.schema.VastMetadataUtils;
 import com.vastdata.client.tx.SimpleVastTransaction;
+import com.vastdata.client.tx.VastTransactionFactory;
 import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.jetty.JettyHttpClient;
 import com.vastdata.vdb.sdk.NoExternalRowIdColumnException;
@@ -63,25 +62,18 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Stream;
-
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
 
 public class TestIntegration
 {
     static String schemaName = "vastdb/s2";
     static Field x = new Field("x", FieldType.nullable(new ArrowType.Utf8()), null);
     static Field y = new Field("y", FieldType.nullable(new ArrowType.Utf8()), null);
-    
-    final static Map<String, Object> tableCreateProperties = Map.of();
-    
+
     private VastSdk sdk;
 
     @BeforeSuite
     public void setup()
-        throws VastException
+            throws VastException
     {
         if (System.getenv("INTEG_TEST") == null) {
             throw new SkipException("Environment variable INTEG_TEST must be defined as these are integration tests");
@@ -98,9 +90,9 @@ public class TestIntegration
         URI uri = URI.create(endpoint);
 
         VastSdkConfig config = new VastSdkConfig(uri,
-                                                 uri.toString(),
-                                                 awsAccessKeyId,
-                                                 awsSecretAccessKey);
+                uri.toString(),
+                awsAccessKeyId,
+                awsSecretAccessKey);
 
         HttpClient httpClient = new JettyHttpClient();
 
@@ -108,19 +100,8 @@ public class TestIntegration
 
         VastClient client = this.sdk.getVastClient();
 
-        TransactionManager transactionsManager = new TransactionManager(client, new SimpleTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction(new StartTransactionContext(false, false));
-
-        if (client.schemaExists(tx, schemaName)) {
-            Stream<String> tables = client.listTables(tx, schemaName, 20);
-            Iterable<String> tableIterable = tables::iterator;
-            for (String tableName : tableIterable) {
-                client.dropTable(tx, new DropTableContext(schemaName, tableName));
-            }
-
-
-            client.dropSchema(tx, schemaName);
-        }
+        TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
+        SimpleVastTransaction tx = transactionsManager.startTransaction();
 
         client.createSchema(tx, schemaName, new VastMetadataUtils().getPropertiesString(Collections.emptyMap()));
 
@@ -130,9 +111,9 @@ public class TestIntegration
     }
 
     @Test(expectedExceptions = RuntimeException.class,
-          expectedExceptionsMessageRegExp = ".*VastUserException: Failed to execute request LIST_COLUMNS, path /vastdb/s/non-existent-table not found.*")
+            expectedExceptionsMessageRegExp = ".*VastUserException: Failed to execute request LIST_COLUMNS, path /vastdb/s/non-existent-table not found.*")
     public void testNonExistingTable()
-        throws NoExternalRowIdColumnException, RuntimeException
+            throws NoExternalRowIdColumnException, RuntimeException
     {
         Table table = sdk.getTable("vastdb/s", "non-existent-table");
         table.loadSchema();
@@ -140,7 +121,7 @@ public class TestIntegration
 
     @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = ".*VastUserException: Failed to execute request LIST_COLUMNS, path /vastdb/non-existent-schema/non-existent-table not found.*")
     public void testNonExistingSchema()
-        throws NoExternalRowIdColumnException, RuntimeException
+            throws NoExternalRowIdColumnException, RuntimeException
     {
         Table table = sdk.getTable("vastdb/non-existent-schema", "non-existent-table");
         table.loadSchema();
@@ -148,15 +129,14 @@ public class TestIntegration
 
     @Test
     public void testRowsReturningSanity()
-        throws VastException
+            throws VastException
     {
         VastClient client = sdk.getVastClient();
-        TransactionManager transactionsManager = new TransactionManager(client, new SimpleTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction(new StartTransactionContext(false, false));
-	
+        TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
+        SimpleVastTransaction tx = transactionsManager.startTransaction();
         client.createTable(tx, new CreateTableContext(
-                                                      schemaName, "tab1", List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD, x, y),
-                                                      null, tableCreateProperties));
+                schemaName, "tab1", List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD, x, y),
+                null, null));
         transactionsManager.commit(tx);
 
         Table table = sdk.getTable(schemaName, "tab1");
@@ -201,117 +181,17 @@ public class TestIntegration
         Assert.assertEquals(y0.getObject(0).toString(), "y0");
         Assert.assertEquals(y1.getObject(0).toString(), "y1");
     }
-    
-    @Test
-    public void testRowIdNotFirstColumn()
-        throws VastException
-    {
-        VastClient client = sdk.getVastClient();
-        TransactionManager transactionsManager = new TransactionManager(client, new SimpleTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction(new StartTransactionContext(false, false));
-        client.createTable(tx, new CreateTableContext(
-                                                      schemaName, "row_id_not_first_column", List.of(x, ArrowSchemaUtils.VASTDB_ROW_ID_FIELD, y),
-                                                      null, tableCreateProperties));
-        transactionsManager.commit(tx);
-
-        Table table = sdk.getTable(schemaName, "row_id_not_first_column");
-        table.loadSchema();
-
-        RootAllocator allocator = new RootAllocator();
-
-        VarCharVector xVector = new VarCharVector("x", allocator);
-        xVector.allocateNew(1);
-        xVector.set(0, new Text("x0"));
-        xVector.setValueCount(1);
-
-        VarCharVector yVector = new VarCharVector("y", allocator);
-        yVector.allocateNew(1);
-        yVector.set(0, new Text("y0"));
-        yVector.setValueCount(1);
-
-        ArrayList<FieldVector> fieldVectors = new ArrayList<>();
-        fieldVectors.add(xVector);
-        fieldVectors.add(yVector);
-
-        VectorSchemaRoot vsr = new VectorSchemaRoot(table.getSchema(), fieldVectors, 1);
-        final VectorSchemaRoot insertedRowIds = table.put(vsr);
-
-        final UInt8Vector vec = (UInt8Vector) insertedRowIds.getVector(0);
-
-        Assert.assertEquals(vec.get(0), 0);
-
-        VectorSchemaRoot row0 = table.get(null, 0);
-
-        VarCharVector x0 = (VarCharVector) row0.getVector("x");
-        VarCharVector y0 = (VarCharVector) row0.getVector("y");
-
-        Assert.assertEquals(x0.getObject(0).toString(), "x0");
-        Assert.assertEquals(y0.getObject(0).toString(), "y0");
-    }
-
-    @Test
-    public void testRowIdNotInProjectionGet()
-        throws VastException
-    {
-        VastClient client = sdk.getVastClient();
-        TransactionManager transactionsManager = new TransactionManager(client, new SimpleTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction(new StartTransactionContext(false, false));
-        client.createTable(tx, new CreateTableContext(
-                                                      schemaName, "row_id_not_in_projection", List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD, x, y),
-                                                      null, tableCreateProperties));
-        transactionsManager.commit(tx);
-
-        Table table = sdk.getTable(schemaName, "row_id_not_in_projection");
-        table.loadSchema();
-
-        RootAllocator allocator = new RootAllocator();
-
-        VarCharVector xVector = new VarCharVector("x", allocator);
-        xVector.allocateNew(1);
-        xVector.set(0, new Text("x0"));
-        xVector.setValueCount(1);
-
-        VarCharVector yVector = new VarCharVector("y", allocator);
-        yVector.allocateNew(1);
-        yVector.set(0, new Text("y0"));
-        yVector.setValueCount(1);
-
-        ArrayList<FieldVector> fieldVectors = new ArrayList<>();
-        fieldVectors.add(xVector);
-        fieldVectors.add(yVector);
-
-        VectorSchemaRoot vsr = new VectorSchemaRoot(table.getSchema(), fieldVectors, 1);
-        final VectorSchemaRoot insertedRowIds = table.put(vsr);
-
-        final UInt8Vector vec = (UInt8Vector) insertedRowIds.getVector(0);
-
-        Assert.assertEquals(vec.get(0), 0);
-
-
-        ArrayList<String> projection = new ArrayList<>();
-        projection.add("x");
-	
-        VectorSchemaRoot row0 = table.get(projection, 0);
-
-        VarCharVector vastdb_rowid = (VarCharVector) row0.getVector("vastdb_rowid");
-        VarCharVector x = (VarCharVector) row0.getVector("x");
-        VarCharVector y = (VarCharVector) row0.getVector("y");
-
-        Assert.assertEquals(vastdb_rowid, null);
-        Assert.assertEquals(x.getObject(0).toString(), "x0");
-        Assert.assertEquals(y, null);
-    }
 
     @Test
     public void testRowsReturningTwoPuts()
-        throws VastException
+            throws VastException
     {
         VastClient client = sdk.getVastClient();
-        TransactionManager transactionsManager = new TransactionManager(client, new SimpleTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction(new StartTransactionContext(false, false));
+        TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
+        SimpleVastTransaction tx = transactionsManager.startTransaction();
         client.createTable(tx, new CreateTableContext(
-                                                      schemaName, "tab2", List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD, x, y),
-                                                      null, tableCreateProperties));
+                schemaName, "tab2", List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD, x, y),
+                null, null));
         transactionsManager.commit(tx);
 
         Table table = sdk.getTable(schemaName, "tab2");
@@ -359,14 +239,14 @@ public class TestIntegration
 
     @Test(dataProvider = "testRowsInsertedData")
     public void testRowsInserted(Integer nRows)
-        throws VastException
+            throws VastException
     {
         VastClient client = sdk.getVastClient();
-        TransactionManager transactionsManager = new TransactionManager(client, new SimpleTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction(new StartTransactionContext(false, false));
+        TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
+        SimpleVastTransaction tx = transactionsManager.startTransaction();
         client.createTable(tx, new CreateTableContext(
-                                                      schemaName, "test" + nRows + "RowInserted", List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD, x, y),
-                                                      null, tableCreateProperties));
+                schemaName, "test" + nRows + "RowInserted", List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD, x, y),
+                null, null));
         transactionsManager.commit(tx);
 
         Table table = sdk.getTable(schemaName, "test" + nRows + "RowInserted");
@@ -410,24 +290,24 @@ public class TestIntegration
 
     @Test
     public void testNested1()
-        throws VastException
+            throws VastException
     {
         VastClient client = sdk.getVastClient();
-        TransactionManager transactionsManager = new TransactionManager(client, new SimpleTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction(new StartTransactionContext(false, false));
+        TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
+        SimpleVastTransaction tx = transactionsManager.startTransaction();
         client.createTable(tx, new CreateTableContext(
-                                                      schemaName, "nested1",
-                                                      List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD,
-                                                              new Field("str", FieldType.nullable(new ArrowType.Utf8()), null),
-                                                              new Field("nested", FieldType.nullable(new ArrowType.List()),
-                                                                        List.of(
-                                                                                new Field("item", FieldType.nullable(new ArrowType.Struct()),
-                                                                                          List.of(
-                                                                                                  new Field("a", FieldType.nullable(new ArrowType.Int(16, true)), null),
-                                                                                                  new Field("b", FieldType.nullable(new ArrowType.Int(32, true)), null),
-                                                                                                  new Field("c", FieldType.nullable(new ArrowType.Int(64, true)), null),
-                                                                                                  new Field("d", FieldType.nullable(new ArrowType.Utf8()), null)))))),
-                                                      null, tableCreateProperties));
+                schemaName, "nested1",
+                List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD,
+                        new Field("str", FieldType.nullable(new ArrowType.Utf8()), null),
+                        new Field("nested", FieldType.nullable(new ArrowType.List()),
+                                List.of(
+                                        new Field("item", FieldType.nullable(new ArrowType.Struct()),
+                                                List.of(
+                                                        new Field("a", FieldType.nullable(new ArrowType.Int(16, true)), null),
+                                                        new Field("b", FieldType.nullable(new ArrowType.Int(32, true)), null),
+                                                        new Field("c", FieldType.nullable(new ArrowType.Int(64, true)), null),
+                                                        new Field("d", FieldType.nullable(new ArrowType.Utf8()), null)))))),
+                null, null));
         transactionsManager.commit(tx);
 
         Table table = sdk.getTable(schemaName, "nested1");
@@ -485,15 +365,15 @@ public class TestIntegration
 
     @Test(expectedExceptions = NoExternalRowIdColumnException.class)
     public void testNoExternalRowIdColumn()
-        throws VastException
+            throws VastException
     {
 
         VastClient client = sdk.getVastClient();
-        TransactionManager transactionsManager = new TransactionManager(client, new SimpleTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction(new StartTransactionContext(false, false));
+        TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
+        SimpleVastTransaction tx = transactionsManager.startTransaction();
         client.createTable(tx, new CreateTableContext(
-                                                      schemaName, "no-external-rowid-column", List.of(x),
-                                                      null, tableCreateProperties));
+                schemaName, "no-external-rowid-column", List.of(x),
+                null, null));
         transactionsManager.commit(tx);
 
         Table table = sdk.getTable(schemaName, "no-external-rowid-column");
@@ -501,23 +381,23 @@ public class TestIntegration
     }
 
     static String createSingleColumnTable(VastClient client, String schema, String table, ArrowType type)
-        throws VastException
+            throws VastException
     {
         String columnName = "col";
 
-        TransactionManager transactionsManager = new TransactionManager(client, new SimpleTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction(new StartTransactionContext(false, false));
+        TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
+        SimpleVastTransaction tx = transactionsManager.startTransaction();
         client.createTable(tx, new CreateTableContext(schema,
-                                                      table,
-                                                      List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD,
-                                                              new Field(columnName, FieldType.nullable(type), null)), null, tableCreateProperties));
+                table,
+                List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD,
+                        new Field(columnName, FieldType.nullable(type), null)), null, null));
         transactionsManager.commit(tx);
         return columnName;
     }
 
     @Test
     public void testInsertBool()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_bool";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Bool());
@@ -540,7 +420,7 @@ public class TestIntegration
 
     @Test
     public void testInsertInt8()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_int8";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Int(8, true));
@@ -563,7 +443,7 @@ public class TestIntegration
 
     @Test
     public void testInsertInt16()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_int16";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Int(16, true));
@@ -586,7 +466,7 @@ public class TestIntegration
 
     @Test
     public void testInsertInt32()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_int32";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Int(32, true));
@@ -609,7 +489,7 @@ public class TestIntegration
 
     @Test
     public void testInsertInt64()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_int64";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Int(64, true));
@@ -632,7 +512,7 @@ public class TestIntegration
 
     @Test
     public void testInsertUInt8()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_uint8";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Int(8, false));
@@ -655,7 +535,7 @@ public class TestIntegration
 
     @Test
     public void testInsertUInt16()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_uint16";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Int(16, false));
@@ -678,7 +558,7 @@ public class TestIntegration
 
     @Test
     public void testInsertUInt32()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_uint32";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Int(32, false));
@@ -701,7 +581,7 @@ public class TestIntegration
 
     @Test
     public void testInsertUInt64()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_uint64";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Int(64, false));
@@ -724,7 +604,7 @@ public class TestIntegration
 
     @Test
     public void testInsertFloat32()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_float32";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.FloatingPoint(FloatingPointPrecision.SINGLE));
@@ -747,7 +627,7 @@ public class TestIntegration
 
     @Test
     public void testInsertFloat64()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_float64";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.FloatingPoint(FloatingPointPrecision.DOUBLE));
@@ -770,7 +650,7 @@ public class TestIntegration
 
     @Test
     public void testInsertDecimal128()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_decimal128";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Decimal(12, 2));
@@ -793,7 +673,7 @@ public class TestIntegration
 
     @Test
     public void testInsertTimestampSecond()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_timestamp_second";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Timestamp(TimeUnit.SECOND, null));
@@ -816,7 +696,7 @@ public class TestIntegration
 
     @Test
     public void testInsertTimestampMillisecond()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_timestamp_millisecond";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Timestamp(TimeUnit.MILLISECOND, null));
@@ -839,7 +719,7 @@ public class TestIntegration
 
     @Test
     public void testInsertTimestampMicrosecond()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_timestamp_microsecond";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Timestamp(TimeUnit.MICROSECOND, null));
@@ -862,7 +742,7 @@ public class TestIntegration
 
     @Test
     public void testInsertTimestampNanosecond()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_timestamp_nanosecond";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Timestamp(TimeUnit.NANOSECOND, null));
@@ -885,7 +765,7 @@ public class TestIntegration
 
     @Test
     public void testInsertTime64Microsecond()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_time64_microsecond";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Time(TimeUnit.MICROSECOND, 64));
@@ -908,7 +788,7 @@ public class TestIntegration
 
     @Test
     public void testInsertDate32()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_date32";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Date(DateUnit.DAY));
@@ -931,7 +811,7 @@ public class TestIntegration
 
     @Test
     public void testInsertString()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_string";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Utf8());
@@ -954,7 +834,7 @@ public class TestIntegration
 
     @Test
     public void testInsertBinary()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_binary";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Binary());
@@ -977,7 +857,7 @@ public class TestIntegration
 
     @Test
     public void testInsertUtf8()
-        throws VastException
+            throws VastException
     {
         String tableName = "types_utf8";
         String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Utf8());
@@ -1000,18 +880,18 @@ public class TestIntegration
 
     @Test
     public void testTimeTypes()
-        throws VastException
+            throws VastException
     {
         VastClient client = sdk.getVastClient();
-        TransactionManager transactionsManager = new TransactionManager(client, new SimpleTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction(new StartTransactionContext(false, false));
+        TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
+        SimpleVastTransaction tx = transactionsManager.startTransaction();
         client.createTable(tx, new CreateTableContext(
-                                                      schemaName, "time_types",
-                                                      List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD,
-                                                              new Field("time32_second", FieldType.nullable(new ArrowType.Time(TimeUnit.SECOND, 32)), null),
-                                                              new Field("time32_millisecond", FieldType.nullable(new ArrowType.Time(TimeUnit.MILLISECOND, 32)), null),
-                                                              new Field("time64_nanosecond", FieldType.nullable(new ArrowType.Time(TimeUnit.NANOSECOND, 64)), null)),
-                                                      null, tableCreateProperties));
+                schemaName, "time_types",
+                List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD,
+                        new Field("time32_second", FieldType.nullable(new ArrowType.Time(TimeUnit.SECOND, 32)), null),
+                        new Field("time32_millisecond", FieldType.nullable(new ArrowType.Time(TimeUnit.MILLISECOND, 32)), null),
+                        new Field("time64_nanosecond", FieldType.nullable(new ArrowType.Time(TimeUnit.NANOSECOND, 64)), null)),
+                null, null));
         transactionsManager.commit(tx);
 
         Table table = sdk.getTable(schemaName, "time_types");
@@ -1044,17 +924,17 @@ public class TestIntegration
 
     @Test
     public void testNulls()
-        throws VastException
+            throws VastException
     {
         VastClient client = sdk.getVastClient();
-        TransactionManager transactionsManager = new TransactionManager(client, new SimpleTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction(new StartTransactionContext(false, false));
+        TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
+        SimpleVastTransaction tx = transactionsManager.startTransaction();
         client.createTable(tx, new CreateTableContext(
-                                                      schemaName, "nulls",
-                                                      List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD,
-                                                              new Field("x", FieldType.nullable(new ArrowType.Int(32, true)), null),
-                                                              new Field("y", FieldType.nullable(new ArrowType.Int(32, true)), null)),
-                                                      null, tableCreateProperties));
+                schemaName, "nulls",
+                List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD,
+                        new Field("x", FieldType.nullable(new ArrowType.Int(32, true)), null),
+                        new Field("y", FieldType.nullable(new ArrowType.Int(32, true)), null)),
+                null, null));
         transactionsManager.commit(tx);
 
         Table table = sdk.getTable(schemaName, "nulls");
@@ -1105,216 +985,4 @@ public class TestIntegration
         Assert.assertTrue(((IntVector) row3.getVector("x")).isNull(0));
         Assert.assertTrue(((IntVector) row3.getVector("y")).isNull(0));
     }
-
-
-    @Test
-    public void testDeleteSanity()
-        throws VastException
-    {
-        VastClient client = sdk.getVastClient();
-        TransactionManager transactionsManager = new TransactionManager(client, new SimpleTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction(new StartTransactionContext(false, false));
-        client.createTable(tx, new CreateTableContext(
-                                                      schemaName, "delete_sanity", List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD, x, y),
-                                                      null, tableCreateProperties));
-        transactionsManager.commit(tx);
-
-        Table table = sdk.getTable(schemaName, "delete_sanity");
-        table.loadSchema();
-
-        RootAllocator allocator = new RootAllocator();
-
-        // Insert 3 rows
-        int nRows = 3;
-        VarCharVector xVector = new VarCharVector("x", allocator);
-        xVector.allocateNew(nRows);
-        for (int i = 0; i < nRows; i++) {
-            xVector.set(i, ("x" + i).getBytes());
-        }
-        xVector.setValueCount(nRows);
-
-        VarCharVector yVector = new VarCharVector("y", allocator);
-        yVector.allocateNew(nRows);
-        for (int i = 0; i < nRows; i++) {
-            yVector.set(i, ("y" + i).getBytes());
-        }
-        yVector.setValueCount(nRows);
-
-        ArrayList<FieldVector> fieldVectors = new ArrayList<>();
-        fieldVectors.add(xVector);
-        fieldVectors.add(yVector);
-
-        VectorSchemaRoot vsr = new VectorSchemaRoot(table.getSchema(), fieldVectors, nRows);
-        final VectorSchemaRoot insertedRowIdsVsr = table.put(vsr); // Row IDs 0, 1, 2
-
-        UInt8Vector insertedRowIds = (UInt8Vector) insertedRowIdsVsr.getVector(0);
-
-        // Verify initial insertion
-        assertEquals(insertedRowIds.get(0), 0);
-        assertEquals(insertedRowIds.get(1), 1);
-        assertEquals(insertedRowIds.get(2), 2);
-        assertEquals(table.get(null, 0).getRowCount(), 1);
-        assertEquals(table.get(null, 1).getRowCount(), 1);
-        assertEquals(table.get(null, 2).getRowCount(), 1);
-
-        // Prepare row IDs for deletion (delete row 1)
-        RootAllocator deleteAllocator = new RootAllocator();
-        UInt8Vector rowIdsToDelete = new UInt8Vector("$rowid", deleteAllocator);
-        rowIdsToDelete.allocateNew(1);
-        rowIdsToDelete.setSafe(0, 1); // Delete row with ID 1
-        rowIdsToDelete.setValueCount(1);
-
-        Schema deleteSchema = new Schema(List.of(ArrowSchemaUtils.ROW_ID_FIELD));
-        VectorSchemaRoot deleteVsr = new VectorSchemaRoot(deleteSchema, List.of(rowIdsToDelete), 1);
-
-        // Perform deletion
-        table.delete(deleteVsr);
-
-        // Verify deletion
-        assertEquals(table.get(null, 0).getRowCount(), 1, "Row 0 should still exist");
-        assertEquals(table.get(null, 1).getRowCount(), 0, "Row 1 should have been deleted");
-        assertEquals(table.get(null, 2).getRowCount(), 1, "Row 2 should still exist");
-    }
-
-    @Test
-    public void testDeleteNonExistentRowId()
-        throws VastException
-    {
-        VastClient client = sdk.getVastClient();
-        TransactionManager transactionsManager = new TransactionManager(client, new SimpleTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction(new StartTransactionContext(false, false));
-        client.createTable(tx, new CreateTableContext(
-                                                      schemaName, "delete_nonexistent_row", List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD, x, y),
-                                                      null, tableCreateProperties));
-        transactionsManager.commit(tx);
-
-        Table table = sdk.getTable(schemaName, "delete_nonexistent_row");
-        table.loadSchema();
-
-        RootAllocator allocator = new RootAllocator();
-
-        // Insert 3 rows
-        int nRows = 3;
-        VarCharVector xVector = new VarCharVector("x", allocator);
-        xVector.allocateNew(nRows);
-        for (int i = 0; i < nRows; i++) {
-            xVector.set(i, ("x" + i).getBytes());
-        }
-        xVector.setValueCount(nRows);
-
-        VarCharVector yVector = new VarCharVector("y", allocator);
-        yVector.allocateNew(nRows);
-        for (int i = 0; i < nRows; i++) {
-            yVector.set(i, ("y" + i).getBytes());
-        }
-        yVector.setValueCount(nRows);
-
-        ArrayList<FieldVector> fieldVectors = new ArrayList<>();
-        fieldVectors.add(xVector);
-        fieldVectors.add(yVector);
-
-        VectorSchemaRoot vsr = new VectorSchemaRoot(table.getSchema(), fieldVectors, nRows);
-        final VectorSchemaRoot insertedRowIdsVsr = table.put(vsr); // Row IDs 0, 1, 2
-
-        UInt8Vector insertedRowIds = (UInt8Vector) insertedRowIdsVsr.getVector(0);
-
-        // Verify initial insertion
-        assertEquals(insertedRowIds.get(0), 0);
-        assertEquals(insertedRowIds.get(1), 1);
-        assertEquals(insertedRowIds.get(2), 2);
-        assertEquals(table.get(null, 0).getRowCount(), 1);
-        assertEquals(table.get(null, 1).getRowCount(), 1);
-        assertEquals(table.get(null, 2).getRowCount(), 1);
-
-        // Prepare row IDs for deletion (delete row 1)
-        RootAllocator deleteAllocator = new RootAllocator();
-        UInt8Vector rowIdsToDelete = new UInt8Vector("$rowid", deleteAllocator);
-        rowIdsToDelete.allocateNew(1);
-        rowIdsToDelete.setSafe(0, 100); // Delete row with ID 1
-        rowIdsToDelete.setValueCount(1);
-
-        Schema deleteSchema = new Schema(List.of(ArrowSchemaUtils.ROW_ID_FIELD));
-        VectorSchemaRoot deleteVsr = new VectorSchemaRoot(deleteSchema, List.of(rowIdsToDelete), 1);
-
-        // Perform deletion
-        table.delete(deleteVsr);
-
-        // Verify deletion
-        assertEquals(table.get(null, 0).getRowCount(), 1, "Row 0 should still exist");
-        assertEquals(table.get(null, 1).getRowCount(), 1, "Row 1 should still exist");
-        assertEquals(table.get(null, 2).getRowCount(), 1, "Row 2 should still exist");
-    }
-
-
-    @Test
-    public void testDeleteFewRowIds()
-        throws VastException
-    {
-        VastClient client = sdk.getVastClient();
-        TransactionManager transactionsManager = new TransactionManager(client, new SimpleTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction(new StartTransactionContext(false, false));
-        client.createTable(tx, new CreateTableContext(
-                                                      schemaName, "delete_few_rows", List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD, x, y),
-                                                      null, tableCreateProperties));
-        transactionsManager.commit(tx);
-
-        Table table = sdk.getTable(schemaName, "delete_few_rows");
-        table.loadSchema();
-
-        RootAllocator allocator = new RootAllocator();
-
-        // Insert 3 rows
-        int nRows = 3;
-        VarCharVector xVector = new VarCharVector("x", allocator);
-        xVector.allocateNew(nRows);
-        for (int i = 0; i < nRows; i++) {
-            xVector.set(i, ("x" + i).getBytes());
-        }
-        xVector.setValueCount(nRows);
-
-        VarCharVector yVector = new VarCharVector("y", allocator);
-        yVector.allocateNew(nRows);
-        for (int i = 0; i < nRows; i++) {
-            yVector.set(i, ("y" + i).getBytes());
-        }
-        yVector.setValueCount(nRows);
-
-        ArrayList<FieldVector> fieldVectors = new ArrayList<>();
-        fieldVectors.add(xVector);
-        fieldVectors.add(yVector);
-
-        VectorSchemaRoot vsr = new VectorSchemaRoot(table.getSchema(), fieldVectors, nRows);
-        final VectorSchemaRoot insertedRowIdsVsr = table.put(vsr); // Row IDs 0, 1, 2
-
-        UInt8Vector insertedRowIds = (UInt8Vector) insertedRowIdsVsr.getVector(0);
-
-        // Verify initial insertion
-        assertEquals(insertedRowIds.get(0), 0);
-        assertEquals(insertedRowIds.get(1), 1);
-        assertEquals(insertedRowIds.get(2), 2);
-        assertEquals(table.get(null, 0).getRowCount(), 1);
-        assertEquals(table.get(null, 1).getRowCount(), 1);
-        assertEquals(table.get(null, 2).getRowCount(), 1);
-
-        // Prepare row IDs for deletion (delete row 1)
-        RootAllocator deleteAllocator = new RootAllocator();
-        UInt8Vector rowIdsToDelete = new UInt8Vector("$rowid", deleteAllocator);
-        rowIdsToDelete.allocateNew(2);
-        rowIdsToDelete.setSafe(0, 0);
-        rowIdsToDelete.setSafe(1, 2);
-        rowIdsToDelete.setValueCount(2);
-
-        Schema deleteSchema = new Schema(List.of(ArrowSchemaUtils.ROW_ID_FIELD));
-        VectorSchemaRoot deleteVsr = new VectorSchemaRoot(deleteSchema, List.of(rowIdsToDelete), 2);
-
-        // Perform deletion
-        table.delete(deleteVsr);
-
-        // Verify deletion
-        assertEquals(table.get(null, 0).getRowCount(), 0, "Row 0 should have been deleted");
-        assertEquals(table.get(null, 1).getRowCount(), 1, "Row 1 should still exist");
-        assertEquals(table.get(null, 2).getRowCount(), 0, "Row 2 should have been deleted");
-    }
-
-
 }

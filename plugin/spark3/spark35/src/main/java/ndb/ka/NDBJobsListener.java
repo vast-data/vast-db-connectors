@@ -6,10 +6,9 @@ package ndb.ka;
 
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastConfig;
-import com.vastdata.client.error.VastIOException;
 import com.vastdata.client.tx.SimpleVastTransaction;
+import com.vastdata.client.tx.VastAutocommitTransaction;
 import com.vastdata.client.tx.ka.JobEventService;
-import com.vastdata.spark.tx.VastAutocommitTransaction;
 import org.apache.spark.scheduler.SparkListener;
 import org.apache.spark.scheduler.SparkListenerInterface;
 import org.apache.spark.scheduler.SparkListenerJobEnd;
@@ -49,14 +48,9 @@ public class NDBJobsListener
     public void onJobStart(SparkListenerJobStart jobStart)
     {
         LOG.info("onJobStart() {}", format("SparkListenerJobStart: id:%s, time:%s", jobStart.jobId(), jobStart.time()));
-        try {
-            SimpleVastTransaction existing = VastAutocommitTransaction.getExisting();
-            if (existing != null) {
-                eventConsumer.notifyTxActivityStart(existing);
-            }
-        }
-        catch (VastIOException e) {
-            LOG.error("Failed getting existing transaction", e);
+        SimpleVastTransaction existing = VastAutocommitTransaction.getExisting();
+        if (existing != null) {
+            eventConsumer.notifyTxActivityStart(existing);
         }
     }
 
@@ -64,14 +58,9 @@ public class NDBJobsListener
     public void onJobEnd(SparkListenerJobEnd jobEnd)
     {
         LOG.info("onJobEnd() {}", format("SparkListenerJobEnd: id:%s, time:%s, result:%s", jobEnd.jobId(), jobEnd.time(), jobEnd.jobResult()));
-        try {
-            SimpleVastTransaction existing = VastAutocommitTransaction.getExisting();
-            if (existing != null) {
-                eventConsumer.notifyTxActivityEnd(existing);
-            }
-        }
-        catch (VastIOException e) {
-            LOG.error("Failed getting existing transaction", e);
+        SimpleVastTransaction existing = VastAutocommitTransaction.getExisting();
+        if (existing != null) {
+            eventConsumer.notifyTxActivityEnd(existing);
         }
     }
 }

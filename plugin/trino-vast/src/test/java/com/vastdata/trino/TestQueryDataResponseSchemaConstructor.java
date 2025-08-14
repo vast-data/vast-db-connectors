@@ -6,7 +6,6 @@ package com.vastdata.trino;
 
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
-import io.trino.spi.Page;
 import io.trino.spi.block.ArrayBlock;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.ByteArrayBlock;
@@ -15,12 +14,13 @@ import io.trino.spi.block.LongArrayBlock;
 import io.trino.spi.block.RowBlock;
 import io.trino.spi.block.ShortArrayBlock;
 import io.trino.spi.block.VariableWidthBlock;
+import io.trino.spi.connector.SourcePage;
 import io.trino.spi.type.ArrayType;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.FieldType;
 import org.apache.arrow.vector.types.pojo.Schema;
-import org.testng.annotations.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -32,8 +32,8 @@ import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.spi.type.BooleanType.wrapByteArrayAsBooleanBlockWithoutNulls;
 import static io.trino.spi.type.TinyintType.TINYINT;
 import static io.trino.spi.type.VarcharType.VARCHAR;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class TestQueryDataResponseSchemaConstructor
 {
@@ -87,7 +87,7 @@ public class TestQueryDataResponseSchemaConstructor
         int offset = slice.length();
         VariableWidthBlock varcharBlock = new VariableWidthBlock(1, slice, new int[] {0, offset}, Optional.of(new boolean[] {false}));
         Block[] mockBlocks = new Block[] {varcharBlock, tinyIntRowBlock, smallIntRowBlock, booleanBlock};
-        Page constructedPage = unit.construct(mockBlocks, 0);
+        SourcePage constructedPage = unit.construct(mockBlocks, 0);
         assertEquals(constructedPage.getChannelCount(), 3);
     }
 
@@ -129,7 +129,7 @@ public class TestQueryDataResponseSchemaConstructor
         Block row2 = RowBlock.fromNotNullSuppressedFieldBlocks(1, Optional.of(new boolean[] {false}), new Block[] {booleanBlock});
         Block row3 = RowBlock.fromNotNullSuppressedFieldBlocks(1, Optional.of(new boolean[] {false}), new Block[] {varcharBlock});
         Block[] mockBlocks = new Block[] {row1, row2, row3};
-        Page constructedPage = unit.construct(mockBlocks, 0);
+        SourcePage constructedPage = unit.construct(mockBlocks, 0);
         assertEquals(constructedPage.getChannelCount(), 1);
         assertTrue(constructedPage.getBlock(0) instanceof RowBlock);
     }
@@ -182,7 +182,7 @@ public class TestQueryDataResponseSchemaConstructor
         Block arrayBlock = ArrayBlock.fromElementBlock(1, Optional.of(new boolean[] {false}), new int[] {0, 1}, longBlock);
         Block[] mockBlocks = new Block[] {intBlock, booleanBlock, varcharBlock, arrayBlock,
                 RowBlock.fromNotNullSuppressedFieldBlocks(1, Optional.of(new boolean[] {false}), new Block[] {arrayBlock})};
-        Page constructedPage = unit.construct(mockBlocks, 0);
+        SourcePage constructedPage = unit.construct(mockBlocks, 0);
         assertEquals(constructedPage.getChannelCount(), 5);
         assertTrue(constructedPage.getBlock(3) instanceof ArrayBlock);
         assertTrue(constructedPage.getBlock(4) instanceof RowBlock);
@@ -236,7 +236,7 @@ public class TestQueryDataResponseSchemaConstructor
         Block projection5 = RowBlock.fromNotNullSuppressedFieldBlocks(1, Optional.of(new boolean[] {false}), new Block[] {subRowBoolBlock});
         Block projection7 = RowBlock.fromNotNullSuppressedFieldBlocks(1, Optional.of(new boolean[] {false}), new Block[] {subRowArrayBlock});
         Block[] testBlocks = new Block[] {projection2, projection3, projection5, projection7};
-        Page constructedPage = unit.construct(testBlocks, 1);
+        SourcePage constructedPage = unit.construct(testBlocks, 1);
         assertEquals(constructedPage.getChannelCount(), 1);
         assertTrue(constructedPage.getBlock(0) instanceof RowBlock);
     }
@@ -298,7 +298,7 @@ public class TestQueryDataResponseSchemaConstructor
         Block nestedRow2 = RowBlock.fromNotNullSuppressedFieldBlocks(1, Optional.of(new boolean[] {false}), new Block[] {nestedRowSubBlock2});
         Block nestedrow3 = RowBlock.fromNotNullSuppressedFieldBlocks(1, Optional.of(new boolean[] {false}), new Block[] {longBlock});
         Block nestedrow4 = RowBlock.fromNotNullSuppressedFieldBlocks(1, Optional.of(new boolean[] {false}), new Block[] {byteArrayBlock});
-        Page constructedPage = unit.construct(new Block[] {arraycolBlock, nestedRow1, nestedRow2, nestedrow3, nestedrow4}, 1);
+        SourcePage constructedPage = unit.construct(new Block[] {arraycolBlock, nestedRow1, nestedRow2, nestedrow3, nestedrow4}, 1);
         assertEquals(constructedPage.getChannelCount(), 2);
         assertTrue(constructedPage.getBlock(0) instanceof ArrayBlock);
         Block rowBlock = constructedPage.getBlock(1);
@@ -360,7 +360,7 @@ public class TestQueryDataResponseSchemaConstructor
         Block nestedRowSubBlock2 = RowBlock.fromNotNullSuppressedFieldBlocks(1, Optional.of(new boolean[] {false}), new Block[] {longArrayBlock});
         Block nestedRow2 = RowBlock.fromNotNullSuppressedFieldBlocks(1, Optional.of(new boolean[] {false}), new Block[] {nestedRowSubBlock2});
 
-        Page constructedPage = unit.construct(new Block[] {nestedRow1, nestedRow2}, 1);
+        SourcePage constructedPage = unit.construct(new Block[] {nestedRow1, nestedRow2}, 1);
         assertEquals(constructedPage.getChannelCount(), 1);
         Block rowBlock = constructedPage.getBlock(0);
         assertTrue(rowBlock instanceof RowBlock);

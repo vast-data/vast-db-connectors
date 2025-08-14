@@ -71,10 +71,6 @@ public class VastRootHandler
         else {
             handlersMap.getOrDefault(method, THROWER).accept(he);
         }
-//        optionalHook.ifPresentOrElse(hook -> {
-//                    LOG.info("Found hook for request: %s", requestHookKey);
-//                    hook.accept(he);
-//                }, () -> handlersMap.getOrDefault(method, THROWER).accept(he));
     }
 
     public void setSchema(Map<String, Set<MockMapSchema>> schema)

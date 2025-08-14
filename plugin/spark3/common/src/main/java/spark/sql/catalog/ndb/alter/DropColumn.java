@@ -21,6 +21,6 @@ public class DropColumn extends AbstractColumnsChange
     protected void executeAction(VastClient vastClient, VastTransaction vastTransaction, TableColumnLifecycleContext columnCtx)
             throws VastException
     {
-        vastClient.dropColumn(vastTransaction, columnCtx);
+        vastClient.dropColumn(vastTransaction, columnCtx, null);
     }
 }
