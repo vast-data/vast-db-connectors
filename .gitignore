@@ -28,3 +28,4 @@ product-test-reports
 .vscode/
 /gib-impacted.log
 /trino-server-*/
+.direnv/
