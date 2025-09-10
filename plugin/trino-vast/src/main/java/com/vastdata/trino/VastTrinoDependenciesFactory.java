@@ -5,6 +5,7 @@
 package com.vastdata.trino;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.inject.Inject;
 import com.vastdata.client.CommonRequestHeadersBuilder;
 import com.vastdata.client.ValidSchemaNamePredicate;
 import com.vastdata.client.VastDependenciesFactory;
@@ -30,6 +31,8 @@ public class VastTrinoDependenciesFactory
 {
     private static final Logger LOG = Logger.get(VastTrinoDependenciesFactory.class);
 
+    private VastTrinoConfig config;
+
     static final ConfigDefaults<HttpClientConfig> HTTP_CLIENT_CONFIG_CONFIG_DEFAULTS = cfg -> {
         cfg.setConnectTimeout(new Duration(1, MINUTES));
         cfg.setIdleTimeout(new Duration(3600, SECONDS));
@@ -41,6 +44,12 @@ public class VastTrinoDependenciesFactory
         cfg.setTimeoutConcurrency(4);
         cfg.setKeyStorePath(null); // explicit overwrite the keyStorePath (used by jetty sslContextFactory)
     };
+
+    @Inject
+    public VastTrinoDependenciesFactory(final VastTrinoConfig config)
+    {
+        this.config = config;
+    }
 
     @VisibleForTesting protected static final String VAST_TRINO_CLIENT_TAG = "VastTrinoPlugin-" + VastVersion.SYS_VERSION;
     private final Predicate<String> schemaNamePredicate = new ValidSchemaNamePredicate();
@@ -57,7 +66,7 @@ public class VastTrinoDependenciesFactory
         String trinoVersion = Connector.class.getPackage().getImplementationVersion();
         final VastRequestHeadersBuilder builder = new CommonRequestHeadersBuilder(() -> VAST_TRINO_CLIENT_TAG + "-trino-" + trinoVersion);
         if (endUser != null) {
-            if (VastSecurityAccessControl.isEndUserImpersonationEnabled()) {
+            if (config.isEndUserImpersonationEnabled()) {
                 LOG.debug("end-user-impersonation is enabled, adding header %s=%s", END_USER.getHeaderName(), endUser);
                 return builder.withEndUser(endUser);
             }

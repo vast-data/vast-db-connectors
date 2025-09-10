@@ -12,6 +12,7 @@ import com.vastdata.client.VastConfig;
 import com.vastdata.trino.TypeUtils;
 import com.vastdata.trino.VastColumnHandle;
 import com.vastdata.trino.VastTableHandle;
+import com.vastdata.trino.VastTrinoConfig;
 import io.airlift.log.Logger;
 import io.trino.spi.block.Block;
 import io.trino.spi.block.ByteArrayBlock;
@@ -83,9 +84,9 @@ public class VastStatisticsManager
     private final TrinoPersistentStatistics storage;
 
     @Inject
-    public VastStatisticsManager(VastClient client, VastConfig config)
+    public VastStatisticsManager(final VastClient client, final VastConfig config, final VastTrinoConfig trinoConfig)
     {
-        this.storage = new TrinoPersistentStatistics(client, config);
+        this.storage = new TrinoPersistentStatistics(client, config, trinoConfig);
     }
 
     public Optional<TableStatistics> getTableStatistics(VastTableHandle table){

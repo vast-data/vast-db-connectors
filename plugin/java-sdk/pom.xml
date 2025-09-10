@@ -84,32 +84,20 @@
         </dependency>
     </dependencies>
     
-    <distributionManagement>
-        <repository>
-            <id>vast-maven-release</id>
-            <name>VAST Maven Release Repository</name>
-            <url>s3://vast-maven-repo/release</url>
-        </repository>
-    </distributionManagement>
-
     <repositories>
-	    <repository>
+	<repository>
             <id>central</id>
             <name>Maven Central Repository</name>
             <url>https://repo.maven.apache.org/maven2</url>
-	    </repository>
-	    <repository>
-	        <id>vastdb-maven-release</id>
-	        <url>https://vast-maven-repo.s3.amazonaws.com/release</url>
-	    </repository>
+	</repository>
     </repositories>
 
     <pluginRepositories>
-	    <pluginRepository>
+	<pluginRepository>
             <id>central</id>
             <name>Maven Central Plugin Repository</name>
             <url>https://repo.maven.apache.org/maven2</url>
-	    </pluginRepository>
+	</pluginRepository>
     </pluginRepositories>
     
     <build>

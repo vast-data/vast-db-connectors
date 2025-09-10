@@ -71,6 +71,17 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-VDB-thriftserver_2.13</artifactId>
+            <version>3.5.2.1414466</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>*</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
             <groupId>io.airlift</groupId>
             <artifactId>units</artifactId>
             <version>1.6</version>

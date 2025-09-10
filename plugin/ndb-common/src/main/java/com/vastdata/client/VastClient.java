@@ -644,18 +644,16 @@ public class VastClient
     public RowColumnSecurityResponse getRowColumnSecurity(final VastTransaction transaction, final String schema, final String tableName, final String endUser)
             throws VastServerException, VastUserException
     {
-        LOG.debug("getRowColumnSecurity: schema=%s, name=%s, tx=%s)", schema, tableName, transaction);
+        LOG.debug("getRowColumnSecurity: starting schema=%s, name=%s, tx=%s", schema, tableName, transaction);
         VerifyParam.verify(!Strings.isNullOrEmpty(schema), "schema is null or empty");
         VerifyParam.verify(!Strings.isNullOrEmpty(tableName), "tableName is null or empty");
-        // TODO: is this the right way to handle this?  See https://vastdata.slack.com/archives/C082HQCLZPC/p1742833497516579
-        if (SPECIAL_SCHEMAS.contains(schema) || INTERNAL_BUCKETS_NO_VIEW_OPERATIONS.stream().anyMatch(bucket -> schema.startsWith(bucket + "/"))) {
-            return new RowColumnSecurityResponse(Collections.emptyList(), Collections.emptySet(),Collections.emptySet(), Collections.emptyMap());
-        }
         final String path = BASE + schema + "/" + tableName;
         final AtomicReference<RowColumnSecurityResponse> result = new AtomicReference<>();
         final Consumer<GetRowColumnSecurityResponse> resultConsumer = r -> result.set(streamGetRowColumnSecurityResponse.apply(r));
         singleObjectFetch(transaction, VastClient::parseGetRowColumnSecurityResponse, resultConsumer, Requests.ROW_COLUMN_SECURITY, path, tableName, endUser, true);
-        return result.get();
+        final RowColumnSecurityResponse response = result.get();
+        LOG.debug("getRowColumnSecurity: finished schema=%s, name=%s, tx=%s response=%s", schema, tableName, transaction, response);
+        return response;
     }
 
     public void createSchema(VastTransaction transaction, String schemaName, String serializedProperties, final String endUser)

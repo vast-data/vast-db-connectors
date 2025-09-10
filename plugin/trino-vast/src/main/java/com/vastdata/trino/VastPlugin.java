@@ -17,10 +17,4 @@ public class VastPlugin
     {
         return ImmutableList.of(new VastConnectorFactory());
     }
-
-    @Override
-    public Iterable<SystemAccessControlFactory> getSystemAccessControlFactories()
-    {
-        return ImmutableList.of(new VastSystemAccessControlFactory());
-    }
 }

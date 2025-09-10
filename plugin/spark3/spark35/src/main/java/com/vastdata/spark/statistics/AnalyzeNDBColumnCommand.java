@@ -41,9 +41,7 @@ import java.util.stream.IntStream;
 
 import static com.vastdata.spark.statistics.StatsUtils.getVastClient;
 import static java.lang.String.format;
-import static java.util.Collections.emptyList;;
 import static spark.sql.catalog.ndb.TypeUtil.SPARK_ROW_ID_FIELD;
-import static scala.collection.JavaConverters.seqAsJavaList;
 
 public class AnalyzeNDBColumnCommand
         extends V2CommandExec
@@ -54,19 +52,11 @@ public class AnalyzeNDBColumnCommand
 
     private final ResolvedTable relation;
     private final VastTable table;
-    private final java.util.List<String> columnNames;
 
-    private AnalyzeNDBColumnCommand(ResolvedTable relation, Option<Seq<String>> columnNames) {
+    private AnalyzeNDBColumnCommand(ResolvedTable relation) {
         super();
         this.relation = relation;
         this.table = (VastTable) relation.table();
-        if (columnNames.isEmpty()) {
-            this.columnNames = emptyList();
-        }
-        else {
-            this.columnNames = seqAsJavaList(columnNames.get());
-        }
-        LOG.info("column names: {}",this. columnNames);
     }
 
     @Override
@@ -93,14 +83,10 @@ public class AnalyzeNDBColumnCommand
         Seq<Attribute> columns = rel.output();
         Builder<Attribute, List<Attribute>> newOutputBuilder = List.newBuilder();
         IntStream.range(0, columns.size()).mapToObj(columns::apply).filter(ar -> {
-            if (!columnNames.contains( ar.name())) {
-                return false;
-            }
             AtomicBoolean isRowId = new AtomicBoolean(false);
             ar.references().foreach(ref -> {
                 if (ref.name().equals(SPARK_ROW_ID_FIELD.name())) {
                     isRowId.set(true);
-                    LOG.info("ref name: {}", ref.name());
                 }
                 return null;
             });
@@ -200,7 +186,7 @@ public class AnalyzeNDBColumnCommand
         // TODO: support "ANALYZE TABLE t COMPUTE STATISTICS FOR COLUMNS c1,...cN" (see AnalyzeColumn#columnNames)
         LogicalPlan child = plan.child();
         if (child instanceof ResolvedTable) {
-            return new AnalyzeNDBColumnCommand((ResolvedTable) child, plan.columnNames());
+            return new AnalyzeNDBColumnCommand((ResolvedTable) child);
         }
         else {
             throw new RuntimeException(format("Unexpected child plan type: %s", plan));
