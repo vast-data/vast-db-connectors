@@ -73,6 +73,10 @@ public class VastSessionProperties
 
     private static final String COMPRESSION = "compression";
 
+    private static final String ENABLE_ACCESS_CONTROL = "enable_access_control";
+    private static final String ENABLE_ROW_COLUMN_SECURITY = "enable_row_column_security";
+    private static final String ENABLE_END_USER_IMPERSONATION = "enable_end_user_impersonation";
+
     private static final Splitter SPLITTER = Splitter.on(',').trimResults().omitEmptyStrings();
 
     private final List<PropertyMetadata<?>> sessionProperties;
@@ -407,6 +411,21 @@ public class VastSessionProperties
     public static int getImportChunkLimit(ConnectorSession session)
     {
         return session.getProperty(IMPORT_CHUNK_LIMIT, Integer.class);
+    }
+
+    public static boolean getEnableAccessControl(final ConnectorSession session)
+    {
+        return session.getProperty(ENABLE_ACCESS_CONTROL, boolean.class);
+    }
+
+    public static boolean getEnableRowColumnSecurity(final ConnectorSession session)
+    {
+        return session.getProperty(ENABLE_ROW_COLUMN_SECURITY, boolean.class);
+    }
+
+    public static boolean getEnableEndUserImpersonation(final ConnectorSession session)
+    {
+        return session.getProperty(ENABLE_END_USER_IMPERSONATION, boolean.class);
     }
 
     public static boolean getEstimateSplitsFromRowIdPredicate(ConnectorSession session)

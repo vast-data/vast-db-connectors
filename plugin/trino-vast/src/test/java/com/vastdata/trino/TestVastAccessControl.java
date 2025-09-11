@@ -21,10 +21,10 @@ import com.vastdata.mockserver.VastRootHandler;
 import com.vastdata.trino.tx.VastTransactionHandleFactory;
 import com.vastdata.trino.tx.VastTrinoTransactionHandleManager;
 import io.airlift.http.client.jetty.JettyHttpClient;
-import io.trino.spi.connector.CatalogSchemaTableName;
+import io.trino.spi.connector.ConnectorSecurityContext;
+import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.security.AccessDeniedException;
-import io.trino.spi.security.Identity;
-import io.trino.spi.security.SystemSecurityContext;
+import io.trino.spi.security.ConnectorIdentity;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -54,17 +54,16 @@ import static org.mockito.Mockito.when;
 import static org.mockito.MockitoAnnotations.openMocks;
 import static org.testng.Assert.assertThrows;
 
-public class TestVastSecurityAccessControl
+public class TestVastAccessControl
 {
-    public static final String CATALOG_NAME = "vast";
     public static final String TEST_BUCKET = "buck";
     private static VastMockS3Server mockServer;
     private static final VastRootHandler handler = new VastRootHandler();
     @Mock VastTransaction mockTransactionHandle;
-    @Mock SystemSecurityContext ctxMock;
+    @Mock ConnectorSecurityContext ctxMock;
     private static AutoCloseable autoCloseable;
     private static VastClient vastClient;
-    private static final Identity IDENTITY_1 = Identity.forUser("user1").build();
+    private static final ConnectorIdentity IDENTITY_1 = ConnectorIdentity.forUser("user1").build();
 
     static {
         VastAutocommitTransaction.alterTransaction = ALWAYS_EMPTY_TRANSACTION;
@@ -189,10 +188,13 @@ public class TestVastSecurityAccessControl
         String tableName = "t1";
         doReturn(res).when(spy).getRowColumnSecurity(any(VastAutocommitTransaction.class), anyString(), anyString(), nullable(String.class));
         VastTrinoTransactionHandleManager tm = new VastTrinoTransactionHandleManager(spy, new VastTransactionHandleFactory());
-        VastSecurityAccessControl.setup(shouldEnableRowColumnSecurity, shouldEnableEndUserImpersonation);
-        VastSecurityAccessControl unit = new VastSecurityAccessControl(spy, tm);
+        final VastTrinoConfig config = new VastTrinoConfig();
+        config.setEnableAccessControl(true);
+        config.setEnableRowColumnSecurity(shouldEnableRowColumnSecurity);
+        config.setEnableEndUserImpersonation(shouldEnableEndUserImpersonation);
+        VastAccessControl unit = new VastAccessControl(config, spy, tm);
         Set<String> columns = Sets.newHashSet("column1", "column2", "column3");
-        CatalogSchemaTableName table = new CatalogSchemaTableName(CATALOG_NAME, schemaName, tableName);
+        SchemaTableName table = new SchemaTableName(schemaName, tableName);
         unit.checkCanSelectFromColumns(ctxMock, table, columns);
     }
 

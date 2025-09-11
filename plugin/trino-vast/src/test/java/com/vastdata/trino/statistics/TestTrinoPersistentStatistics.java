@@ -87,7 +87,7 @@ public class TestTrinoPersistentStatistics
     {
         VastClient client = mockClient;
         VastConfig config = getMockServerReadyVastConfig();
-        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(client, config);
+        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(client, config, null);
         VastTableHandle table = new VastTableHandle(BIG_CATALOG_SCHEMA_PREFIX + BIG_CATALOG_SCHEMA_PREFIX,
                 BIG_CATALOG_TABLE_NAME, "id", false);
         TableStatistics stats = TableStatistics.builder().setRowCount(Estimate.of(11.0)).build();
@@ -122,7 +122,7 @@ public class TestTrinoPersistentStatistics
     {
         VastClient client = mockClient;
         VastConfig config = getMockServerReadyVastConfig();
-        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(client, config);
+        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(client, config, null);
         Field field = Field.nullable("x", new ArrowType.Int(32, true));
         ColumnHandle colHandle = VastColumnHandle.fromField(field);
         TableStatistics stats = TableStatistics.builder()
@@ -145,7 +145,7 @@ public class TestTrinoPersistentStatistics
     {
         VastClient client = mockClient;
         VastConfig config = getMockServerReadyVastConfig();
-        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(client, config);
+        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(client, config, null);
         Field field = Field.nullable("x", new ArrowType.Int(32, true));
         ColumnHandle colHandle = VastColumnHandle.fromField(field);
         TableStatistics stats = TableStatistics.builder()
@@ -169,7 +169,7 @@ public class TestTrinoPersistentStatistics
     {
         VastClient client = mockClient;
         VastConfig config = getMockServerReadyVastConfig();
-        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(client, config);
+        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(client, config, null);
         Field field = Field.nullable("x", new ArrowType.Int(32, true));
         ColumnHandle colHandle = VastColumnHandle.fromField(field);
         TableStatistics stats = TableStatistics.builder()
@@ -191,8 +191,8 @@ public class TestTrinoPersistentStatistics
     public void testTableStatisticsFetchRetryOnNetworkError()
     {
         VastConfig config = getMockServerReadyVastConfig();
-        VastClient spyClient = spy(new VastClient(null, config, new VastTrinoDependenciesFactory()));
-        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(spyClient, config, stats -> "{}");
+        VastClient spyClient = spy(new VastClient(null, config, new VastTrinoDependenciesFactory(null)));
+        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(spyClient, config, null, stats -> "{}");
         VastTableHandle table = new VastTableHandle("buck/schem", "tab", "id", false);
         try {
             persistentStatistics.setTableStatistics(table, null);
@@ -224,7 +224,7 @@ public class TestTrinoPersistentStatistics
     {
         VastClient mockClient = this.mockClient;
         VastConfig config = getMockServerReadyVastConfig();
-        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(mockClient, config);
+        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(mockClient, config, null);
         TableStatistics stats = TableStatistics.builder()
                 .setRowCount(Estimate.of(11.0))
                 .build();

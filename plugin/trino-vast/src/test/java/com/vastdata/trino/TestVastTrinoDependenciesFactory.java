@@ -21,11 +21,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class TestVastTrinoDependenciesFactory
 {
     private static final String DEFAULT_END_USER = "default-end-user";
+    private static final VastTrinoConfig config = new VastTrinoConfig();
 
     @Test
     public void testSchemaNameValidator()
     {
-        Predicate<String> unit = new VastTrinoDependenciesFactory().getSchemaNameValidator();
+        Predicate<String> unit = new VastTrinoDependenciesFactory(config).getSchemaNameValidator();
         assertFalse(unit.test("shouldFail"));
         assertTrue(unit.test("should/succeed"));
         assertTrue(unit.test("should/succeed/too"));
@@ -43,7 +44,7 @@ public class TestVastTrinoDependenciesFactory
     @Test
     public void testDefaultHeaders()
     {
-        VastRequestHeadersBuilder unit = new VastTrinoDependenciesFactory().getHeadersFactory(DEFAULT_END_USER);
+        VastRequestHeadersBuilder unit = new VastTrinoDependenciesFactory(config).getHeadersFactory(DEFAULT_END_USER);
         Multimap<String, String> headers = unit.build();
 
         assertMapKeyValue(headers, RequestsHeaders.TABULAR_API_VERSION_ID.getHeaderName(), VastRequestHeadersBuilder.VAST_CLIENT_API_VERSION);
@@ -54,7 +55,7 @@ public class TestVastTrinoDependenciesFactory
     @Test
     public void testAllHeaders()
     {
-        VastRequestHeadersBuilder unit = new VastTrinoDependenciesFactory().getHeadersFactory(DEFAULT_END_USER);
+        VastRequestHeadersBuilder unit = new VastTrinoDependenciesFactory(config).getHeadersFactory(DEFAULT_END_USER);
         String testTxidStr = "514026084031791104";
         VastTransaction testTx = new VastTransactionHandle(Long.parseUnsignedLong(testTxidStr));
         unit.withTransaction(testTx);

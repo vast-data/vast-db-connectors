@@ -15,6 +15,7 @@ import io.airlift.bootstrap.LifeCycleManager;
 import io.airlift.log.Logger;
 import io.trino.plugin.base.session.SessionPropertiesProvider;
 import io.trino.spi.connector.Connector;
+import io.trino.spi.connector.ConnectorAccessControl;
 import io.trino.spi.connector.ConnectorMetadata;
 import io.trino.spi.connector.ConnectorPageSinkProvider;
 import io.trino.spi.connector.ConnectorPageSourceProvider;
@@ -50,6 +51,7 @@ public class VastConnector
 
     private final LifeCycleManager lifeCycleManager;
     private final VastClient client;
+    private final VastAccessControl accessControl;
     private final VastTrinoTransactionHandleManager transManager;
     private final VastSplitManager splitManager;
     private final VastPageSourceProvider pageSourceProvider;
@@ -62,6 +64,7 @@ public class VastConnector
     public VastConnector(
             LifeCycleManager lifeCycleManager,
             VastClient client,
+            VastAccessControl accessControl,
             VastTrinoTransactionHandleManager transManager,
             VastSplitManager splitManager,
             VastPageSourceProvider pageSourceProvider,
@@ -72,6 +75,7 @@ public class VastConnector
         LOG.info("Creating VAST connector: system=%s, hash=%s", VastVersion.SYS_VERSION, VastVersion.HASH);
         this.lifeCycleManager = requireNonNull(lifeCycleManager, "lifeCycleManager is null");
         this.client = requireNonNull(client, "vast client is null");
+        this.accessControl = requireNonNull(accessControl, "trinoConfig is null");
         this.transManager = requireNonNull(transManager, "vast transaction factory is null");
         this.splitManager = requireNonNull(splitManager, "splitManager is null");
         this.pageSourceProvider = requireNonNull(pageSourceProvider, "pageSourceProvider is null");
@@ -223,5 +227,10 @@ public class VastConnector
     public List<PropertyMetadata<?>> getTableProperties()
     {
         return tableProperties;
+    }
+
+    @Override
+    public ConnectorAccessControl getAccessControl() {
+        return accessControl.isEnabled() ? accessControl : null;
     }
 }
