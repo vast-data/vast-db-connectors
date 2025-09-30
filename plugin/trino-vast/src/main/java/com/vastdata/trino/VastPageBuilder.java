@@ -406,11 +406,17 @@ public class VastPageBuilder
                 // Trino represents ShortTimestampType as a long (milliseconds from epoch)
                 long millisInUnit = TypeUtils.timeUnitToPicos(unit) / TypeUtils.timeUnitToPicos(TimeUnit.MILLISECOND);
                 verify(millisInUnit > 0, "%s is not supported for %s", unit, timestampType);
-                vectors.forEach(vector -> copyShortTimestampWithTimezone(vector.getValueCount(), vector.getReader(), builder, millisInUnit == 1? m -> m : m -> millisInUnit * m, parentVectorIsNull, zoneId));
+                vectors.forEach(vector -> copyShortTimestampWithTimezone(vector.getValueCount(), vector.getReader(), builder,
+                                                                         millisInUnit == 1? m -> m : m -> millisInUnit * m,
+                                                                         parentVectorIsNull, zoneId));
             }
             else {
                 // Trino represents LongTimestampType as a long (milliseconds from epoch) + an int (millisecond fraction, in picoseconds)
-                vectors.forEach(vector -> copyTimestampNanosTimeZone(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull, zoneId));
+                long nanosInUnit = TypeUtils.timeUnitToPicos(unit) / TypeUtils.timeUnitToPicos(TimeUnit.NANOSECOND);
+                verify(nanosInUnit > 0, "%s is not supported for %s", unit, timestampType);
+                vectors.forEach(vector -> copyTimestampNanosTimeZone(vector.getValueCount(), vector.getReader(), builder,
+                                                                     nanosInUnit == 1? m -> m : m -> nanosInUnit * m,
+                                                                     parentVectorIsNull, zoneId));
             }
             return builder.build();
         }
@@ -784,7 +790,8 @@ public class VastPageBuilder
         }
     }
 
-    private static void copyShortTimestampWithTimezone(int count, FieldReader reader, BlockBuilder builder, LongFunction<Long> unitConversion, Optional<boolean[]> optionalParentVectorIsNull, String zoneId)
+    private static void copyShortTimestampWithTimezone(int count, FieldReader reader, BlockBuilder builder,
+                                                       LongFunction<Long> unitConversion, Optional<boolean[]> optionalParentVectorIsNull, String zoneId)
     {
         final TimeZoneKey zoneKey = getTimeZoneKey(zoneId);
         if (optionalParentVectorIsNull.isEmpty()) {
@@ -857,14 +864,15 @@ public class VastPageBuilder
         }
     }
 
-    private static void copyTimestampNanosTimeZone(int count, FieldReader reader, BlockBuilder builder, Optional<boolean[]> optionalParentVectorIsNull, String zoneId)
+    private static void copyTimestampNanosTimeZone(int count, FieldReader reader, BlockBuilder builder,
+                                                   LongFunction<Long> unitConversion,  Optional<boolean[]> optionalParentVectorIsNull, String zoneId)
     {
         final TimeZoneKey zoneKey = getTimeZoneKey(zoneId);
         if (optionalParentVectorIsNull.isEmpty()) {
             for (int i = 0; i < count; ++i) {
                 reader.setPosition(i);
                 if (reader.isSet()) {
-                    long nanos = reader.readLong();
+                    long nanos = unitConversion.apply(reader.readLong());
                     TypeUtils.Pair<Long, Integer> objects = TypeUtils.convertLongNanoToTwoValuesZone(nanos, zoneKey);
                     ((Fixed12BlockBuilder) builder).writeFixed12(objects.first(), objects.second());
                 }
@@ -880,7 +888,7 @@ public class VastPageBuilder
                 reader.setPosition(i);
                 if (!parentNullsBitmap[i + builderPosition]) {
                     if (reader.isSet()) {
-                        long nanos = reader.readLong();
+                        long nanos = unitConversion.apply(reader.readLong());
                         TypeUtils.Pair<Long, Integer> objects = TypeUtils.convertLongNanoToTwoValuesZone(nanos, zoneKey);
                         ((Fixed12BlockBuilder) builder).writeFixed12(objects.first(), objects.second());
                     }

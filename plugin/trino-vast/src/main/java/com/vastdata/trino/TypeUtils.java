@@ -202,6 +202,18 @@ public final class TypeUtils
         throw new TrinoException(NOT_SUPPORTED, format("Unsupported timestamp value in Arrow: micros=%s<>%s, picos=%s<>%s", millis, millis2, picos, picos2));
     }
 
+    public static long convertTwoValuesMicroToLong(long millis, int picos)
+    {
+        long result = (millis * 1000) + (picos / 1000_000);
+        long millis2 = Math.floorDiv(result, 1000);
+        int picos2 = Math.floorMod(result, 1000) * 1000_000;
+        LOG.debug("micros %s <- millis %s, picos %s", result, millis, picos);
+        if (millis == millis2 && picos == picos2) {
+            return result;
+        }
+        throw new TrinoException(NOT_SUPPORTED, format("Unsupported timestamp value in Arrow: micros=%s<>%s, picos=%s<>%s", millis, millis2, picos, picos2));
+    }
+
     public static Pair<Long, Integer> convertLongNanoToTwoValues(long nano)
     {
         long micros = Math.floorDiv(nano, 1000);
