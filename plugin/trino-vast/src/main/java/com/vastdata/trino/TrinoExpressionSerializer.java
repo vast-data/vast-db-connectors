@@ -169,9 +169,13 @@ abstract public class TrinoExpressionSerializer
         if (type instanceof TimestampWithTimeZoneType) {
             TimeUnit unit = ((ArrowType.Timestamp) arrowType).getUnit();
             long result;
-            if (unit == TimeUnit.NANOSECOND || unit == TimeUnit.MICROSECOND) {
+            if (unit == TimeUnit.NANOSECOND) {
                 LongTimestampWithTimeZone ts = (LongTimestampWithTimeZone) value;
                 result = TypeUtils.convertTwoValuesNanoToLongMilli(ts.getEpochMillis(), ts.getPicosOfMilli()); // in nanos
+            }
+            else if (unit == TimeUnit.MICROSECOND) {
+                LongTimestampWithTimeZone ts = (LongTimestampWithTimeZone) value;
+                result = TypeUtils.convertTwoValuesMicroToLong(ts.getEpochMillis(), ts.getPicosOfMilli()); // in micros
             }
             else {
                 // ShortTimestampWithTimeZoneType is represented in millis since Epoch (in Trino)
