@@ -10,6 +10,7 @@ import org.apache.arrow.vector.FixedSizeBinaryVector;
 import java.nio.charset.StandardCharsets;
 
 import static com.google.common.base.Verify.verify;
+import static java.lang.String.format;
 
 public interface ICharNWriter
 {
@@ -28,13 +29,13 @@ public interface ICharNWriter
         // Spark does not support Char(N) so values are unpadded varchars, so pad short values and fail longer values
         // VAST requires padded values.
         if (length > value.length()) {
-            return String.format("%1$-" + length + "s", value);
+            return format("%1$-" + length + "s", value);
         }
         else if (length == value.length()) {
             return value;
         }
         else {
-            throw new IllegalArgumentException("Value too long");
+            throw new IllegalArgumentException(format("Value too long for type: CHAR(%s)", length));
         }
     }
 }

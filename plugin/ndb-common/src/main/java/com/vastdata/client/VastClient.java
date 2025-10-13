@@ -720,7 +720,8 @@ public class VastClient
             throws VastException
     {
         String path = format("/%s/%s", schema, table);
-        for (byte[] body : splitter.split(root, maxRowsPerUpdate.orElse(config.getMaxRowsPerUpdate()))) {
+        List<byte[]> split = splitter.split(root, maxRowsPerUpdate.orElse(config.getMaxRowsPerUpdate()));
+        for (byte[] body : split) {
             Multimap<String, String> headers = dependenciesFactory.getHeadersFactory()
                     .withTransaction(transaction)
                     .withContentLength(body.length)

@@ -55,7 +55,6 @@ public class ArrowSchemaUtils
     // This feature exposes vast’s internal row ID for user defined allocation and efficient queries
     public static final Field VASTDB_ROW_ID_FIELD = Field.nullable("vastdb_rowid", new ArrowType.Int(64, true));
 
-
     public Schema parseSchema(byte[] buffer, RootAllocator allocator)
             throws IOException
     {

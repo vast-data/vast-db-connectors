@@ -16,15 +16,12 @@ import io.trino.spi.connector.ConnectorMergeSink;
 import io.trino.spi.connector.ConnectorSession;
 import org.apache.arrow.memory.ArrowBuf;
 import org.apache.arrow.memory.util.ByteFunctionHelpers;
-import org.apache.arrow.vector.BaseFixedWidthVector;
 import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
-import org.apache.arrow.vector.compare.VectorEqualsVisitor;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 
 import java.net.URI;
-import java.nio.ByteBuffer;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -36,7 +33,9 @@ import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_FIELD;
 import static com.vastdata.client.schema.ArrowSchemaUtils.VASTDB_ROW_ID_FIELD;
 import static com.vastdata.trino.VastMergePage.createVastUpdateDeleteInsertPages;
-import static com.vastdata.trino.VastSessionProperties.*;
+import static com.vastdata.trino.VastSessionProperties.getMaxRowsPerDelete;
+import static com.vastdata.trino.VastSessionProperties.getMaxRowsPerInsert;
+import static com.vastdata.trino.VastSessionProperties.getMaxRowsPerUpdate;
 import static io.trino.spi.StandardErrorCode.READ_ONLY_VIOLATION;
 import static java.lang.String.format;
 import static java.util.concurrent.CompletableFuture.completedFuture;
@@ -88,7 +87,6 @@ public class VastMergeSink
         optionalDeletePage.ifPresent(deletePage -> {
             LOG.debug("deleteRows(%d IDs, %d bytes)", deletePage.getPositionCount(), deletePage.getSizeInBytes());
             try (VectorSchemaRoot root = recordBatchBuilder(mergeHandle.getTable(), true).build(deletePage)) {
-                LOG.debug("Before executing delete rpc");
                 client.deleteRows(
                         this.transactionHandle,
                         this.mergeHandle.getTable().getSchemaName(),
@@ -110,6 +108,7 @@ public class VastMergeSink
         Optional<Page> optionalInsertPage = vastMergePage.getInsertPage();
         optionalInsertPage.ifPresent(insertPage -> {
             try (VectorSchemaRoot root = builder.build(insertPage)) {
+                LOG.debug("insertRows(%d IDs, %d bytes)", insertPage.getPositionCount(), insertPage.getSizeInBytes());
                 client.insertRows(
                         this.transactionHandle,
                         this.mergeHandle.getTable().getSchemaName(),
@@ -172,7 +171,7 @@ public class VastMergeSink
     private VectorSchemaRoot dropExtraRowIdColumnFromUpdate(VectorSchemaRoot root)
     {
         List<FieldVector> vectors = root.getFieldVectors();
-        FieldVector rowIdVector = vectors.get(0);
+        FieldVector rowIdVector = vectors.getFirst();
         verify(rowIdVector.getNullCount() == 0,
                 "%s cannot contain NULLs", rowIdVector.getName());
 

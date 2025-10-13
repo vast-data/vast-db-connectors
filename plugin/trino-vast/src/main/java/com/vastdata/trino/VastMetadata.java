@@ -45,16 +45,16 @@ import net.bytebuddy.ClassFileVersion;
 import org.apache.arrow.vector.types.pojo.Field;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-
-import java.util.Iterator;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -154,6 +154,14 @@ public class VastMetadata
         try {
             return client
                     .listAllSchemas(transactionHandle, clientPageSize)
+                    // TODO https://github.com/trinodb/trino/issues/1559 this should be filtered out in engine.
+                    .filter(schemaName -> {
+                        if (INFORMATION_SCHEMA_NAME.equalsIgnoreCase(schemaName)) {
+                            LOG.warn(new RuntimeException(format("Got internal schema name: \"%s\" - skipping", schemaName)), "schemaName equalsIgnoreCase %s - skipping", SYSTEM_SCHEMA_NAME);
+                            return false;
+                        }
+                        return true;
+                    })
                     .map(schemaName -> fromVastSchemaName(session, schemaName))
                     .collect(Collectors.toList());
         }
@@ -282,20 +290,24 @@ public class VastMetadata
         int clientPageSize = VastSessionProperties.getClientPageSize(session);
         LOG.debug("tx %s: listTables(%s, %s)", transactionHandle, optionalSchemaName, clientPageSize);
         return optionalSchemaName
-                .map(trinoSchemaName -> {
-                    String vastSchemaName = toVastSchemaName(session, trinoSchemaName);
+                .map(Stream::of)
+                .orElseGet(() -> listSchemaNames(session).stream())
+                .flatMap(schemaName -> {
+                    String vastSchemaName = toVastSchemaName(session, schemaName);
                     if (vastSchemaName.equalsIgnoreCase(INFORMATION_SCHEMA_NAME)) {
                         // TODO https://github.com/trinodb/trino/issues/1559 this should be filtered out in engine.
-                        return Stream.<SchemaTableName>of();
+                        LOG.warn(new RuntimeException(format("Got internal schema name: \"%s\" - skipping", schemaName)), "schemaName equalsIgnoreCase %s - skipping", INFORMATION_SCHEMA_NAME);
+                        return Stream.empty();
                     }
                     if (vastSchemaName.equalsIgnoreCase(SYSTEM_SCHEMA_NAME)) {
                         // TODO: workaround for ORION-154485
-                        return Stream.<SchemaTableName>of();
+                        LOG.warn(new RuntimeException(format("Got internal schema name: \"%s\" - skipping", schemaName)), "schemaName equalsIgnoreCase %s - skipping", SYSTEM_SCHEMA_NAME);
+                        return Stream.empty();
                     }
                     try {
                         return client
                                 .listTables(transactionHandle, vastSchemaName, clientPageSize)
-                                .map(tableName -> new SchemaTableName(trinoSchemaName, tableName));
+                                .map(tableName -> new SchemaTableName(schemaName, tableName));
                     }
                     catch (VastServerException e) {
                         throw new TrinoException(GENERIC_INTERNAL_ERROR, e);
@@ -304,12 +316,7 @@ public class VastMetadata
                         throw new TrinoException(GENERIC_USER_ERROR, e);
                     }
                 })
-                .orElseGet(() -> {
-                    // TODO: support listing all tables
-                    LOG.warn("cannot list tables without specifying schema");
-                    return Stream.empty();
-                })
-                .collect(Collectors.toList());
+                .toList();
     }
 
     @Override
@@ -623,7 +630,9 @@ public class VastMetadata
         Set<VastSubstringMatch> substringMatches = new LinkedHashSet<>(table.getSubstringMatches());
         substringMatches.addAll(substringMatchBuilder.build());
         LOG.debug("substringMatches: %s", substringMatches);
-        if (table.getPredicate().equals(enforcedPredicate) && Objects.equals(table.getComplexPredicate(), complexPredicate) && table.getSubstringMatches().equals(substringMatches)) {
+        if (table.getPredicate().equals(enforcedPredicate) &&
+                Objects.equals(Optional.ofNullable(table.getComplexPredicate()), complexPredicate) &&
+                new HashSet<>(table.getSubstringMatches()).equals(substringMatches)) {
             return Optional.empty(); // no need to update current table handle
         }
         TupleDomain<VastColumnHandle> unenforcedPredicate = summary.filter(isEnforcedFilterPushdown.negate());
@@ -639,10 +648,9 @@ public class VastMetadata
 
     static Optional<VastSubstringMatch> tryParseSubstringMatch(ConnectorExpression conjunct, Set<String> pushedDownColumnNames, Map<String, ColumnHandle> assignments)
     {
-        if (!(conjunct instanceof Call)) {
+        if (!(conjunct instanceof Call call)) {
             return Optional.empty();
         }
-        Call call = (Call) conjunct;
         if (!call.getFunctionName().equals(LIKE_FUNCTION_NAME)) {
             return Optional.empty();
         }
@@ -650,10 +658,9 @@ public class VastMetadata
         if (args.size() != 2) {
             return Optional.empty();  // no support for escaped LIKE expression
         }
-        if (!(args.get(0) instanceof Variable)) {
+        if (!(args.getFirst() instanceof Variable variable)) {
             return Optional.empty(); // projection pushdown should handle `substring_match` over nested columns
         }
-        Variable variable = (Variable) args.get(0);
         if (pushedDownColumnNames.contains(variable.getName())) {
             return Optional.empty(); // no support for AND between TupleDomain and ConnectorExpression on the same column
         }
@@ -711,13 +718,11 @@ public class VastMetadata
             // only variables and field dereferences are supported
             ImmutableList.Builder<Integer> reversedPath = ImmutableList.builder();
             Type projectionType = projection.getType();
-            while (projection instanceof FieldDereference) {
-                FieldDereference dereference = (FieldDereference) projection;
+            while (projection instanceof FieldDereference dereference) {
                 projection = dereference.getTarget();
                 reversedPath.add(dereference.getField()); // the last index corresponds to top-most projection
             }
-            if (projection instanceof Variable) {
-                Variable variable = (Variable) projection;
+            if (projection instanceof Variable variable) {
                 List<Integer> projectionPath = reversedPath.build().reverse();
                 VastColumnHandle column = (VastColumnHandle) requireNonNull(assignments.get(variable.getName()), () -> format("Missing %s in %s", variable, assignments));
 
@@ -811,7 +816,6 @@ public class VastMetadata
         int clientPageSize = VastSessionProperties.getClientPageSize(session);
         LOG.debug("tx %s: finishStatisticsCollection for table %s, %s. clientPageSize: %s", transactionHandle, tableHandle, session, clientPageSize);
         VastTableHandle vastTableHandle = (VastTableHandle) tableHandle;
-        System.out.println("VastTableHandle" + vastTableHandle);
         String tableName = vastTableHandle.getTableName();
         String schemaName = vastTableHandle.getSchemaName();
         try {
@@ -948,17 +952,6 @@ public class VastMetadata
         VastTableHandle table = ((VastTableHandle) tableHandle);
         VastTableHandle resultTable = table.forMerge(table.getColumnHandlesCache());
         return new VastMergeTableHandle(resultTable, resultTable.getColumnHandlesCache());
-    }
-
-    public ConnectorMergeTableHandle beginMerge(ConnectorSession session, ConnectorTableHandle tableHandle, RetryMode retryMode, List<ColumnHandle> updatedColumns)
-    {
-        requireNonNull(tableHandle, "!!!Can't do merge table handle is null!!!");
-        LOG.debug("tx %s: beginMerge(%s, %s, %s)", transactionHandle, tableHandle, updatedColumns, retryMode);
-        VastTableHandle table = ((VastTableHandle) tableHandle);
-        List<VastColumnHandle> vastMergableColumns = updatedColumns.stream().map(VastColumnHandle.class::cast).collect(Collectors.toList());
-        VastTableHandle resultTable = table.forMerge(vastMergableColumns);
-        LOG.debug("tx %s: beginMerge result: table=%s, columns=%s", transactionHandle, tableHandle, vastMergableColumns);
-        return new VastMergeTableHandle(resultTable, vastMergableColumns);
     }
 
     @Override

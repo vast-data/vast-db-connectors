@@ -6,7 +6,6 @@ package com.vastdata.trino;
 
 import io.airlift.log.Logger;
 import io.trino.spi.TrinoException;
-import io.trino.spi.block.Block;
 import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.CharType;
 import io.trino.spi.type.DecimalType;
@@ -18,7 +17,6 @@ import io.trino.spi.type.Type;
 import io.trino.spi.type.TypeOperators;
 import io.trino.spi.type.VarcharType;
 import org.apache.arrow.flatbuf.Precision;
-import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.types.FloatingPointPrecision;
 import org.apache.arrow.vector.types.TimeUnit;
 import org.apache.arrow.vector.types.pojo.ArrowType;
@@ -27,9 +25,7 @@ import org.apache.arrow.vector.types.pojo.FieldType;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 import static com.google.common.base.Verify.verify;
 import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_FIELD;
@@ -127,11 +123,11 @@ public final class TypeUtils
                         .collect(Collectors.toList()));
             case List:
                 verify(field.getChildren().size() == 1, "unexpected number of %s children: %s", field, field.getChildren());
-                Type itemType = convertArrowFieldToTrinoType(field.getChildren().get(0));
+                Type itemType = convertArrowFieldToTrinoType(field.getChildren().getFirst());
                 return new ArrayType(itemType);
             case Map:
                 verify(field.getChildren().size() == 1, "unexpected number of %s children: %s", field, field.getChildren());
-                Field entries = field.getChildren().get(0);
+                Field entries = field.getChildren().getFirst();
                 verify(entries.getType().getTypeID() == ArrowType.ArrowTypeID.Struct, "unexpected entries type: %s", entries);
                 verify(entries.getChildren().size() == 2, "unexpected number of %s children: %s", entries, entries.getChildren());
                 Type keyType = convertArrowFieldToTrinoType(entries.getChildren().get(0));
@@ -144,34 +140,22 @@ public final class TypeUtils
 
     private static int timeUnitToPrecision(TimeUnit timeUnit)
     {
-        switch (timeUnit) {
-            case SECOND:
-                return 0;
-            case MILLISECOND:
-                return 3;
-            case MICROSECOND:
-                return 6;
-            case NANOSECOND:
-                return 9;
-            default:
-                throw new TrinoException(NOT_SUPPORTED, format("Unsupported Arrow type time unit: %s", timeUnit));
-        }
+        return switch (timeUnit) {
+            case SECOND -> 0;
+            case MILLISECOND -> 3;
+            case MICROSECOND -> 6;
+            case NANOSECOND -> 9;
+        };
     }
 
     public static long timeUnitToPicos(TimeUnit timeUnit)
     {
-        switch (timeUnit) {
-            case SECOND:
-                return 1_000_000_000_000L;
-            case MILLISECOND:
-                return 1_000_000_000L;
-            case MICROSECOND:
-                return 1_000_000L;
-            case NANOSECOND:
-                return 1_000L;
-            default:
-                throw new TrinoException(NOT_SUPPORTED, format("Unsupported Arrow type time unit: %s", timeUnit));
-        }
+        return switch (timeUnit) {
+            case SECOND -> 1_000_000_000_000L;
+            case MILLISECOND -> 1_000_000_000L;
+            case MICROSECOND -> 1_000_000L;
+            case NANOSECOND -> 1_000L;
+        };
     }
 
     public static long convertTwoValuesNanoToLong(long micros, int picos)
@@ -193,18 +177,13 @@ public final class TypeUtils
 
     public static TimeUnit precisionToTimeUnit(int precision)
     {
-        switch (precision) {
-            case 0:
-                return TimeUnit.SECOND;
-            case 3:
-                return TimeUnit.MILLISECOND;
-            case 6:
-                return TimeUnit.MICROSECOND;
-            case 9:
-                return TimeUnit.NANOSECOND;
-            default:
-                throw new TrinoException(NOT_SUPPORTED, format("Unsupported precision for Trino type: %d", precision));
-        }
+        return switch (precision) {
+            case 0 -> TimeUnit.SECOND;
+            case 3 -> TimeUnit.MILLISECOND;
+            case 6 -> TimeUnit.MICROSECOND;
+            case 9 -> TimeUnit.NANOSECOND;
+            default -> throw new TrinoException(NOT_SUPPORTED, format("Unsupported precision for Trino type: %d", precision));
+        };
     }
 
     public static Field convertTrinoTypeToArrowField(Type trinoType, String name, boolean nullable)
@@ -250,32 +229,27 @@ public final class TypeUtils
         else if (DATE.equals(trinoType)) {
             arrowType = new ArrowType.Date(DAY);
         }
-        else if (trinoType instanceof TimestampType) {
-            TimestampType ts = (TimestampType) trinoType;
+        else if (trinoType instanceof TimestampType ts) {
             TimeUnit timeUnit = precisionToTimeUnit(ts.getPrecision());
             arrowType = new ArrowType.Timestamp(timeUnit, null);
         }
-        else if (trinoType instanceof TimeType) {
-            TimeType ts = (TimeType) trinoType;
+        else if (trinoType instanceof TimeType ts) {
             int precision = ts.getPrecision();
             TimeUnit timeUnit = precisionToTimeUnit(precision);
             int bits = precision > 3 ? 64 : 32;
             arrowType = new ArrowType.Time(timeUnit, bits);
         }
-        else if (trinoType instanceof DecimalType) {
-            DecimalType decimalType = (DecimalType) trinoType;
+        else if (trinoType instanceof DecimalType decimalType) {
             arrowType = ArrowType.Decimal.createDecimal(decimalType.getPrecision(), decimalType.getScale(), 128);
         }
-        else if (trinoType instanceof ArrayType) {
+        else if (trinoType instanceof ArrayType arrayType) {
             arrowType = ArrowType.List.INSTANCE;
-            ArrayType arrayType = (ArrayType) trinoType;
             children = List.of(
                     convertTrinoTypeToArrowField(arrayType.getElementType(), ARRAY_ITEM_COLUMN_NAME, true /*nullable*/));
         }
-        else if (trinoType instanceof MapType) {
+        else if (trinoType instanceof MapType mapType) {
             // For details, see https://github.com/apache/arrow/blob/apache-arrow-7.0.0/format/Schema.fbs#L103-L131
             arrowType = new ArrowType.Map(false /*keySorted*/);
-            MapType mapType = (MapType) trinoType;
             Field keyField = convertTrinoTypeToArrowField(mapType.getKeyType(), MAP_KEY_COLUMN_NAME, false /*nullable*/);
             Field valueField = convertTrinoTypeToArrowField(mapType.getValueType(), MAP_VALUE_COLUMN_NAME, true /*nullable*/);
             children = List.of(
@@ -310,26 +284,5 @@ public final class TypeUtils
         return length > value.length() ?
             String.format("%1$-" + length + "s", value) :
             value;
-    }
-
-    // keeping unused method - useful for debugging
-    public static void printVector(FieldVector vector, Optional<String> printPrefix)
-    {
-        if (LOG.isDebugEnabled()) {
-            String prefixToPrint = printPrefix.map(s -> s + " ").orElse("");
-            LOG.debug("%svector: %s, of type %s", prefixToPrint, vector, vector.getField().getType());
-            LOG.debug("%svector null vector: %s", prefixToPrint, IntStream.range(0, vector.getValueCount()).boxed().map(vector::isNull).collect(Collectors.toList()));
-            vector.getChildrenFromFields().forEach(child -> printVector(child, printPrefix));
-        }
-    }
-
-    public static void printBlock(Block block, Optional<String> printPrefix)
-    {
-        if (LOG.isDebugEnabled()) {
-            String prefixToPrint = printPrefix.map(s -> s + " ").orElse("");
-            LOG.debug("%sblock: %s, of type %s", prefixToPrint, block, block.getClass());
-            LOG.debug("%sblock null vector: %s", prefixToPrint, IntStream.range(0, block.getPositionCount()).boxed().map(block::isNull).collect(Collectors.toList()));
-            block.getChildren().forEach(child -> printBlock(child, printPrefix));
-        }
     }
 }

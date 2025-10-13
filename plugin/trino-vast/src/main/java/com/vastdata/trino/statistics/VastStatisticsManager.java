@@ -16,6 +16,9 @@ import com.vastdata.trino.VastColumnHandle;
 import com.vastdata.trino.VastTableHandle;
 import io.airlift.log.Logger;
 import io.trino.spi.block.Block;
+import io.trino.spi.block.ByteArrayBlock;
+import io.trino.spi.block.IntArrayBlock;
+import io.trino.spi.block.LongArrayBlock;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ColumnMetadata;
 import io.trino.spi.statistics.ColumnStatisticMetadata;
@@ -143,29 +146,31 @@ public class VastStatisticsManager
             return Optional.of(type.getDouble(block, 0));
         }
         else if (type.equals(REAL)) {
-            return Optional.of(((Float) intBitsToFloat(block.getInt(0, 0))).doubleValue());
+            IntArrayBlock intArrayBlock = (IntArrayBlock) block;
+            return Optional.of(((Float) intBitsToFloat(intArrayBlock.getInt(0))).doubleValue());
         }
         else if (type.equals(BOOLEAN)) {
-            return Optional.of(((Byte) block.getByte(0, 0)).doubleValue());
+            ByteArrayBlock byteArrayBlock = (ByteArrayBlock) block;
+            return Optional.of(((Byte) byteArrayBlock.getByte(0)).doubleValue());
         }
         else if (type.equals(VARCHAR) || type instanceof CharType || type == VARBINARY) {
             return Optional.empty(); // Trino does not support non-numeric min/max values
         }
-        if (type instanceof DecimalType) {
-            DecimalType decimalType = (DecimalType) type;
+        if (type instanceof DecimalType decimalType) {
             Int128 int128 = Int128.valueOf(Decimals.readBigDecimal(decimalType, block, 0).unscaledValue());
             return Optional.of(longDecimalToDouble(int128, decimalType.getScale()));
         }
         if (type.equals(DATE)) {
-            return Optional.of(((Integer) block.getInt(0, 0)).doubleValue());
+            IntArrayBlock integerArrayBlock = (IntArrayBlock) block;
+            return Optional.of(((Integer) integerArrayBlock.getInt(0)).doubleValue());
         }
-        if (type instanceof TimestampType) {
-            TimestampType ts = (TimestampType) type;
+        if (type instanceof TimestampType ts) {
             TimeUnit timeUnit = TypeUtils.precisionToTimeUnit(ts.getPrecision());
             if (timeUnit == TimeUnit.NANOSECOND) {
                 return Optional.empty(); // Trino converts long to double which is lossy for timestamp(9)
             }
-            return Optional.of(((Long) block.getLong(0, 0)).doubleValue());
+            LongArrayBlock longArrayBlock = (LongArrayBlock) block;
+            return Optional.of(((Long) longArrayBlock.getLong(0)).doubleValue());
         }
         if (type instanceof TimeType) {
             return Optional.empty(); // Trino does not support displaying time types in show stats
@@ -184,7 +189,8 @@ public class VastStatisticsManager
         if (block.getPositionCount() == 0 || block.isNull(0)) {
             return Optional.empty();
         }
-        return Optional.of(((Long) block.getLong(0, 0)).doubleValue());
+        LongArrayBlock longArrayBlock = (LongArrayBlock) block;
+        return Optional.of(((Long) longArrayBlock.getLong(0)).doubleValue());
     };
 
     private static final Map<ColumnStatisticType, BiFunction<Field, Block, Optional<Double>>> supportedStatisticsValueExtractors = Map.of(

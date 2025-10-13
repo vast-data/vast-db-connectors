@@ -11,6 +11,8 @@ import com.vastdata.client.schema.EnumeratedSchema;
 import com.vastdata.client.tx.VastTraceToken;
 import io.trino.plugin.base.metrics.LongCount;
 import io.trino.spi.Page;
+import io.trino.spi.block.ByteArrayBlock;
+import io.trino.spi.block.LongArrayBlock;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.testng.annotations.Test;
@@ -20,7 +22,6 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -66,7 +67,7 @@ public class TestSerDe
 
         parser.parse(new ByteArrayInputStream(response));
 
-        List<Page> pages = Streams.stream(parser).collect(Collectors.toList());
+        List<Page> pages = Streams.stream(parser).toList();
         assertThat(pages.size()).isEqualTo(1);
         assertThat(pagination.isFinished()).isEqualTo(false);
 
@@ -77,13 +78,13 @@ public class TestSerDe
             byte[] expected = {0x44, 0x55, 0x66, 0x11, 0x22, 0x33};
             IntStream
                     .range(0, page.getPositionCount())
-                    .forEach(i -> assertThat(page.getBlock(0).getByte(i, 0)).isEqualTo(expected[i]));
+                    .forEach(i -> assertThat(((ByteArrayBlock) page.getBlock(0)).getByte(i)).isEqualTo(expected[i]));
         }
         {
             long[] expected = {0x1111111111111111L, 0x2222222222222222L, 0x3333333333333333L, 0x4444444444444444L, 0x5555555555555555L, 0x6666666666666666L};
             IntStream
                     .range(0, page.getPositionCount())
-                    .forEach(i -> assertThat(page.getBlock(1).getLong(i, 0)).isEqualTo(expected[i]));
+                    .forEach(i -> assertThat(((LongArrayBlock) page.getBlock(1)).getLong(i)).isEqualTo(expected[i]));
         }
         LongCount rowsCount = (LongCount) parser.getMetrics().getMetrics().get("totalPositions");
         assertThat(rowsCount.getTotal()).isEqualTo(6L);

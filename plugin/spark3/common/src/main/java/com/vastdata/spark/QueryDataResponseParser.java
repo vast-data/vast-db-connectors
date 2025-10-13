@@ -21,6 +21,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static com.google.common.base.Verify.verify;
+import static com.vastdata.spark.SparkArrowVectorUtil.VAST_ROW_ID_TO_SPARK_ROW_ID_VECTOR_ADAPTOR;
 
 public class QueryDataResponseParser
         extends BaseQueryDataResponseParser<VectorSchemaRoot>
@@ -46,12 +47,14 @@ public class QueryDataResponseParser
     @Override
     protected VectorSchemaRoot joinPages(List<VectorSchemaRoot> pages)
     {
-        verify(pages.size() > 0);
+        verify(!pages.isEmpty());
         int rowCount = pages.get(0).getRowCount();
         List<FieldVector> vectors = pages
                 .stream()
                 .flatMap(page -> page.getFieldVectors().stream())
+                .map(VAST_ROW_ID_TO_SPARK_ROW_ID_VECTOR_ADAPTOR)
                 .collect(Collectors.toList());
+
         VectorSchemaRoot result = new VectorSchemaRoot(vectors);
         result.setRowCount(rowCount);
         // TODO: handle nested types by merging field vectors correctly

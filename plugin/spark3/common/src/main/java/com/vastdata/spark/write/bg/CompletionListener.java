@@ -4,7 +4,7 @@
 
 package com.vastdata.spark.write.bg;
 
-public interface CompletionListener
+interface CompletionListener
 {
     void completed(CompletedWriteExecutionComponent phase);
 }

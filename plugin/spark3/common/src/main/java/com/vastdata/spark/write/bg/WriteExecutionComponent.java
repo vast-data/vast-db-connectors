@@ -4,7 +4,7 @@
 
 package com.vastdata.spark.write.bg;
 
-public interface WriteExecutionComponent
+interface WriteExecutionComponent
 {
     String name();
     int ordinal();

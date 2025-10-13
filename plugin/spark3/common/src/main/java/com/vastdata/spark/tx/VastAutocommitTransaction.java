@@ -11,11 +11,13 @@ import com.vastdata.client.tx.VastTraceToken;
 import com.vastdata.client.tx.VastTransaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import scala.collection.mutable.HashMap;
 
 import java.io.Serializable;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 
 public class VastAutocommitTransaction implements VastTransaction, AutoCloseable, Serializable
 {
@@ -25,7 +27,7 @@ public class VastAutocommitTransaction implements VastTransaction, AutoCloseable
     private final boolean autoCreated;
     private boolean rollback = false;
 
-    public static Supplier<HashMap<String, String>> envSupplier = () -> {
+    public static BiConsumer<Boolean, UnaryOperator<Optional<String>>> alterTransaction = (cancelOnFailure, f) -> {
         throw new IllegalStateException("Env supplier is unset");
     };
 
@@ -93,22 +95,24 @@ public class VastAutocommitTransaction implements VastTransaction, AutoCloseable
     public static SimpleVastTransaction getExisting()
             throws VastIOException
     {
-        HashMap<String, String> env = getEnv();
-        boolean contains = env.contains("tx");
-        if (contains) {
-            String tx = env.get("tx").get();
-            LOG.info("VastAutocommitTransaction.wrap EXISTING: tx: {}", tx);
-            return SimpleVastTransaction.fromString(tx);
-        }
-        else {
-            LOG.debug("VastAutocommitTransaction.wrap EXISTING: null");
-            return null;
-        }
-    }
-
-    private static HashMap<String, String> getEnv()
-    {
-        return envSupplier.get();
+        final AtomicReference<SimpleVastTransaction> result = new AtomicReference<>();
+        alterTransaction.accept(false, maybeTransaction -> {
+            if (maybeTransaction.isPresent()) {
+                String tx = maybeTransaction.get();
+                LOG.info("VastAutocommitTransaction.wrap EXISTING: tx: {}", tx);
+                try {
+                    result.set(SimpleVastTransaction.fromString(tx));
+                }
+                catch (final Exception error) {
+                    throw new RuntimeException(error);
+                }
+            }
+            else {
+                LOG.debug("VastAutocommitTransaction.wrap EXISTING: null");
+            }
+            return maybeTransaction;
+        });
+        return result.get();
     }
 
     public static VastAutocommitTransaction wrap(Optional<VastTransaction> tx, VastClient vastClient, Supplier<VastTransaction> vastTransactionSupplier) {
@@ -121,23 +125,26 @@ public class VastAutocommitTransaction implements VastTransaction, AutoCloseable
     }
 
     public static VastAutocommitTransaction wrap(VastClient vastClient, Supplier<VastTransaction> vastTransactionSupplier) {
-        HashMap<String, String> env = getEnv();
-        boolean contains = env.contains("tx");
-        if (contains) {
-            String tx = env.get("tx").get();
-            try {
-                LOG.info("VastAutocommitTransaction.wrap REUSE: tx: {}", tx);
-                return new VastAutocommitTransaction(SimpleVastTransaction.fromString(tx), false);
+        final AtomicReference<VastAutocommitTransaction> result = new AtomicReference<>();
+        alterTransaction.accept(false, maybeTransaction -> {
+            if (maybeTransaction.isPresent()) {
+                String tx = maybeTransaction.get();
+                try {
+                    LOG.info("VastAutocommitTransaction.wrap REUSE: tx: {}", tx);
+                    result.set(new VastAutocommitTransaction(SimpleVastTransaction.fromString(tx), false));
+                }
+                catch (VastIOException e) {
+                    throw new RuntimeException(e);
+                }
             }
-            catch (VastIOException e) {
-                throw new RuntimeException(e);
+            else {
+                VastAutocommitTransaction vastAutocommitTransaction = new VastAutocommitTransaction(vastClient, vastTransactionSupplier.get(), true);
+                LOG.info("VastAutocommitTransaction.wrap NEW: {}", vastAutocommitTransaction);
+                result.set(vastAutocommitTransaction);
             }
-        }
-        else {
-            VastAutocommitTransaction vastAutocommitTransaction = new VastAutocommitTransaction(vastClient, vastTransactionSupplier.get(), true);
-            LOG.info("VastAutocommitTransaction.wrap NEW: {}", vastAutocommitTransaction);
-            return vastAutocommitTransaction;
-        }
+            return maybeTransaction;
+        });
+        return result.get();
     }
 
     public void setCommit(boolean mode)
