@@ -4,7 +4,6 @@
 
 package com.vastdata.spark.adaptor;
 
-import com.vastdata.client.adaptor.VectorAdaptor;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.FixedSizeBinaryVector;

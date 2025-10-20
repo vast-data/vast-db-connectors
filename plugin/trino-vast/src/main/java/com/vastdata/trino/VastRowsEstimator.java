@@ -32,7 +32,7 @@ public class VastRowsEstimator {
         List<Range> orderedRanges = domains.getOrDefault(rowIdHandle, Domain.all(rowIdType)).getValues().getRanges().getOrderedRanges();
         LOG.debug("orderedRanges: %s", orderedRanges);
 
-        long rowCount = 0L;
+        Long rowCount = 0L;
         for (Range range : orderedRanges) {
             if (range.isAll()) {
                 return rowsEstimationByStats;
@@ -49,7 +49,7 @@ public class VastRowsEstimator {
         }
         LOG.debug("row count by ROW_ID: %s", rowCount);
         return rowsEstimationByStats.isUnknown() ?
-                Estimate.of((double) rowCount) :
-                Estimate.of(Double.min(rowsEstimationByStats.getValue(), (double) rowCount));
+                Estimate.of(rowCount.doubleValue()) :
+                Estimate.of(Double.min(rowsEstimationByStats.getValue(), rowCount.doubleValue()));
     }
 }

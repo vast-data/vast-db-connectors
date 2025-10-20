@@ -1,6 +1,4 @@
-/*
- *  Copyright (C) Vast Data Ltd.
- */
+/* Copyright (C) Vast Data Ltd. */
 
 package com.vastdata.trino;
 
@@ -8,7 +6,6 @@ import com.google.common.collect.ImmutableList;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.error.VastException;
 import com.vastdata.client.error.VastTooLargePageException;
-import com.vastdata.trino.rowid.TrinoRowIDFieldFactory;
 import com.vastdata.trino.tx.VastTransactionHandle;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
@@ -33,6 +30,7 @@ import java.util.stream.Collectors;
 
 import static com.google.common.base.Verify.verify;
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
+import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_FIELD;
 import static com.vastdata.client.schema.ArrowSchemaUtils.VASTDB_ROW_ID_FIELD;
 import static com.vastdata.trino.VastMergePage.createVastUpdateDeleteInsertPages;
 import static com.vastdata.trino.VastSessionProperties.getMaxRowsPerDelete;
@@ -57,9 +55,7 @@ public class VastMergeSink
     private static VastRecordBatchBuilder recordBatchBuilder(VastTableHandle table, boolean forDelete)
     {
         ImmutableList.Builder<Field> fields = ImmutableList.builder();
-        Field rowIdField = TrinoRowIDFieldFactory.INSTANCE.apply(table);
-        LOG.debug("row_id field: %s, for table: %s", rowIdField, table);
-        fields.add(rowIdField); // row ID column is expected to be the first one
+        fields.add(ROW_ID_FIELD); // row ID column is expected to be the first one
         if (! forDelete) {
             table.getMergedColumns().stream().map(VastColumnHandle::getField).forEach(fields::add);
         }
@@ -81,10 +77,9 @@ public class VastMergeSink
     @Override
     public void storeMergedRows(Page page)
     {
-        final String endUser = session.getUser();
         int columnCount = mergeHandle.getColumns().size();
         int dataEndPointsCount = this.dataEndpoints.size();
-        LOG.debug("storeMergeRows: mergableColumns: %s, page column count: %s, endUser=%s", mergeHandle.getColumns(), page.getChannelCount(), endUser);
+        LOG.debug("storeMergeRows: mergableColumns: %s, page column count: %s", mergeHandle.getColumns(), page.getChannelCount());
         VastMergePage vastMergePage = createVastUpdateDeleteInsertPages(page, columnCount);
 
         // delete
@@ -98,8 +93,7 @@ public class VastMergeSink
                         this.mergeHandle.getTable().getTableName(),
                         root,
                         dataEndpoints.get((int) pageCount % dataEndPointsCount),
-                        Optional.of(getMaxRowsPerDelete(this.session)),
-                        endUser
+                        Optional.of(getMaxRowsPerDelete(this.session))
                 );
             }
             catch (VastTooLargePageException e) {
@@ -121,8 +115,7 @@ public class VastMergeSink
                         this.mergeHandle.getTable().getTableName(),
                         root,
                         dataEndpoints.get((int) pageCount % dataEndPointsCount),
-                        Optional.of(getMaxRowsPerInsert(this.session)),
-                        endUser
+                        Optional.of(getMaxRowsPerInsert(this.session))
                 );
             }
             catch (VastTooLargePageException e) {
@@ -144,8 +137,7 @@ public class VastMergeSink
                         this.mergeHandle.getTable().getTableName(),
                         dropExtraRowIdColumnFromUpdate(root),
                         dataEndpoints.get((int) pageCount % dataEndPointsCount),
-                        Optional.of(getMaxRowsPerUpdate(this.session)),
-                        endUser
+                        Optional.of(getMaxRowsPerUpdate(this.session))
                 );
             }
             catch (VastTooLargePageException e) {

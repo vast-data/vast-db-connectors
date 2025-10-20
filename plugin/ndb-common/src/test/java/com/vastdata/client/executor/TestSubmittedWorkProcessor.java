@@ -41,7 +41,7 @@ public class TestSubmittedWorkProcessor
     {
         URI endpoint = URI.create("http://localhost:8080");
         LinkedBlockingDeque<WorkExecutor<Object>> queue = new LinkedBlockingDeque<>(ImmutableList.of(mockWorkExecutor, mockWorkExecutor));
-        BooleanSupplier breaker = () -> !queue.isEmpty();
+        BooleanSupplier breaker = () -> queue.size() > 0;
         new SubmittedWorkProcessor<>(endpoint, queue, breaker).run();
         verify(mockWorkExecutor, times(1)).accept(endpoint);
     }

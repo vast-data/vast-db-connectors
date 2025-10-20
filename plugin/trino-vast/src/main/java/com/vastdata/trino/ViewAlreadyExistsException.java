@@ -1,6 +1,3 @@
-/*
- *  Copyright (C) Vast Data Ltd.
- */
 package com.vastdata.trino;
 
 import io.trino.spi.TrinoException;

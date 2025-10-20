@@ -9,24 +9,21 @@ import com.vastdata.client.RequestsHeaders;
 import com.vastdata.client.VastRequestHeadersBuilder;
 import com.vastdata.client.tx.VastTransaction;
 import com.vastdata.trino.tx.VastTransactionHandle;
-import org.junit.jupiter.api.Test;
+import org.testng.annotations.Test;
 
 import java.util.Collection;
 import java.util.function.Predicate;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 public class TestVastTrinoDependenciesFactory
 {
-    private static final String DEFAULT_END_USER = "default-end-user";
-    private static final VastTrinoConfig config = new VastTrinoConfig();
-
     @Test
     public void testSchemaNameValidator()
     {
-        Predicate<String> unit = new VastTrinoDependenciesFactory(config).getSchemaNameValidator();
+        Predicate<String> unit = new VastTrinoDependenciesFactory().getSchemaNameValidator();
         assertFalse(unit.test("shouldFail"));
         assertTrue(unit.test("should/succeed"));
         assertTrue(unit.test("should/succeed/too"));
@@ -44,7 +41,7 @@ public class TestVastTrinoDependenciesFactory
     @Test
     public void testDefaultHeaders()
     {
-        VastRequestHeadersBuilder unit = new VastTrinoDependenciesFactory(config).getHeadersFactory(DEFAULT_END_USER);
+        VastRequestHeadersBuilder unit = new VastTrinoDependenciesFactory().getHeadersFactory();
         Multimap<String, String> headers = unit.build();
 
         assertMapKeyValue(headers, RequestsHeaders.TABULAR_API_VERSION_ID.getHeaderName(), VastRequestHeadersBuilder.VAST_CLIENT_API_VERSION);
@@ -55,9 +52,9 @@ public class TestVastTrinoDependenciesFactory
     @Test
     public void testAllHeaders()
     {
-        VastRequestHeadersBuilder unit = new VastTrinoDependenciesFactory(config).getHeadersFactory(DEFAULT_END_USER);
+        VastRequestHeadersBuilder unit = new VastTrinoDependenciesFactory().getHeadersFactory();
         String testTxidStr = "514026084031791104";
-        VastTransaction testTx = new VastTransactionHandle(Long.parseUnsignedLong(testTxidStr));
+        VastTransaction testTx = new VastTransactionHandle(Long.parseUnsignedLong(testTxidStr), false, true);
         unit.withTransaction(testTx);
         Long testNextKey = 777L;
         unit.withNextKey(testNextKey);

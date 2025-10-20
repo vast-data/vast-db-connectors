@@ -25,8 +25,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
@@ -47,7 +45,7 @@ public class TestVastBGWriter
         }
     }
 
-    public static final SimpleVastTransaction TX = new SimpleVastTransaction(5);
+    public static final SimpleVastTransaction TX = new SimpleVastTransaction(5, false, false);
 
     public static final String TABLE_NAME = "table";
     public static final String SCHEMA_NAME = "schema";
@@ -72,7 +70,7 @@ public class TestVastBGWriter
     {
         autoCloseable = MockitoAnnotations.openMocks(this);
         mockClientSupplier = cfg -> mockClient;
-        Mockito.doNothing().when(mockClient).insertRows(any(SimpleVastTransaction.class), ArgumentMatchers.anyString(), ArgumentMatchers.anyString(), any(VectorSchemaRoot.class), any(URI.class), any(Optional.class), anyString());
+        Mockito.doNothing().when(mockClient).insertRows(ArgumentMatchers.any(SimpleVastTransaction.class), ArgumentMatchers.anyString(), ArgumentMatchers.anyString(), ArgumentMatchers.any(VectorSchemaRoot.class), ArgumentMatchers.any(URI.class), ArgumentMatchers.any(Optional.class));
     }
 
     @Test

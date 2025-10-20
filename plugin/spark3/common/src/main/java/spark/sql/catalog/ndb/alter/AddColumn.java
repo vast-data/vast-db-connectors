@@ -26,6 +26,6 @@ public class AddColumn extends AbstractColumnsChange
         throws VastException
     {
         LOG.debug("AddColumn.executeAction() {}", columnCtx);
-        vastClient.addColumn(vastTransaction, columnCtx, null);
+        vastClient.addColumn(vastTransaction, columnCtx);
     }
 }

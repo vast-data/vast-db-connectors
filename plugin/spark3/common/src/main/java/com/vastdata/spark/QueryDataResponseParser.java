@@ -4,7 +4,6 @@
 
 package com.vastdata.spark;
 
-import com.vastdata.client.ArrowQueryDataSchemaHelper;
 import com.vastdata.client.BaseQueryDataResponseParser;
 import com.vastdata.client.QueryDataPageBuilder;
 import com.vastdata.client.QueryDataPagination;
@@ -30,10 +29,10 @@ public class QueryDataResponseParser
     private static final Logger LOG = LoggerFactory.getLogger(QueryDataResponseParser.class);
 
     private final BufferAllocator allocator;
-    private final ArrowQueryDataSchemaHelper schemaHelper;
+    private final SparkQueryDataSchemaHelper schemaHelper;
 
     public QueryDataResponseParser(
-            VastTraceToken traceToken, ArrowQueryDataSchemaHelper schemaHelper,
+            VastTraceToken traceToken, SparkQueryDataSchemaHelper schemaHelper,
             VastDebugConfig debugConfig, QueryDataPagination pagination, Optional<Long> limitTotalRows, BufferAllocator allocator)
     {
         super(traceToken, schemaHelper.getFields(), pagination, limitTotalRows, debugConfig);

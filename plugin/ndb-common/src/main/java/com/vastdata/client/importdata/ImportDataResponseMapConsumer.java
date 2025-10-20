@@ -43,6 +43,9 @@ public class ImportDataResponseMapConsumer
                 else {
                     LOG.info("Import data is successful for file name: %s", v.get("object_name"));
                 }
+//                responseMapBytes.ifPresentOrElse(
+//                        r -> LOG.info("Import data is successful for file: %s", new String(r, StandardCharsets.UTF_8)),
+//                        () -> LOG.info("Import data is successful for file name: %s", v.get("object_name")));
                 successCtr.incrementAndGet();
             }
             else if (res.equals("TabularInProgress")) {
@@ -53,6 +56,9 @@ public class ImportDataResponseMapConsumer
                 else {
                     LOG.info("Import data is processing file name: %s", v.get("object_name"));
                 }
+//                responseMapBytes.ifPresentOrElse(
+//                        r -> LOG.info("Import data is processing file: %s", new String(r, StandardCharsets.UTF_8)),
+//                        () -> LOG.info("Import data is processing file name: %s", v.get("object_name")));
             }
             else {
                 if (responseMapBytes.isPresent()) {
@@ -62,6 +68,9 @@ public class ImportDataResponseMapConsumer
                 else {
                     LOG.info("Import data failed for file name: %s", v.get("object_name"));
                 }
+//                responseMapBytes.ifPresentOrElse(
+//                        r -> LOG.error("Import data failed for file: %s", new String(r, StandardCharsets.UTF_8)),
+//                        () -> LOG.error("Import data failed for file name: %s", v.get("object_name")));
                 failedCtr.incrementAndGet();
                 firstErrorDetails.getAndUpdate(prev -> nonNull(prev) ? prev : v.toString());
             }

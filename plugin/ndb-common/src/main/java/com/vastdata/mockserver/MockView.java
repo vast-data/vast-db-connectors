@@ -1,6 +1,3 @@
-/*
- *  Copyright (C) Vast Data Ltd.
- */
 package com.vastdata.mockserver;
 
 import org.apache.arrow.vector.VectorSchemaRoot;

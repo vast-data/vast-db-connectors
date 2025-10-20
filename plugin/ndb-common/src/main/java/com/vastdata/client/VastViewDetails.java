@@ -1,6 +1,3 @@
-/*
- *  Copyright (C) Vast Data Ltd.
- */
 package com.vastdata.client;
 
 import org.apache.arrow.vector.types.pojo.Field;

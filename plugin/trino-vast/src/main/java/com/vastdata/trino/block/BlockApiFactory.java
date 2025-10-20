@@ -10,7 +10,6 @@ import io.trino.spi.block.ByteArrayBlock;
 import io.trino.spi.block.DictionaryBlock;
 import io.trino.spi.block.Fixed12Block;
 import io.trino.spi.block.IntArrayBlock;
-import io.trino.spi.block.Int128ArrayBlock;
 import io.trino.spi.block.LongArrayBlock;
 import io.trino.spi.block.RunLengthEncodedBlock;
 import io.trino.spi.block.ShortArrayBlock;
@@ -86,15 +85,25 @@ public final class BlockApiFactory
     {
         return switch (block) {
             case LongArrayBlock b -> new LongApiBlockWrapper(b::getLong);
-            case RunLengthEncodedBlock rle -> switch (rle.getValue()) {
-                case LongArrayBlock wrapped -> new ConstantLongApi(wrapped.getLong(0));
-                default -> throw new RuntimeException(format("Unexpected nested block for Long RunLengthEncodedBlock: %s", rle.getValue().getClass()));
-            };
-            case DictionaryBlock dict -> switch (dict.getUnderlyingValueBlock()) {
-                    case LongArrayBlock inner -> new LongApiBlockWrapper(i -> inner.getLong(dict.getId(i)));
-                    case IntArrayBlock inner -> new LongApiBlockWrapper(i -> (long) inner.getInt(dict.getId(i)));
-                    default -> throw new RuntimeException(format("Unexpected nested block for Long DictionaryBlock: %s", dict.getUnderlyingValueBlock().getClass()));
-                };
+            case RunLengthEncodedBlock rle -> {
+                ValueBlock value = rle.getValue();
+                if (value instanceof LongArrayBlock wrapped) {
+                    yield new ConstantLongApi(wrapped.getLong(0));
+                }
+                else {
+                    throw new RuntimeException(format("Unexpected nested block for Long RunLengthEncodedBlock: %s", value.getClass()));
+                }
+            }
+            case DictionaryBlock dict -> {
+                if (dict.getUnderlyingValueBlock() instanceof LongArrayBlock) {
+                    Function<Integer, Long> dictIdLongFunction = i ->
+                            ((LongArrayBlock) dict.getUnderlyingValueBlock()).getLong(dict.getId(i));
+                    yield new LongApiBlockWrapper(dictIdLongFunction);
+                }
+                else {
+                    throw new RuntimeException(format("Unexpected nested block for Long DictionaryBlock: %s", dict.getUnderlyingValueBlock().getClass()));
+                }
+            }
             default -> throw new IllegalStateException(format("Unexpected block class for Long api: %s", block));
         };
     }
@@ -177,33 +186,6 @@ public final class BlockApiFactory
                 }
             }
             default -> throw new IllegalStateException(format("Unexpected block class for Fixed12 api: %s", block));
-        };
-    }
-
-    public static Int128ArrayBlockApi getInt128ApiInstance(Block block)
-    {
-        return switch (block) {
-            case Int128ArrayBlock b -> new Int128ApiBlockWrapper(b::getInt128High, b::getInt128Low);
-            case RunLengthEncodedBlock rle -> {
-                ValueBlock value = rle.getValue();
-                if (value instanceof Int128ArrayBlock wrapped) {
-                    yield new ConstantInt128ArrayApi(wrapped.getInt128High(0), wrapped.getInt128Low(0));
-                }
-                else {
-                    throw new RuntimeException(format("Unexpected nested block for Int128 RunLengthEncodedBlock: %s", value.getClass()));
-                }
-            }
-            case DictionaryBlock dict -> {
-                if (dict.getUnderlyingValueBlock() instanceof Int128ArrayBlock) {
-                    Function<Integer, Long> dictIdFirstFunction = i -> ((Int128ArrayBlock) dict.getUnderlyingValueBlock()).getInt128High(dict.getId(i));
-                    Function<Integer, Long> dictIdSecondFunction = i -> ((Int128ArrayBlock) dict.getUnderlyingValueBlock()).getInt128Low(dict.getId(i));
-                    yield new Int128ApiBlockWrapper(dictIdFirstFunction, dictIdSecondFunction);
-                }
-                else {
-                    throw new RuntimeException(format("Unexpected nested block for Int128 DictionaryBlock: %s", dict.getUnderlyingValueBlock().getClass()));
-                }
-            }
-            default -> throw new IllegalStateException(format("Unexpected block class for Int128 api: %s", block));
         };
     }
 }

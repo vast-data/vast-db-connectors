@@ -10,7 +10,6 @@ import com.google.common.collect.Multimap;
 import com.vastdata.client.tx.VastTraceToken;
 import com.vastdata.client.tx.VastTransaction;
 
-import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
 
@@ -70,6 +69,13 @@ public class CommonRequestHeadersBuilder
     }
 
     @Override
+    public VastRequestHeadersBuilder withReadOnlyTransaction(boolean readOnly)
+    {
+        headers.put(RequestsHeaders.TABULAR_TRANSACTION_READ_ONLY.getHeaderName(), Boolean.toString(readOnly));
+        return this;
+    }
+
+    @Override
     public VastRequestHeadersBuilder withExactMatch(String nameToMatch)
     {
         headers.put(RequestsHeaders.TABULAR_EXACT_MATCH.getHeaderName(), nameToMatch);
@@ -77,25 +83,9 @@ public class CommonRequestHeadersBuilder
     }
 
     @Override
-    public VastRequestHeadersBuilder withEndUser(final String user)
-    {
-        headers.put(RequestsHeaders.END_USER.getHeaderName(), user);
-        return this;
-    }
-
-    @Override
     public VastRequestHeadersBuilder withTraceToken(VastTraceToken traceToken)
     {
         headers.put(RequestsHeaders.TABULAR_TRACE_TOKEN.getHeaderName(), traceToken.toString());
-        return this;
-    }
-
-    @Override
-    public VastRequestHeadersBuilder withSorting(List<Integer> sortedColumns)
-    {
-        for (int i = 0; i < sortedColumns.size(); i++) {
-            headers.put(String.format(RequestsHeaders.TABULAR_SORTED_TEMPLATE.getHeaderName(), i), sortedColumns.get(i).toString());
-        }
         return this;
     }
 }

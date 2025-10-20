@@ -27,6 +27,6 @@ public class QueryDataBaseFieldsWithProjectionsMappingBuilder
 
     public LinkedHashMap<Field, LinkedHashMap<List<Integer>, Integer>> build()
     {
-        return new LinkedHashMap<>(map);
+        return map;
     }
 }

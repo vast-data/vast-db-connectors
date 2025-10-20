@@ -12,7 +12,6 @@ import io.trino.spi.block.Block;
 import io.trino.spi.block.ColumnarArray;
 import io.trino.spi.block.MapBlock;
 import io.trino.spi.block.RowBlock;
-import io.trino.spi.connector.SourcePage;
 import io.trino.spi.type.MapType;
 import io.trino.spi.type.Type;
 import org.apache.arrow.vector.types.pojo.ArrowType;
@@ -367,13 +366,13 @@ public class QueryDataResponseSchemaConstructor
         return relativeIndex - parentIndex;
     }
 
-    public SourcePage construct(Block[] blocks, int rows)
+    public Page construct(Block[] blocks, int rows)
     {
         Set<Integer> builtParents = new HashSet<>();
         Block[] projectedBlocks = applyProjections(IntStream.range(0, blocks.length)
                 .mapToObj(i -> buildProjectionBlock(blocks, projections.get(i), builtParents))
                 .filter(Objects::nonNull).toArray(Block[]::new));
-        SourcePage page = SourcePage.create(new Page(rows, projectedBlocks));
+        Page page = new Page(rows, projectedBlocks);
         LOG.debug("QueryData(%s) Constructed page: %s", traceStr, page);
         return page; //TODO - more validations on returned page
     }

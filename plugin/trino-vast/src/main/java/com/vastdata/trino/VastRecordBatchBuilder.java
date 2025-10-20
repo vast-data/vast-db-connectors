@@ -12,7 +12,6 @@ import com.vastdata.trino.block.BlockApiFactory;
 import com.vastdata.trino.block.ByteBlockApi;
 import com.vastdata.trino.block.Fixed12BlockApi;
 import com.vastdata.trino.block.IntBlockApi;
-import com.vastdata.trino.block.Int128ArrayBlockApi;
 import com.vastdata.trino.block.LongBlockApi;
 import com.vastdata.trino.block.ShortBlockApi;
 import com.vastdata.trino.block.SliceBlock;
@@ -34,7 +33,6 @@ import io.trino.spi.type.CharType;
 import io.trino.spi.type.DecimalType;
 import io.trino.spi.type.Decimals;
 import io.trino.spi.type.MapType;
-import io.trino.spi.type.TimeZoneKey;
 import io.trino.spi.type.Type;
 import org.apache.arrow.memory.ArrowBuf;
 import org.apache.arrow.memory.BufferAllocator;
@@ -69,8 +67,6 @@ import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
@@ -79,9 +75,6 @@ import java.util.function.IntFunction;
 import java.util.stream.IntStream;
 
 import static com.google.common.base.Verify.verify;
-import static io.trino.spi.type.DateTimeEncoding.unpackMillisUtc;
-import static io.trino.spi.type.TimeZoneKey.getTimeZoneKey;
-import static io.trino.spi.type.UuidType.UUID;
 import static java.lang.Double.longBitsToDouble;
 import static java.lang.Float.intBitsToFloat;
 import static java.lang.Math.toIntExact;
@@ -126,6 +119,9 @@ public class VastRecordBatchBuilder
 
     private void copyData(Optional<Block> optionalParent, Block block, FieldVector vector)
     {
+        if (block instanceof DictionaryBlock dictionaryBlock) {
+            LOG.info("copyData Got DictionaryBlock, child block: %s", dictionaryBlock.getDictionary());
+        }
         Field field = vector.getField();
         ArrowType arrowType = field.getType();
         Type trinoType = TypeUtils.convertArrowFieldToTrinoType(field);
@@ -208,24 +204,10 @@ public class VastRecordBatchBuilder
                 return;
             }
             case FixedSizeBinary: {
-                if (UUID.equals(trinoType)) {
-                    Int128ArrayBlockApi int128Api = BlockApiFactory.getInt128ApiInstance(block);
-                    FixedSizeBinaryVector uuidVector = (FixedSizeBinaryVector) vector;
-                    IntFunction<byte[]> indexedGetter = x -> {
-                        ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES * 2).order(ByteOrder.LITTLE_ENDIAN);
-                        buffer.putLong(int128Api.getInt128High(x));
-                        buffer.putLong(int128Api.getInt128Low(x));
-                        return buffer.array();
-                    };
-                    copyFixedWidthVector(block, uuidVector, parentBlock, nestedIsParent, positionCount, uuidVector::set,
-                                         indexedGetter);
-                }
-                else {
-                    SliceBlock sliceApi = BlockApiFactory.getSliceApiInstance(block);
-                    FixedSizeBinaryVector charVector = (FixedSizeBinaryVector) vector;
-                    IntFunction<byte[]> indexedGetter = getIndexFixedSizeByteArrayGetter((CharType) trinoType, sliceApi);
-                    copyFixedWidthVector(block, charVector, parentBlock, nestedIsParent, positionCount, charVector::set, indexedGetter);
-                }
+                SliceBlock sliceApi = BlockApiFactory.getSliceApiInstance(block);
+                FixedSizeBinaryVector charVector = (FixedSizeBinaryVector) vector;
+                IntFunction<byte[]> indexedGetter = getIndexFixedSizeByteArrayGetter((CharType) trinoType, sliceApi);
+                copyFixedWidthVector(block, charVector, parentBlock, nestedIsParent, positionCount, charVector::set, indexedGetter);
                 return;
             }
             case Bool: {
@@ -254,12 +236,10 @@ public class VastRecordBatchBuilder
             case Timestamp: {
                 ArrowType.Timestamp timestampType = (ArrowType.Timestamp) arrowType;
                 TimeUnit unit = timestampType.getUnit();
-                final long microsInUnit = TypeUtils.timeUnitToPicos(unit) / 1_000_000L;
-                final long millisInUnit = TypeUtils.timeUnitToPicos(unit) / 1_000_000_000L;
-                final String zoneId = timestampType.getTimezone();
+                long microsInUnit = TypeUtils.timeUnitToPicos(unit) / 1_000_000L;
                 TimeStampVector timeStampVector = (TimeStampVector) vector;
                 IntFunction<Long> longSupplier;
-                if (unit == TimeUnit.NANOSECOND && zoneId == null) {
+                if (unit == TimeUnit.NANOSECOND) {
                     Fixed12BlockApi fixed12Api = BlockApiFactory.getFixed12ApiInstance(block);
                     longSupplier = x -> {
                         // See LongTimestampType docs
@@ -268,38 +248,16 @@ public class VastRecordBatchBuilder
                         return TypeUtils.convertTwoValuesNanoToLong(micros, picos);
                     };
                 }
-                else if (zoneId != null && (unit == TimeUnit.MICROSECOND || unit == TimeUnit.NANOSECOND)) {
-                    final TimeZoneKey zoneKey = getTimeZoneKey(zoneId);
-                    Fixed12BlockApi fixed12Api = BlockApiFactory.getFixed12ApiInstance(block);
-                    longSupplier = x -> {
-                        // See LongTimestampType docs
-                        long millis = fixed12Api.getFixed12First(x);
-                        int picos = fixed12Api.getFixed12Second(x);
-                        return TypeUtils.convertTwoValuesNanoToLongMilli(unpackMillisUtc(millis), picos);
-                    };
-                }
-                else if (zoneId == null) {
+                else {
                     LongBlockApi longApi = BlockApiFactory.getLongApiInstance(block);
                     longSupplier = x -> {
                         long valueMicros = longApi.getLong(x); // as microseconds
                         if (valueMicros % microsInUnit != 0) {
-                            throw new IllegalArgumentException(format("%s value %d must be a multiple of %d", unit, valueMicros, microsInUnit));
+                            throw new IllegalArgumentException(format("%s value %d be a multiple of %d", unit, valueMicros, microsInUnit));
                         }
                         return valueMicros / microsInUnit; // rescale to use the correct time unit (for Arrow)
                     };
                 }
-                else {
-                    final TimeZoneKey zoneKey = getTimeZoneKey(zoneId);
-                    LongBlockApi longApi = BlockApiFactory.getLongApiInstance(block);
-                    longSupplier = x -> {
-                        long valueMillis = unpackMillisUtc(longApi.getLong(x)); // as milliseconds
-                        if (valueMillis % millisInUnit != 0) {
-                            throw new IllegalArgumentException(format("%s value %d must be a multiple of %d", unit, valueMillis, millisInUnit));
-                        }
-                        return valueMillis / millisInUnit; // rescale to use the correct time unit (for Arrow)
-                    };
-                }
-                
                 copyFixedWidthVector(block, timeStampVector, parentBlock, nestedIsParent, positionCount,
                         timeStampVector::set, longSupplier);
                 return;
@@ -556,12 +514,12 @@ public class VastRecordBatchBuilder
                         arrayType.appendTo(value, 0, blockBuilder);
                     }
                     Block expandedArrayBlock = blockBuilder.build();
-                    LOG.debug("Array block for type %s is RLE. Copying expanded data block: %s", trinoType, expandedArrayBlock);
+                    LOG.info("Array block for type %s is RLE. Copying expanded data block: %s", trinoType, expandedArrayBlock);
                     copyList(trinoType, expandedArrayBlock, listVector);
                     return; // this is a copyData over an extended Array block. Array data has been copied, no need to proceed
                 }
                 else {
-                    LOG.debug("Array block for type %s is RLE of null value", trinoType);
+                    LOG.info("Array block for type %s is RLE of null value", trinoType);
                     for (int i = 0; i < rleBlockPositionCount; i++) {
                         childVector.setNull(i);
                     }

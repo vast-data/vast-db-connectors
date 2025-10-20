@@ -1,6 +1,3 @@
-/*
- *  Copyright (C) Vast Data Ltd.
- */
 package com.vastdata.spark;
 
 import java.util.HashMap;

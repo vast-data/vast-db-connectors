@@ -29,9 +29,9 @@ public class DummyDependenciesFactory
     }
 
     @Override
-    public VastRequestHeadersBuilder getHeadersFactory(final String endUser)
+    public VastRequestHeadersBuilder getHeadersFactory()
     {
-        return new CommonRequestHeadersBuilder(() -> "DUMMY-" + vastConfig.getEngineVersion() + "-user:" + endUser);
+        return new CommonRequestHeadersBuilder(() -> "DUMMY-" + vastConfig.getEngineVersion());
     }
 
     @Override

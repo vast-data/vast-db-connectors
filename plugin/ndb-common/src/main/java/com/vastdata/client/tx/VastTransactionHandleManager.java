@@ -9,6 +9,7 @@ import com.google.common.collect.Sets;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastResponse;
 import com.vastdata.client.error.VastExceptionFactory;
+import com.vastdata.client.schema.StartTransactionContext;
 import io.airlift.log.Logger;
 
 import java.util.Set;
@@ -32,33 +33,33 @@ public abstract class VastTransactionHandleManager<T extends VastTransaction>
         this.transactionInstantiationFunction = transactionInstantiationFunction;
     }
 
-    public T startTransaction(final String endUser)
+    public T startTransaction(StartTransactionContext ctx)
     {
-        ParsedStartTransactionResponse parsedResponse = parser.apply(client.startTransaction(endUser));
-        T newTransHandle = transactionInstantiationFunction.apply(parsedResponse);
+        ParsedStartTransactionResponse parsedResponse = parser.apply(client.startTransaction(ctx));
+        T newTransHandle = transactionInstantiationFunction.apply(ctx, parsedResponse);
         LOG.debug("Opened new transaction: %s", newTransHandle);
         openTransactions.add(newTransHandle);
         return newTransHandle;
     }
 
-    public void commit(T handle, final String endUser)
+    public void commit(T handle)
     {
         if (!openTransactions.remove(handle)) {
             LOG.error("Committing not open transaction: %s", handle);
         }
-        VastResponse response = client.commitTransaction(handle, endUser);
+        VastResponse response = client.commitTransaction(handle);
         VastExceptionFactory.checkResponseStatus(response, format("Commit %s failed: %s", handle, response)).ifPresent(exception -> {
             LOG.error(exception, "Failed committing transaction %s: %s", handle, response);
             throw VastExceptionFactory.toRuntime(VastExceptionFactory.serverException("Failed committing transaction", exception));
         });
     }
 
-    public void rollback(T handle, final String endUser)
+    public void rollback(T handle)
     {
         if (!openTransactions.remove(handle)) {
             LOG.error("Rolling back not open transaction: %s", handle);
         }
-        VastResponse response = client.rollbackTransaction(handle, endUser);
+        VastResponse response = client.rollbackTransaction(handle);
         VastExceptionFactory.checkResponseStatus(response, format("Rollback %s failed: %s", handle, response)).ifPresent(exception -> {
             LOG.error(exception, "Failed rolling back transaction %s: %s", handle, response);
             throw VastExceptionFactory.toRuntime(VastExceptionFactory.serverException("Failed rolling back transaction", exception));

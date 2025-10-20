@@ -14,7 +14,7 @@ public interface VastDependenciesFactory
 {
     Predicate<String> getSchemaNameValidator();
 
-    VastRequestHeadersBuilder getHeadersFactory(final String endUser);
+    VastRequestHeadersBuilder getHeadersFactory();
 
     ConfigDefaults<HttpClientConfig> getHttpClientConfigConfigDefaults();
 

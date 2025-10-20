@@ -1,13 +1,11 @@
-/*
- *  Copyright (C) Vast Data Ltd.
- */
+/* Copyright (C) Vast Data Ltd. */
 
 package com.vastdata.trino;
 
-import com.vastdata.trino.rowid.BlockComparatorFunction;
 import io.airlift.log.Logger;
 import io.trino.spi.Page;
 import io.trino.spi.block.Block;
+import io.trino.spi.block.LongArrayBlock;
 
 import java.util.Arrays;
 import java.util.Comparator;
@@ -48,19 +46,13 @@ public class VastMergePage
     {
         return insertPage;
     }
-    public static VastMergePage createVastUpdateDeleteInsertPages(final Page page, final int columnCount)
+    public static VastMergePage createVastUpdateDeleteInsertPages(Page page, int columnCount)
     {
-        final int rowCount = page.getPositionCount();
+        int rowCount = page.getPositionCount();
         LOG.debug("createVastUpdateDeleteInsertPages: pageChannelCount: %s, rowCount: %s, columnCount: %s", page.getChannelCount(), rowCount, columnCount);
 
-        // See https://trino.io/docs/current/develop/supporting-merge.html#connectormergesink-api for details
-        // In the Trino 462 -> 475 upgrade an additional channel was added before the row ID channel, so it was changed from `+ 1` to `+ 2`
-        final int rowIdChannel = columnCount + 2;
-
         //https://trino.io/docs/current/develop/supporting-merge.html#overview-of-merge-processing
-        checkArgument(page.getChannelCount() == rowIdChannel + 1,
-                "The row ID column is the last column (columnCount = %d, page.getChannelCount() = %d, rowIdChannel = %d), but is %s",
-                columnCount, page.getChannelCount(), rowIdChannel);
+        checkArgument(page.getChannelCount() == 2 + columnCount, "The page size should be 2 + columnCount (%s), but is %s", columnCount, page.getChannelCount());
         Block operationBlock = page.getBlock(columnCount);
 
         int[] dataChannels = range(0, columnCount).toArray();
@@ -74,7 +66,7 @@ public class VastMergePage
         LOG.debug("Merge Operation Block:\n %s", operationBlock.toString());
 
         for (int position = 0; position < rowCount; position++) {
-            final int operation = TINYINT.getByte(operationBlock, position);
+            int operation = TINYINT.getByte(operationBlock, position);
             switch (operation) {
                 case INSERT_OPERATION_NUMBER -> {
                     insertPositions[insertPositionCount] = position;
@@ -95,6 +87,9 @@ public class VastMergePage
         Optional<Page> updatePage = Optional.empty();
         Optional<Page> insertPage = Optional.empty();
         Optional<Page> deletePage = Optional.empty();
+
+        // See https://trino.io/docs/current/develop/supporting-merge.html#connectormergesink-api for details
+        final int rowIdChannel = columnCount + 1;
 
         if (insertPositionCount > 0) {
             LOG.debug("MERGE insert page: %s", page);
@@ -126,7 +121,8 @@ public class VastMergePage
     // Workaround for ORION-147374 (currently VAST backend requires ascending row IDs for UPDATE/DELETE)
     static int[] sortPositionsByRowId(int[] positions, int count, Block rowIdsBlock)
     {
-        Comparator<Integer> comparator = BlockComparatorFunction.INSTANCE.apply(rowIdsBlock);
+        LongArrayBlock longArrayBlock = (LongArrayBlock) rowIdsBlock;
+        Comparator<Integer> comparator = Comparator.comparing(longArrayBlock::getLong);
         return Arrays
                 .stream(positions, 0, count)
                 .boxed()

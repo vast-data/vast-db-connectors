@@ -7,16 +7,17 @@
     <parent>
         <groupId>ndb</groupId>
         <artifactId>ndb-root</artifactId>
-        <version>5.4.0</version>
+        <version>5.3.0</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
     <artifactId>spark-vast</artifactId>
-    <version>5.4.0</version>
+    <version>5.3.0</version>
     <description>Spark - VAST Connector</description>
     <packaging>pom</packaging>
 
     <properties>
+        <spark33.version>3.3.2</spark33.version>
         <spark34.version>3.4.1</spark34.version>
         <spark35.version>3.5.1</spark35.version>
         <air.main.basedir>${project.parent.basedir}</air.main.basedir>
@@ -31,10 +32,14 @@
 
     <modules>
         <module>common</module>
-        <module>spark34</module>
-        <module>spark35</module>
+<!--        <module>spark33</module>-->
+<!--        <module>spark34</module>-->
+<!--        <module>spark35</module>-->
+        <module>spark35-scala-212</module>
         <module>spark-agent</module>
+<!--        <module>spark-agent33</module>-->
     </modules>
+
     <dependencies>
         <dependency>
             <groupId>org.apache.arrow</groupId>
@@ -99,7 +104,7 @@
         <dependency>
             <groupId>org.scala-lang</groupId>
             <artifactId>scala-library</artifactId>
-            <version>2.13.10</version>
+            <version>2.12.18</version>
             <scope>provided</scope>
         </dependency>
         <dependency>

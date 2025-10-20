@@ -1,6 +1,5 @@
-/*
- *  Copyright (C) Vast Data Ltd.
- */
+/* Copyright (C) Vast Data Ltd. */
+
 package com.vastdata.trino.statistics;
 
 import com.fasterxml.jackson.annotation.JsonCreator;

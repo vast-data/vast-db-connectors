@@ -1,6 +1,4 @@
-/*
- *  Copyright (C) Vast Data Ltd.
- */
+/* Copyright (C) Vast Data Ltd. */
 
 package com.vastdata.trino;
 

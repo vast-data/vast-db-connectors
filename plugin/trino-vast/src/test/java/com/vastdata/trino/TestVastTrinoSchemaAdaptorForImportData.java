@@ -4,22 +4,23 @@
 
 package com.vastdata.trino;
 
-import com.google.common.base.Strings;
 import com.vastdata.client.schema.ImportDataContext;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.MethodSource;
+import org.testng.annotations.DataProvider;
+import org.testng.annotations.Test;
+import org.testng.util.Strings;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 public class TestVastTrinoSchemaAdaptorForImportData
 {
-    public static Object[][] contextValues()
+    @DataProvider(name = "contextValues")
+    public Object[][] contextValues()
     {
         Optional<Object> empty = Optional.empty();
         Optional<IllegalArgumentException> illegal = Optional.of(new IllegalArgumentException());
@@ -38,8 +39,7 @@ public class TestVastTrinoSchemaAdaptorForImportData
         };
     }
 
-    @ParameterizedTest
-    @MethodSource("contextValues")
+    @Test(dataProvider = "contextValues")
     public void testAdaptForImportData(List<String> columns, Map<String, List<String>> filesInfo, String dest, Optional<Exception> expectedException)
     {
         try {

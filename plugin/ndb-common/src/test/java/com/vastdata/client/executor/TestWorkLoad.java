@@ -152,6 +152,12 @@ public class TestWorkLoad
                 }
 
                 @Override
+                public boolean isReadOnly()
+                {
+                    return false;
+                }
+
+                @Override
                 public VastTraceToken generateTraceToken(Optional<String> userTraceToken)
                 {
                     return token;
@@ -159,7 +165,7 @@ public class TestWorkLoad
             };
             int numberOfRetries = 0;
             try {
-                importExecutor.execute(ctx, mockTrans, token, ImmutableList.of(uri1, uri2), () -> getRetryStrategy(numberOfRetries), true, null);
+                importExecutor.execute(ctx, mockTrans, token, ImmutableList.of(uri1, uri2), () -> getRetryStrategy(numberOfRetries), true);
                 fail("Expected an exception");
             }
             catch (Throwable any) {

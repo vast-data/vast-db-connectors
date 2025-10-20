@@ -42,7 +42,7 @@ public final class VastColumnHandle
     // The list of field indices to the projected part of the top-level column, see ConnectorMetadata#applyProjection for more details.
     // For now, we only support row dereference pushdown,  i.e. `SELECT a.x WHERE b.y = 0` should only read `a.x` and `b.y`.
     // It works by replacing the dereferenced subcolumns by synthetic column handles, to be used by the planner (for predicate pushdown) and our page source.
-    private final ImmutableList<Integer> projectionPath;
+    private final List<Integer> projectionPath;
 
     // Computed over this column if set (TODO: allow multi-column expressions, e.g. 'x > y')
     private final VastExpression expression;
@@ -50,7 +50,7 @@ public final class VastColumnHandle
     public VastColumnHandle(Field field)
     {
         this.deserializedBaseField = field;
-        this.projectionPath = ImmutableList.of();
+        this.projectionPath = List.of();
         this.expression = null;
     }
 

@@ -14,6 +14,7 @@ import io.trino.spi.type.TimeType;
 import io.trino.spi.type.TimestampType;
 import io.trino.spi.type.Type;
 import io.trino.spi.type.TypeOperators;
+import io.trino.spi.type.UuidType;
 import io.trino.spi.type.VarcharType;
 import org.apache.arrow.vector.types.DateUnit;
 import org.apache.arrow.vector.types.FloatingPointPrecision;
@@ -21,14 +22,13 @@ import org.apache.arrow.vector.types.TimeUnit;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.FieldType;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.MethodSource;
+import org.testng.annotations.DataProvider;
+import org.testng.annotations.Test;
 
 import java.util.List;
 import java.util.Optional;
 
-import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_UINT64_FIELD;
+import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_FIELD;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.spi.type.DateType.DATE;
@@ -39,8 +39,7 @@ import static io.trino.spi.type.SmallintType.SMALLINT;
 import static io.trino.spi.type.TinyintType.TINYINT;
 import static io.trino.spi.type.VarbinaryType.VARBINARY;
 import static io.trino.spi.type.VarcharType.VARCHAR;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.testng.Assert.assertEquals;
 
 public class TestTypeUtils
 {
@@ -115,24 +114,31 @@ public class TestTypeUtils
     @Test
     public void testConvertRowId()
     {
-        Type type = TypeUtils.convertArrowFieldToTrinoType(ROW_ID_UINT64_FIELD);
+        Type type = TypeUtils.convertArrowFieldToTrinoType(ROW_ID_FIELD);
         assertEquals(type, BIGINT); // a special case for '$row_id' uint64 special column
     }
 
-    @Test
+    @Test(expectedExceptions = IllegalArgumentException.class)
     public void testExceptionForUnsupportedArrowTypeConversion()
     {
         ArrowType.FloatingPoint type = new ArrowType.FloatingPoint(FloatingPointPrecision.HALF);
-        assertThrows(IllegalArgumentException.class, () -> TypeUtils.convertArrowFieldToTrinoType(Field.nullable("dummy_name", type)));
+        TypeUtils.convertArrowFieldToTrinoType(Field.nullable("dummy_name", type));
     }
 
-    @Test
+    @Test(expectedExceptions = TrinoException.class, expectedExceptionsMessageRegExp = "Unsupported Trino type: uuid")
+    public void testExceptionForUnsupportedUuid()
+    {
+        TypeUtils.convertTrinoTypeToArrowField(UuidType.UUID, "name", true /*nullable*/);
+    }
+
+    @Test(expectedExceptions = TrinoException.class, expectedExceptionsMessageRegExp = "Row fields must be explicitly named: row\\(varchar\\)")
     public void testExceptionForUnsupportedAnonymousStruct()
     {
-        assertThrows(TrinoException.class, () -> TypeUtils.convertTrinoTypeToArrowField(RowType.anonymousRow(VARCHAR), "name", true /*nullable*/), "Row fields must be explicitly named: row\\(varchar\\)");
+        TypeUtils.convertTrinoTypeToArrowField(RowType.anonymousRow(VARCHAR), "name", true /*nullable*/);
     }
 
-    public static Object[][] supportedTimestamps()
+    @DataProvider
+    public Object[][] supportedTimestamps()
     {
         return new Object[][] {
                 {123L, 0, 123000L},
@@ -151,14 +157,14 @@ public class TestTypeUtils
                 {-123L, 999000, -122001L}};
     }
 
-    @ParameterizedTest
-    @MethodSource("supportedTimestamps")
+    @Test(dataProvider = "supportedTimestamps")
     public void testNanoTimestampConversion(long micros, int picos, long expected)
     {
         assertEquals(TypeUtils.convertTwoValuesNanoToLong(micros, picos), expected);
     }
 
-    public static Object[][] supportedFlatTrinoTypes()
+    @DataProvider
+    public Object[][] supportedFlatTrinoTypes()
     {
         return new Object[][] {
                 {BOOLEAN},
@@ -246,31 +252,27 @@ public class TestTypeUtils
         assertEquals(TypeUtils.parseTrinoTypeId(trinoType.getTypeId()), trinoType);
     }
 
-    @ParameterizedTest
-    @MethodSource("supportedFlatTrinoTypes")
+    @Test(dataProvider = "supportedFlatTrinoTypes")
     public void testParseTrinoTypeIdToTrinoTypeFlat(final Type trinoType)
     {
         assertEquals(TypeUtils.parseTrinoTypeId(trinoType.getTypeId()), trinoType);
     }
 
-    @ParameterizedTest
-    @MethodSource("supportedFlatTrinoTypes")
+    @Test(dataProvider = "supportedFlatTrinoTypes")
     public void testParseTrinoTypeIdToTrinoTypeArray(final Type trinoType)
     {
         final Type arrayType = new ArrayType(trinoType);
         assertEquals(TypeUtils.parseTrinoTypeId(arrayType.getTypeId()), arrayType);
     }
 
-    @ParameterizedTest
-    @MethodSource("supportedFlatTrinoTypes")
+    @Test(dataProvider = "supportedFlatTrinoTypes")
     public void testParseTrinoTypeIdToTrinoTypeMap(final Type trinoType)
     {
         final Type mapType = new MapType(trinoType, trinoType, new TypeOperators());
         assertEquals(TypeUtils.parseTrinoTypeId(mapType.getTypeId()), mapType);
     }
 
-    @ParameterizedTest
-    @MethodSource("supportedFlatTrinoTypes")
+    @Test(dataProvider = "supportedFlatTrinoTypes")
     public void testParseTrinoTypeIdToTrinoTypeRow(final Type trinoType)
     {
         final Type rowType = RowType.rowType(
@@ -281,7 +283,8 @@ public class TestTypeUtils
         assertEquals(TypeUtils.parseTrinoTypeId(rowType.getTypeId()), rowType);
     }
 
-    public static Object[][] unsupportedTimestamps()
+    @DataProvider
+    public Object[][] unsupportedTimestamps()
     {
         return new Object[][] {
                 {Long.MAX_VALUE / 999, 0},
@@ -295,10 +298,9 @@ public class TestTypeUtils
                 {123L, 456}}; // Arrow doesn't support picosecond resolution
     }
 
-    @ParameterizedTest
-    @MethodSource("unsupportedTimestamps")
+    @Test(expectedExceptions = TrinoException.class, dataProvider = "unsupportedTimestamps")
     public void testNanoTimestampConversionUnsupported(long micros, int nanos)
     {
-        assertThrows(TrinoException.class, () -> TypeUtils.convertTwoValuesNanoToLong(micros, nanos));
+        TypeUtils.convertTwoValuesNanoToLong(micros, nanos);
     }
 }

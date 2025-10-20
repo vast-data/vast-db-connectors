@@ -9,7 +9,6 @@ import com.vastdata.client.error.VastIOException;
 import com.vastdata.client.tx.VastTraceToken;
 import com.vastdata.client.util.TypeUtils;
 import io.airlift.log.Logger;
-import org.apache.arrow.compression.CommonsCompressionFactory;
 import org.apache.arrow.flatbuf.Message;
 import org.apache.arrow.flatbuf.MessageHeader;
 import org.apache.arrow.memory.ArrowBuf;
@@ -77,7 +76,6 @@ abstract public class BaseQueryDataResponseParser<T>
         // set after reading first IPC message (which is the Arrow schema)
         private Schema requestedSchema;
         private QueryDataPageBuilder<T> pageBuilder;
-        private long bytesRead = 0;
 
         public SiloStreamParser(int streamId, InputStream input)
         {
@@ -185,19 +183,11 @@ abstract public class BaseQueryDataResponseParser<T>
                 }
 
                 VectorSchemaRoot root = VectorSchemaRoot.create(requestedSchema, allocator);
+                VectorLoader loader = new VectorLoader(root, NoCompressionCodec.Factory.INSTANCE);
                 try (ArrowRecordBatch batch = MessageSerializer.deserializeRecordBatch(message, bodyBuffer)) {
                     if (LOG.isDebugEnabled()) {
                         LOG.debug("QueryData(%s)(stream=%d): loading %d vectors (%s) from %s, body: %s)",
                                 traceStr, streamId, requestedSchema.getFields().size(), requestedSchema, batch, bodyBuffer);
-                    }
-                    VectorLoader loader;
-		    if (batch.getBodyCompression().equals(NoCompressionCodec.DEFAULT_BODY_COMPRESSION)) {
-			LOG.debug("No compression");
-                        loader = new VectorLoader(root, NoCompressionCodec.Factory.INSTANCE);
-                    }
-                    else {
-			LOG.debug("Compression : {}", batch.getBodyCompression());
-                        loader = new VectorLoader(root, CommonsCompressionFactory.INSTANCE);
                     }
                     loader.load(batch); // load `root` vectors from batch
                 }
@@ -220,7 +210,6 @@ abstract public class BaseQueryDataResponseParser<T>
                 MessageResult message = readNextMessage();
                 LOG.debug("QueryData(%s)(stream=%d): skipped %d bytes", traceStr, streamId, messageReader.bytesRead());
                 if (Objects.isNull(message)) {
-                    bytesRead += messageReader.bytesRead();
                     messageReader = null; // end of stream
                 }
                 else if (Objects.nonNull(message.getBodyBuffer())) {
@@ -251,7 +240,6 @@ abstract public class BaseQueryDataResponseParser<T>
             if (LOG.isDebugEnabled()) {
                 LOG.debug("QueryData(%s)(stream=%d, nextRow=%d): reader is done (%d bytes read)", traceStr, streamId, nextRowId, messageReader.bytesRead());
             }
-            bytesRead += messageReader.bytesRead();
             messageReader = null; // intentionally don't close the reader to keep the underlying shared input stream open for other silos/columns
             long start = System.nanoTime();
             T page;
@@ -298,7 +286,6 @@ abstract public class BaseQueryDataResponseParser<T>
             }
             if (Objects.nonNull(messageReader)) {
                 LOG.error("QueryData(%s)(stream=%s): message reader is prematurely closed", traceStr, streamId);
-                bytesRead += messageReader.bytesRead();
                 messageReader = null;
             }
             if (Objects.nonNull(pageBuilder)) {
@@ -306,11 +293,6 @@ abstract public class BaseQueryDataResponseParser<T>
                 pageBuilder.clear(); // deallocates collected Arrow buffers
                 pageBuilder = null;
             }
-        }
-
-        public long getBytesRead()
-        {
-            return bytesRead + (messageReader != null? messageReader.bytesRead() : 0);
         }
     }
 
@@ -444,11 +426,6 @@ abstract public class BaseQueryDataResponseParser<T>
     public boolean isSplitFinished()
     {
         return pagination.isFinished();
-    }
-
-    public long getBytesRead()
-    {
-        return parsers.values().stream().mapToLong(SiloStreamParser::getBytesRead).sum();
     }
 
     private static int readInt(InputStream in)

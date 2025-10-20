@@ -11,7 +11,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 public class TestVastPayloadSerializer
@@ -20,7 +19,7 @@ public class TestVastPayloadSerializer
     public void testApplyNull()
     {
         Optional<byte[]> apply = VastPayloadSerializer.getInstanceForMap().apply(null);
-        assertFalse(apply.isPresent());
+        assertTrue(!apply.isPresent());
     }
 
     @Test

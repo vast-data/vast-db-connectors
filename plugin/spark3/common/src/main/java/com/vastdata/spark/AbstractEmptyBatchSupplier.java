@@ -1,9 +1,6 @@
-/*
- *  Copyright (C) Vast Data Ltd.
- */
 package com.vastdata.spark;
 
-import com.vastdata.spark.adaptor.SparkVectorAdaptorFactory;
+import com.vastdata.spark.adaptor.VectorAdaptorFactory;
 import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
@@ -24,7 +21,6 @@ class AbstractEmptyBatchSupplier<T, V>
     private final AtomicBoolean hasNext = new AtomicBoolean(true);
     private final Function<FieldVector, V> vectorFunction;
     private final BiFunction<VectorSchemaRoot, Function<FieldVector, V>, T> resultFunction;
-    private static final SparkVectorAdaptorFactory vectorAdaptorFactory = new SparkVectorAdaptorFactory();
 
     AbstractEmptyBatchSupplier(String traceStr, Schema schema, Function<FieldVector, V> vectorFunction, BiFunction<VectorSchemaRoot, Function<FieldVector, V>, T> resultFunction)
     {
@@ -53,6 +49,6 @@ class AbstractEmptyBatchSupplier<T, V>
 
     static Function<FieldVector, FieldVector> getVectorAdaptor(RootAllocator allocator)
     {
-        return vector -> vectorAdaptorFactory.forField(vector.getField()).orElse((v, f, a) -> vector).adapt(vector, vector.getField(), allocator);
+        return vector -> VectorAdaptorFactory.forField(vector.getField()).orElse((v, f, a) -> vector).adapt(vector, vector.getField(), allocator);
     }
 }

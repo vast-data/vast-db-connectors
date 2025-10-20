@@ -1,6 +1,3 @@
-/*
- *  Copyright (C) Vast Data Ltd.
- */
 package com.vastdata.trino;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -22,77 +19,33 @@ import com.vastdata.trino.tx.VastTransactionHandle;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
+import io.trino.spi.Page;
 import io.trino.spi.PageBuilder;
-import io.trino.spi.block.ArrayBlock;
-import io.trino.spi.block.ArrayBlockBuilder;
-import io.trino.spi.block.BlockBuilder;
-import io.trino.spi.block.MapBlock;
-import io.trino.spi.block.MapBlockBuilder;
-import io.trino.spi.block.RowBlockBuilder;
-import io.trino.spi.block.SqlMap;
-import io.trino.spi.block.VariableWidthBlock;
+import io.trino.spi.block.*;
 import io.trino.spi.connector.CatalogSchemaName;
 import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.connector.ConnectorViewDefinition;
 import io.trino.spi.connector.SchemaTableName;
-import io.trino.spi.connector.SourcePage;
 import io.trino.spi.predicate.TupleDomain;
-import io.trino.spi.type.ArrayType;
-import io.trino.spi.type.CharType;
-import io.trino.spi.type.DecimalType;
-import io.trino.spi.type.Decimals;
-import io.trino.spi.type.Int128;
-import io.trino.spi.type.LongTimestamp;
-import io.trino.spi.type.MapType;
-import io.trino.spi.type.RowType;
-import io.trino.spi.type.SqlDate;
-import io.trino.spi.type.SqlDecimal;
-import io.trino.spi.type.SqlTimestamp;
-import io.trino.spi.type.SqlVarbinary;
-import io.trino.spi.type.Type;
-import io.trino.spi.type.TypeOperators;
-import io.trino.spi.type.VarcharType;
+import io.trino.spi.type.*;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 
 import java.net.URI;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static com.vastdata.client.schema.VastViewMetadata.FIELD_COLUMN_ALIASES;
-import static com.vastdata.client.schema.VastViewMetadata.FIELD_COLUMN_COMMENTS;
-import static com.vastdata.client.schema.VastViewMetadata.FIELD_COMMENT;
-import static com.vastdata.client.schema.VastViewMetadata.FIELD_CURRENT_CATALOG;
-import static com.vastdata.client.schema.VastViewMetadata.FIELD_CURRENT_NAMESPACE;
-import static com.vastdata.client.schema.VastViewMetadata.FIELD_PROPERTIES;
-import static com.vastdata.client.schema.VastViewMetadata.FIELD_QUERY_COLUMN_NAMES;
-import static com.vastdata.client.schema.VastViewMetadata.FIELD_SQL;
+import static com.vastdata.client.schema.VastViewMetadata.*;
 import static com.vastdata.client.schema.VastViewMetadata.PROPERTY_IS_RUN_AS_INVOKER;
-import static com.vastdata.client.schema.VastViewMetadata.PROPERTY_ORIGINAL_SQL;
-import static com.vastdata.client.schema.VastViewMetadata.PROPERTY_OWNER;
-import static com.vastdata.client.schema.VastViewMetadata.VAST_TRINO_TYPES_IDS;
-import static com.vastdata.client.schema.VastViewMetadata.VIEW_METADATA_TABLE;
-import static com.vastdata.client.schema.VastViewMetadata.defaultViewColumn;
-import static com.vastdata.client.schema.VastViewMetadata.indexOf;
 import static com.vastdata.trino.TypeUtils.convertArrowFieldToTrinoType;
 import static com.vastdata.trino.TypeUtils.convertTrinoTypeToArrowField;
 import static com.vastdata.trino.TypeUtils.parseTrinoTypeId;
-import static com.vastdata.trino.VastSessionProperties.getDataEndpoints;
+import static com.vastdata.trino.VastSessionProperties.*;
 import static com.vastdata.trino.VastSessionProperties.getEnableSortedProjections;
-import static com.vastdata.trino.VastSessionProperties.getRetryMaxCount;
-import static com.vastdata.trino.VastSessionProperties.getRetrySleepDuration;
 import static io.airlift.slice.Slices.utf8Slice;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
@@ -102,9 +55,7 @@ import static io.trino.spi.type.DoubleType.DOUBLE;
 import static io.trino.spi.type.IntegerType.INTEGER;
 import static io.trino.spi.type.RealType.REAL;
 import static io.trino.spi.type.SmallintType.SMALLINT;
-import static io.trino.spi.type.TimestampType.TIMESTAMP_MICROS;
-import static io.trino.spi.type.TimestampType.TIMESTAMP_MILLIS;
-import static io.trino.spi.type.TimestampType.TIMESTAMP_NANOS;
+import static io.trino.spi.type.TimestampType.*;
 import static io.trino.spi.type.TinyintType.TINYINT;
 import static io.trino.spi.type.VarbinaryType.VARBINARY;
 import static io.trino.spi.type.Varchars.truncateToLength;
@@ -165,7 +116,7 @@ public class ViewDefinitionHelpers {
         return new VastViewMetadata(viewName.getSchemaName(), viewName.getTableName(), metadata, schema);
     }
 
-    public static ConnectorViewDefinition pageToViewDefinition(final SourcePage page, final List<Field> underlyingColumns, final String schemaName)
+    public static ConnectorViewDefinition pageToViewDefinition(final Page page, final List<Field> underlyingColumns, final String schemaName)
     {
         final VariableWidthBlock blockSql = (VariableWidthBlock) page.getBlock(indexOf(FIELD_SQL));
         final String sql = blockSql.getSlice(0).toStringUtf8();
@@ -216,11 +167,8 @@ public class ViewDefinitionHelpers {
         final boolean isRunAsInvoker = Boolean.parseBoolean(properties.get(PROPERTY_IS_RUN_AS_INVOKER));
         final List<CatalogSchemaName> path = currentNamespace.stream().map(schema -> new CatalogSchemaName(currentCatalog, schema)).toList();
         LOG.warn("Throwing away queryColumnNames = %s, columnAliases = %s, sql = %s", queryColumnNames, columnAliases, sql);
-        final VastConnectorViewDefinition definition = new VastConnectorViewDefinition(originalSql,
-                Optional.of(currentCatalog), Optional.of(schemaName), viewColumns, Optional.of(comment),
-                Optional.ofNullable(owner), isRunAsInvoker, path, properties);
-        LOG.debug("pageToViewsDefinition: returning %s", definition);
-        return definition;
+        return new VastConnectorViewDefinition(originalSql, Optional.of(currentCatalog), Optional.of(schemaName),
+                viewColumns, Optional.of(comment), Optional.ofNullable(owner), isRunAsInvoker, path, properties);
     }
 
     public static VastPageSource viewPageSource(final SchemaTableName viewName,
@@ -229,15 +177,14 @@ public class ViewDefinitionHelpers {
                                                 final ConnectorSession session)
             throws VastException
     {
-        final String endUser = session.getUser();
         final String trace = "getView:" + viewName.getTableName();
         final VastTraceToken token = transactionHandle.generateTraceToken(Optional.of(trace));
         final Map<String, String> extraQueryParams = ImmutableMap.of("sub-table", VIEW_METADATA_TABLE);
-        final List<Field> columns = client.listColumns(transactionHandle, viewName.getSchemaName(), viewName.getTableName(), 1000, extraQueryParams, endUser);
-        LOG.debug("getView listColumns: %s", columns);
-        final VastSchedulingInfo schedulingInfo = client.getSchedulingInfo(transactionHandle, token, viewName.getSchemaName(), viewName.getTableName(), endUser);
+        final List<Field> columns = client.listColumns(transactionHandle, viewName.getSchemaName(), viewName.getTableName(), 1, extraQueryParams);
+
+        final VastSchedulingInfo schedulingInfo = client.getSchedulingInfo(transactionHandle, token, viewName.getSchemaName(), viewName.getTableName());
         final List<URI> endpoints = getDataEndpoints(session);
-        final VastSplit split = new VastSplit(endpoints, new VastSplitContext(0, 1, 1, 1), schedulingInfo, TupleDomain.all());
+        final VastSplit split = new VastSplit(endpoints, new VastSplitContext(0, 1, 1, 1), schedulingInfo);
         final QueryDataPagination pagination = new QueryDataPagination(split.getContext().getNumOfSubSplits());
         final List<VastColumnHandle> projectedColumns = columns
                 .stream()
@@ -273,7 +220,7 @@ public class ViewDefinitionHelpers {
                     new AtomicReference<>(),
                     split.getContext(), split.getSchedulingInfo(),
                     endpoints, retryConfig, batchSize, Optional.empty(), pagination,
-                    getEnableSortedProjections(session), 0, extraQueryParams, endUser);
+                    getEnableSortedProjections(session), extraQueryParams);
             return result.get();
         };
         return new VastPageSource(token, split, fetchPages, Optional.of(1L));

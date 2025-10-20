@@ -17,7 +17,6 @@ import com.vastdata.client.error.VastRuntimeException;
 import com.vastdata.client.error.VastServerException;
 import com.vastdata.client.error.VastUserException;
 import com.vastdata.client.executor.VastRetryConfig;
-import com.vastdata.client.rowid.TableType;
 import com.vastdata.client.schema.ArrowSchemaUtils;
 import com.vastdata.client.tx.VastTraceToken;
 import com.vastdata.client.tx.VastTransaction;
@@ -29,12 +28,6 @@ import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.Request;
 import io.airlift.http.client.ResponseHandler;
 import io.airlift.http.client.jetty.JettyHttpClient;
-import org.apache.arrow.memory.RootAllocator;
-import org.apache.arrow.vector.IntVector;
-import org.apache.arrow.vector.VectorSchemaRoot;
-import org.apache.arrow.vector.types.pojo.ArrowType;
-import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.arrow.vector.types.pojo.FieldType;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.mockito.Mock;
 import org.testng.annotations.AfterClass;
@@ -67,8 +60,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.amazonaws.http.HttpMethodName.GET;
-import static com.google.common.collect.ImmutableList.toImmutableList;
-import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static com.vastdata.client.VastClient.AUDIT_LOG_BUCKET_NAME;
 import static com.vastdata.client.VastClient.BIG_CATALOG_BUCKET_NAME;
 import static com.vastdata.client.VastClient.getEndpointIndex;
@@ -214,8 +205,8 @@ public class TestVastClient
         assertThat(headers.get("Host")).isEqualTo(ImmutableList.of("localhost:9090"));
         assertThat(headers.get("Authorization")).isEqualTo(ImmutableList.of(
                 "AWS4-HMAC-SHA256 Credential=pIX3SzyuQVmdrIVZnyy0/20220411/us-east-1/s3/aws4_request, " +
-                        "SignedHeaders=host;x-amz-content-sha256;x-amz-date, " +
-                        "Signature=0cd36e09c5e96e5485eee9cae7ba9c777515cbc365fc4f1d4403fb4b148c735a"));
+                "SignedHeaders=host;x-amz-content-sha256;x-amz-date, " +
+                "Signature=0cd36e09c5e96e5485eee9cae7ba9c777515cbc365fc4f1d4403fb4b148c735a"));
     }
 
     @Test
@@ -273,7 +264,7 @@ public class TestVastClient
             throws VastException
     {
         VastClient unit = getVastClient();
-        unit.createSchema(mockTransactionHandle, "nobucket", "{}", null);
+        unit.createSchema(mockTransactionHandle, "nobucket", "{}");
     }
 
     @Test
@@ -285,7 +276,7 @@ public class TestVastClient
         String testBucket = "testCreateSchemaBucket";
         String testSchema = "testCreateSchemaSchema";
         mockUtils.createBucket(this.testPort, testBucket);
-        unit.createSchema(mockTransactionHandle, format("%s/%s", testBucket, testSchema), "{}", null);
+        unit.createSchema(mockTransactionHandle, format("%s/%s", testBucket, testSchema), "{}");
     }
 
     @Test(expectedExceptions = VastUserException.class, expectedExceptionsMessageRegExp = ".*HTTP Error: 404\\. Code: NoSuchKey\\. Message: The specified key does not exist\\. Resource: aresource\\. RequestId: a00100000025\\..*")
@@ -331,7 +322,7 @@ public class TestVastClient
             }
         };
         handler.setHook(format("/%s", path), method, action);
-        unit.createSchema(mockTransactionHandle, path, "{}", null);
+        unit.createSchema(mockTransactionHandle, path, "{}");
     }
 
     @DataProvider
@@ -412,7 +403,7 @@ public class TestVastClient
         when(mockTransactionHandle.getId()).thenReturn(999L);
         try {
             vastClient.queryData(mockTransactionHandle, traceToken, "s", "t", null, null, null, handlerSupplier, usedDataEndpoint,
-                    split, schedulingInfo, dataEndpoints, retryConfig, limit, bigCatalogSearchPath, mockPagination, false, 0, Collections.emptyMap(), null);
+                    split, schedulingInfo, dataEndpoints, retryConfig, limit, bigCatalogSearchPath, mockPagination, false, Collections.emptyMap());
         }
         catch (VastRuntimeException vre) {
             assertTrue(vre.getCause() instanceof VastServerException, vre.toString());
@@ -421,48 +412,5 @@ public class TestVastClient
         }
         assertEquals(errorUris.size(), expectedRequests); // total requests
         assertEquals(new HashSet<>(errorUris).size(), expectedRequests); // unique endpoints
-    }
-
-    @Test
-    public void testInsertByColumnsNoRowsImmediateReturn()
-            throws VastException
-    {
-        VastClient vastClient = getVastClient(mockHttpClient, mockArrowSchemaUtils);
-        VectorSchemaRoot emptyVsr = new VectorSchemaRoot(Collections.emptyList());
-        VectorSchemaRoot rowIds = vastClient.insertRowsByColumnBatches(null, "someSchema", "someTable",
-                emptyVsr,
-                null, Optional.empty(), ImmutableSet.of("col1"),
-                TableType.SORTED,
-                true, null);
-        assertEquals(rowIds.getRowCount(), 0, "Expected no rows to be returned when inserting no rows");
-    }
-
-    @Test(expectedExceptions = VastUserException.class,
-            expectedExceptionsMessageRegExp = "Sorted key columns alone are too large for a single request.")
-    public void testInsertByColumnsSortKeyColumnsDoNotGoIntoFirstInsert()
-            throws VastException
-    {
-        VastClient vastClient = getVastClient(mockHttpClient, mockArrowSchemaUtils);
-        ImmutableSet<String> tooManySortedCols = IntStream.rangeClosed(1, 10000)
-                .mapToObj(i -> "col" + i)
-                .collect(toImmutableSet());
-        ImmutableList<Field> fields = tooManySortedCols.stream()
-                .map(col -> new Field(col, FieldType.nullable(new ArrowType.Int(32, true)), null))
-                .collect(toImmutableList());
-        RootAllocator allocator = new RootAllocator();
-
-        VectorSchemaRoot oneRowVsr = VectorSchemaRoot.create(new Schema(fields), allocator);
-        oneRowVsr.setRowCount(1);
-        for (int i = 0; i < fields.size(); i++) {
-            IntVector vector = (IntVector) oneRowVsr.getVector(i);
-            vector.setSafe(0, 1);
-        }
-
-        vastClient.insertRowsByColumnBatches(null, "someSchema", "someTable",
-                oneRowVsr,
-                null, Optional.empty(),
-                tooManySortedCols,
-                TableType.SORTED,
-                true, null);
     }
 }

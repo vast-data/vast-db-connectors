@@ -18,6 +18,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import java.util.List;
+import java.util.Optional;
 import static com.vastdata.client.VastConfig.MAX_SUB_SPLITS;
 import static com.vastdata.client.VastConfig.MIN_SUB_SPLITS;
 import static io.trino.spi.StandardErrorCode.INVALID_SESSION_PROPERTY;
@@ -46,9 +48,7 @@ public class VastSessionProperties
     private static final String RETRY_SLEEP_DURATION = "retry_sleep_duration";
     private static final String PARALLEL_IMPORT_DURATION = "parallel_import";
     private static final String DYNAMIC_FILTER_COMPACTION_THRESHOLD = "dynamic_filter_compaction_threshold";
-    private static final String DYNAMIC_FILTER_ELYSIUM_COMPACTION_MULTIPLIER = "dynamic_filter_elysium_compaction_multiplier";
     private static final String DYNAMIC_FILTERING_WAIT_TIMEOUT = "dynamic_filtering_wait_timeout";
-    private static final String DYNAMIC_FILTER_PUSHDOWN_THRESHOLD = "dynamic_filter_pushdown_threshold";
 
     private static final String DEBUG_DISABLE_ARROW_PARSING = "debug_disable_arrow_parsing";
     private static final String DEBUG_DISABLE_PAGE_QUEUEING = "debug_disable_page_queueing";
@@ -64,18 +64,8 @@ public class VastSessionProperties
     private static final String IMPORT_CHUNK_LIMIT = "import_chunk_limit";
 
     private static final String ESTIMATE_SPLITS_FROM_ROW_ID_PREDICATE = "estimate_splits_from_row_id_predicate";
-    private static final String ESTIMATE_SPLITS_FROM_ELYSIUM = "estimate_splits_from_elysium";
-
-    private static final String ADAPTIVE_PARTITIONING_PREDICATE = "adaptive_partitioning";
-    private static final String SPLIT_SIZE_MULTIPLIER = "split_size_multiplier";
 
     private static final String SEED_FOR_SHUFFLING_ENDPOINTS = "seed_for_shuffling_endpoints";
-
-    private static final String COMPRESSION = "compression";
-
-    private static final String ENABLE_ACCESS_CONTROL = "enable_access_control";
-    private static final String ENABLE_ROW_COLUMN_SECURITY = "enable_row_column_security";
-    private static final String ENABLE_END_USER_IMPERSONATION = "enable_end_user_impersonation";
 
     private static final Splitter SPLITTER = Splitter.on(',').trimResults().omitEmptyStrings();
 
@@ -159,19 +149,9 @@ public class VastSessionProperties
                         config.getDynamicFilterCompactionThreshold(),
                         false))
                 .add(integerProperty(
-                        DYNAMIC_FILTER_ELYSIUM_COMPACTION_MULTIPLIER,
-                        "Increases dynamic filter compaction on sorted columns",
-                        config.getDynamicFilterElysiumCompactionMultiplier(),
-                        false))
-                .add(integerProperty(
                         DYNAMIC_FILTERING_WAIT_TIMEOUT,
                         "Duration to wait for completion of dynamic filters during split generation",
                         config.getDynamicFilteringWaitTimeout(),
-                        false))
-                .add(integerProperty(
-                        DYNAMIC_FILTER_PUSHDOWN_THRESHOLD,
-                        "Dynamic filters are not pushed down if they are estimated to select a higher percentage of rows then this",
-                        config.getDynamicFilterPushdownThreshold(),
                         false))
                 .add(booleanProperty(
                         MATCH_SUBSTRING_PUSHDOWN,
@@ -228,37 +208,12 @@ public class VastSessionProperties
                         "Number of splits will be calculated with consideration to the user defined ROW_IDs",
                         config.getEstimateSplitsFromRowIdPredicate(),
                         false))
-                .add(booleanProperty(
-                        ESTIMATE_SPLITS_FROM_ELYSIUM,
-                        "Number of splits will be calculated with consideration to the sorting key",
-                        config.getEstimateSplitsFromElysium(),
-                        false))
                 .add(longProperty(
                         SEED_FOR_SHUFFLING_ENDPOINTS,
                         "Seed for shuffling the data endpoints deterministically",
                         config.getSeedForShufflingEndpoints(),
                         true))
-                .add(booleanProperty(
-                        ADAPTIVE_PARTITIONING_PREDICATE,
-                        "Determine nuber of splits based on table statistics",
-                        config.getAdaptivePartitioning(),
-                        true))
-                .add(integerProperty(
-                        SPLIT_SIZE_MULTIPLIER,
-                        "Increase the split size accordingly when running with selective filters",
-                        config.getSplitSizeMultiplier(),
-                        true))
-                .add(stringProperty(
-                        COMPRESSION,
-                        "Compression algorithm used on the network interface.('none' or 'zstd')",
-                        compressionAdaptor(config.getCompression()),
-                        false))
                 .build();
-    }
-
-    static private String compressionAdaptor(int c)
-    {
-        return (c & 1) != 0? "zstd" : "none";
     }
 
     private Consumer<Integer> integerBetween(int min, int max)
@@ -348,19 +303,9 @@ public class VastSessionProperties
         return session.getProperty(DYNAMIC_FILTER_COMPACTION_THRESHOLD, Integer.class);
     }
 
-    public static int getDynamicFilterElysiumCompactionMultiplier(ConnectorSession session)
-    {
-        return session.getProperty(DYNAMIC_FILTER_ELYSIUM_COMPACTION_MULTIPLIER, Integer.class);
-    }
-
     public static int getDynamicFilteringWaitTimeout(ConnectorSession session)
     {
         return session.getProperty(DYNAMIC_FILTERING_WAIT_TIMEOUT, Integer.class);
-    }
-
-    public static int getDynamicFilterPushdownThreshold(ConnectorSession session)
-    {
-        return session.getProperty(DYNAMIC_FILTER_PUSHDOWN_THRESHOLD, Integer.class);
     }
 
     public static boolean getDebugDisableArrowParsing(ConnectorSession session)
@@ -413,44 +358,8 @@ public class VastSessionProperties
         return session.getProperty(IMPORT_CHUNK_LIMIT, Integer.class);
     }
 
-    public static boolean getEnableAccessControl(final ConnectorSession session)
-    {
-        return session.getProperty(ENABLE_ACCESS_CONTROL, boolean.class);
-    }
-
-    public static boolean getEnableRowColumnSecurity(final ConnectorSession session)
-    {
-        return session.getProperty(ENABLE_ROW_COLUMN_SECURITY, boolean.class);
-    }
-
-    public static boolean getEnableEndUserImpersonation(final ConnectorSession session)
-    {
-        return session.getProperty(ENABLE_END_USER_IMPERSONATION, boolean.class);
-    }
-
     public static boolean getEstimateSplitsFromRowIdPredicate(ConnectorSession session)
     {
         return session.getProperty(ESTIMATE_SPLITS_FROM_ROW_ID_PREDICATE, Boolean.class);
-    }
-
-    public static boolean getEstimateSplitsFromElysium(ConnectorSession session)
-    {
-        return session.getProperty(ESTIMATE_SPLITS_FROM_ELYSIUM, Boolean.class);
-    }
-
-    public static boolean getAdaptivePartitioning(ConnectorSession session)
-    {
-        return session.getProperty(ADAPTIVE_PARTITIONING_PREDICATE, Boolean.class);
-    }
-
-    public static int getSplitSizeMultiplier(ConnectorSession session)
-    {
-        return session.getProperty(SPLIT_SIZE_MULTIPLIER, Integer.class);
-    }
-
-    public static int getCompression(ConnectorSession session)
-    {
-        String compression = session.getProperty(COMPRESSION, String.class);
-        return compression.contains("zstd")? 1 : 0;
     }
 }

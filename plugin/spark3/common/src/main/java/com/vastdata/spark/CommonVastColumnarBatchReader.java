@@ -1,10 +1,6 @@
-/*
- *  Copyright (C) Vast Data Ltd.
- */
 package com.vastdata.spark;
 
 import com.google.common.collect.Streams;
-import com.vastdata.client.ArrowQueryDataSchemaHelper;
 import com.vastdata.client.FlatBufferSerializer;
 import com.vastdata.client.QueryDataPagination;
 import com.vastdata.client.QueryDataResponseHandler;
@@ -17,7 +13,6 @@ import com.vastdata.client.executor.VastRetryConfig;
 import com.vastdata.client.schema.EnumeratedSchema;
 import com.vastdata.client.tx.SimpleVastTransaction;
 import com.vastdata.client.tx.VastTraceToken;
-import com.vastdata.spark.adaptor.SparkVectorAdaptorFactory;
 import com.vastdata.spark.tx.VastSparkTransactionsManager;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.VectorSchemaRoot;
@@ -69,7 +64,6 @@ class CommonVastColumnarBatchReader<T extends AutoCloseable>
     private final Map<String, String> extraQueryParams;
     private Optional<Integer> pageSize;
     private final boolean enableSortedProjections;
-    private final int compression;
     private QueryDataResponseParser parser;
     private T current;
     private long totalRows;
@@ -98,7 +92,6 @@ class CommonVastColumnarBatchReader<T extends AutoCloseable>
         retryConfig = new VastRetryConfig(config.getRetryMaxCount(), config.getRetrySleepDuration());
         pageSize = Optional.of(config.getQueryDataRowsPerPage());
         enableSortedProjections = config.isEnableSortedProjections();
-        compression = config.getCompression();
         pagination = new QueryDataPagination(config.getNumOfSubSplits());
         this.projectionSerializer = projectionSerializer;
         this.predicateSerializer = predicateSerializer;
@@ -121,7 +114,6 @@ class CommonVastColumnarBatchReader<T extends AutoCloseable>
 
     private void fetchNextBatch()
     {
-        final String endUser = null;
         try {
             AtomicReference<URI> usedDataEndpoint = new AtomicReference<>(); // can be used for sending UPDATE/DELETE to the same endpoint as SELECT
             VastDebugConfig debugConfig = new VastDebugConfig(false, false); // TODO: allow setting via config
@@ -132,14 +124,14 @@ class CommonVastColumnarBatchReader<T extends AutoCloseable>
             }
             Optional<String> bigCatalogSearchPath = Optional.empty();
             Supplier<QueryDataResponseHandler> handlerSupplier = () -> {
-                ArrowQueryDataSchemaHelper schemaHelper = ArrowQueryDataSchemaHelper.deconstruct(token, projectionSchema, new SparkVectorAdaptorFactory());
+                SparkQueryDataSchemaHelper schemaHelper = SparkQueryDataSchemaHelper.deconstruct(token, projectionSchema);
                 parser = new QueryDataResponseParser(token, schemaHelper, debugConfig, pagination, currentLimit, allocator);
                 return new QueryDataResponseHandler(parser::parse, token);
             };
             vastClient.queryData(
                     tx, token, schemaName, tableName, enumeratedSchema.getSchema(),
                     projectionSerializer, predicateSerializer, handlerSupplier, usedDataEndpoint, split, schedulingInfo, dataEndpoints,
-                    retryConfig, pageSize, bigCatalogSearchPath, pagination, enableSortedProjections, compression, extraQueryParams, endUser);
+                    retryConfig, pageSize, bigCatalogSearchPath, pagination, enableSortedProjections, extraQueryParams);
         }
         catch (Exception e) {
             throw toRuntime(e);
@@ -213,11 +205,10 @@ class CommonVastColumnarBatchReader<T extends AutoCloseable>
     {
         LOG.info("{} close: {} totalRows={}, totalFetchTime={}, totalIdleFetchTime={}, totalIdleGetTime={}",
                 token, split, totalRows, totalFetchTime, totalIdleFetchTime, totalIdleGetTime);
-        final String endUser = null;
         Optional<RuntimeException> toThrow = Optional.empty();
         if (autoClosable) {
             try {
-                this.transactionsManager.commit(this.tx, endUser);
+                this.transactionsManager.commit(this.tx);
             }
             catch (RuntimeException any) {
                 LOG.error(format("%s: Failed committing transaction: %s", this.token, this.tx), any);

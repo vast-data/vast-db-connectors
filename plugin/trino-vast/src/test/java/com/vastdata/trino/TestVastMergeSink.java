@@ -1,6 +1,4 @@
-/*
- *  Copyright (C) Vast Data Ltd.
- */
+/* Copyright (C) Vast Data Ltd. */
 
 package com.vastdata.trino;
 
@@ -13,26 +11,27 @@ import io.trino.spi.block.Block;
 import io.trino.spi.block.ByteArrayBlock;
 import io.trino.spi.block.LongArrayBlock;
 import io.trino.spi.connector.ConnectorSession;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.vastdata.trino.VastSessionProperties.getSeedForShufflingEndpoints;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.MockitoAnnotations.openMocks;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotEquals;
 
 public class TestVastMergeSink
 {
@@ -43,13 +42,13 @@ public class TestVastMergeSink
 
     private AutoCloseable autoCloseable;
 
-    @BeforeEach
+    @BeforeMethod
     public void setup()
     {
         autoCloseable = openMocks(this);
     }
 
-    @AfterEach
+    @AfterMethod
     public void tearDown()
             throws Exception
     {
@@ -59,7 +58,7 @@ public class TestVastMergeSink
     private VastMergeSink createDummyMergeSink()
     {
         VastPageSinkProvider pageSinkProvider = new VastPageSinkProvider(mockClient);
-        VastTransactionHandle transactionHandle = new VastTransactionHandle(1L);
+        VastTransactionHandle transactionHandle = new VastTransactionHandle(1L, true, false);
         VastMergeTableHandle mergeTableHandle = new VastMergeTableHandle(null, List.of());
         return (VastMergeSink) pageSinkProvider.createMergeSink(
                 transactionHandle,
@@ -78,12 +77,12 @@ public class TestVastMergeSink
         when(session.getProperty("data_endpoints", List.class)).thenReturn(dataEndPoints);
         when(session.getProperty("max_rows_per_delete", Integer.class)).thenReturn(1000);
         ListShuffler<URI> listShuffler = new ListShuffler<>(getSeedForShufflingEndpoints(session));
-        VastMergeSink mergeSink = new VastMergeSink(mockClient, session, new VastTransactionHandle(123), mergeTableHandle, listShuffler.randomizeList(dataEndPoints));
+        VastMergeSink mergeSink = new VastMergeSink(mockClient, session, new VastTransactionHandle(123, true, false), mergeTableHandle, listShuffler.randomizeList(dataEndPoints));
 
         //Delete page should contain 2 blocks: operation (2 for DELETE) and columnID block
         ByteArrayBlock opBlock = new ByteArrayBlock(1, Optional.empty(), new byte[] {2});
         LongArrayBlock idBlock = new LongArrayBlock(1, Optional.empty(), new long[] {200});
-        Block[] mockBlocks = new Block[] {opBlock, opBlock, idBlock};
+        Block[] mockBlocks = new Block[] {opBlock, idBlock};
         Page page = new Page(mockBlocks);
 
         for (int i = 0; i < 3; i++) {
@@ -92,7 +91,7 @@ public class TestVastMergeSink
 
         //verify that each end point is called at least once
         for (URI endpoint : dataEndPoints) {
-            verify(mockClient, atLeastOnce()).deleteRows(any(), any(), any(), any(), eq(endpoint), any(), isNull());
+            verify(mockClient, atLeastOnce()).deleteRows(any(), any(), any(), any(), eq(endpoint), any());
         }
     }
 
@@ -100,7 +99,9 @@ public class TestVastMergeSink
     public void testRandomDataEndPoints()
     {
         {
-            List<URI> uriList = IntStream.range(0, 10).mapToObj(i -> URI.create("uri-" + i)).toList();
+            List<URI> uriList = new ArrayList<>();
+            IntStream.range(0, 10).mapToObj(i ->
+                    uriList.add(URI.create("uri-" + i))).collect(Collectors.toList());
             when(session.getProperty("data_endpoints", List.class)).thenReturn(uriList);
             when(session.getProperty("max_rows_per_insert", Integer.class)).thenReturn(1000);
             when(session.getProperty("import_chunk_limit", Integer.class)).thenReturn(1);

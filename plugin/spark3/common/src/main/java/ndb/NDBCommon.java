@@ -7,10 +7,9 @@ package ndb;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastConfig;
 import com.vastdata.client.VastDependenciesFactory;
-import com.vastdata.client.VastVersion;
 import com.vastdata.client.error.VastUserException;
 import com.vastdata.spark.error.SparkExceptionFactory;
-import com.vastdata.client.tx.VastAutocommitTransaction;
+import com.vastdata.spark.tx.VastAutocommitTransaction;
 import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.HttpClientConfig;
 import io.airlift.http.client.jetty.JettyHttpClient;
@@ -61,7 +60,6 @@ public abstract class NDBCommon
     protected static void init()
     {
         if (!isInitialized.get()) {
-            LOG.info("Initializing NDB: system={}, hash={}", VastVersion.SYS_VERSION, VastVersion.HASH);
             initCommonConfig(vastConfigSupplier.get());
         }
         else {

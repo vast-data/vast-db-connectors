@@ -15,7 +15,6 @@ import com.vastdata.client.stats.StatisticsUrl;
 import com.vastdata.client.stats.StatisticsUrlExtractor;
 import com.vastdata.client.stats.VastStatisticsStorage;
 import com.vastdata.trino.VastTableHandle;
-import com.vastdata.trino.VastTrinoConfig;
 import com.vastdata.trino.VastTrinoDependenciesFactory;
 import io.airlift.log.Logger;
 import io.trino.cache.EvictableCacheBuilder;
@@ -43,21 +42,15 @@ public class TrinoPersistentStatistics
     private final String tag;
     private final Function<TableStatistics, String> statsSerializer;
 
-    public TrinoPersistentStatistics(final VastClient client,
-                                     final VastConfig config,
-                                     final VastTrinoConfig trinoConfig)
-    {
-        this(client, config, trinoConfig, null);
+    public TrinoPersistentStatistics(VastClient client, VastConfig config){
+        this(client, config, null);
     }
 
     @VisibleForTesting
-    protected TrinoPersistentStatistics(final VastClient client,
-                                        final VastConfig config,
-                                        final VastTrinoConfig trinoConfig,
-                                        final Function<TableStatistics, String> statsSerializer)
+    protected TrinoPersistentStatistics(VastClient client, VastConfig config, Function<TableStatistics, String> statsSerializer)
     {
-        statisticsUrlHelper = new VastTrinoDependenciesFactory(trinoConfig).getStatisticsUrlHelper();
-        tag = new VastTrinoDependenciesFactory(trinoConfig).getConnectorVersionedStatisticsTag();
+        statisticsUrlHelper = new VastTrinoDependenciesFactory().getStatisticsUrlHelper();
+        tag = new VastTrinoDependenciesFactory().getConnectorVersionedStatisticsTag();
         this.client = client;
         this.cache = EvictableCacheBuilder.newBuilder()
                 .maximumSize(config.getMaxStatisticsFilesSupportedPerSession())
@@ -173,7 +166,7 @@ public class TrinoPersistentStatistics
 // and redundant s3 calls to fetch the statists files from Vast (ORION-148783)
     public static class CacheKey
     {
-        private final VastTableHandle tableHandle;
+        private VastTableHandle tableHandle;
 
         public CacheKey(VastTableHandle tableHandle)
         {

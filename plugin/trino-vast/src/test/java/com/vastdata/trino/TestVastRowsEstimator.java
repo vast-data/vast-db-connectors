@@ -10,7 +10,7 @@ import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.predicate.ValueSet;
 import io.trino.spi.statistics.Estimate;
 import io.trino.spi.type.IntegerType;
-import org.junit.jupiter.api.Test;
+import org.testng.annotations.Test;
 
 import java.util.Map;
 
@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class TestVastRowsEstimator
 {
-    private final VastRowsEstimator vastRowsEstimator = new VastRowsEstimator();
+    private VastRowsEstimator vastRowsEstimator = new VastRowsEstimator();
 
     @Test
     public void testTableWithoutRowIdPredicates()

@@ -4,10 +4,10 @@
 
 package com.vastdata.trino;
 
-import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastVersion;
+import com.vastdata.client.schema.StartTransactionContext;
 import com.vastdata.trino.statistics.VastStatisticsManager;
 import com.vastdata.trino.tx.VastTransactionHandle;
 import com.vastdata.trino.tx.VastTrinoTransactionHandleManager;
@@ -15,7 +15,6 @@ import io.airlift.bootstrap.LifeCycleManager;
 import io.airlift.log.Logger;
 import io.trino.plugin.base.session.SessionPropertiesProvider;
 import io.trino.spi.connector.Connector;
-import io.trino.spi.connector.ConnectorAccessControl;
 import io.trino.spi.connector.ConnectorMetadata;
 import io.trino.spi.connector.ConnectorPageSinkProvider;
 import io.trino.spi.connector.ConnectorPageSourceProvider;
@@ -26,45 +25,35 @@ import io.trino.spi.connector.SystemTable;
 import io.trino.spi.procedure.Procedure;
 import io.trino.spi.session.PropertyMetadata;
 import io.trino.spi.transaction.IsolationLevel;
-import io.trino.spi.type.ArrayType;
 import org.apache.arrow.memory.ArrowBuf;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
-import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static com.vastdata.client.error.VastExceptionFactory.closedTransaction;
-import static com.vastdata.client.schema.VastMetadataUtils.SORTED_BY_PROPERTY;
 import static io.trino.spi.session.PropertyMetadata.stringProperty;
-import static io.trino.spi.type.VarcharType.VARCHAR;
-import static java.util.Locale.ENGLISH;
 import static java.util.Objects.requireNonNull;
 
 public class VastConnector
         implements Connector
 {
     private static final Logger LOG = Logger.get(VastConnector.class);
-
     private final LifeCycleManager lifeCycleManager;
     private final VastClient client;
-    private final VastAccessControl accessControl;
     private final VastTrinoTransactionHandleManager transManager;
     private final VastSplitManager splitManager;
     private final VastPageSourceProvider pageSourceProvider;
     private final VastPageSinkProvider pageSinkProvider;
     private final List<PropertyMetadata<?>> sessionProperties;
-    private final List<PropertyMetadata<?>> tableProperties;
     private final VastStatisticsManager statisticsManager;
 
     @Inject
     public VastConnector(
             LifeCycleManager lifeCycleManager,
             VastClient client,
-            VastAccessControl accessControl,
             VastTrinoTransactionHandleManager transManager,
             VastSplitManager splitManager,
             VastPageSourceProvider pageSourceProvider,
@@ -75,7 +64,6 @@ public class VastConnector
         LOG.info("Creating VAST connector: system=%s, hash=%s", VastVersion.SYS_VERSION, VastVersion.HASH);
         this.lifeCycleManager = requireNonNull(lifeCycleManager, "lifeCycleManager is null");
         this.client = requireNonNull(client, "vast client is null");
-        this.accessControl = requireNonNull(accessControl, "trinoConfig is null");
         this.transManager = requireNonNull(transManager, "vast transaction factory is null");
         this.splitManager = requireNonNull(splitManager, "splitManager is null");
         this.pageSourceProvider = requireNonNull(pageSourceProvider, "pageSourceProvider is null");
@@ -91,39 +79,27 @@ public class VastConnector
             LOG.debug("Arrow buffer allocated: %s", buf);
             buf.getReferenceManager().release();
         }
-        tableProperties = ImmutableList.of(
-					   new PropertyMetadata<>(
-								  SORTED_BY_PROPERTY,
-								  "Bucket sorting columns",
-								  new ArrayType(VARCHAR),
-								  List.class,
-								  ImmutableList.of(),
-								  false,
-								  value -> ((List<?>) value).stream()
-								  .map(name -> ((String) name).toLowerCase(ENGLISH))
-								  .collect(toImmutableList()),
-								  value -> value));
     }
 
     @Override
     public ConnectorTransactionHandle beginTransaction(IsolationLevel isolationLevel, boolean readOnly, boolean autoCommit)
     {
         LOG.debug("Starting transaction");
-        return this.transManager.startTransaction(null);
+        return this.transManager.startTransaction(new StartTransactionContext(readOnly, autoCommit));
     }
 
     @Override
     public void commit(ConnectorTransactionHandle transactionHandle)
     {
         LOG.debug("Committing transaction %s", transactionHandle);
-        this.transManager.commit((VastTransactionHandle) transactionHandle, null);
+        this.transManager.commit((VastTransactionHandle) transactionHandle);
     }
 
     @Override
     public void rollback(ConnectorTransactionHandle transactionHandle)
     {
         LOG.debug("Rolling back transaction %s", transactionHandle);
-        this.transManager.rollback((VastTransactionHandle) transactionHandle, null);
+        this.transManager.rollback((VastTransactionHandle) transactionHandle);
     }
 
     @Override
@@ -162,34 +138,6 @@ public class VastConnector
     }
 
     @Override
-    public List<PropertyMetadata<?>> getAnalyzeProperties()
-    {
-        return ImmutableList.of(
-                new PropertyMetadata<>(
-                        "columns",
-                        "Columns to be analyzed",
-                        new ArrayType(VARCHAR),
-                        Set.class,
-                        null,
-                        false,
-                        VastConnector::decodeColumnNames,
-                        value -> value));
-    }
-
-    private static Set<String> decodeColumnNames(Object object)
-    {
-        if (object == null) {
-            return null;
-        }
-
-        Collection<?> columns = ((Collection<?>) object);
-        return columns.stream()
-                .peek(property -> requireNonNull(property, String.format("columns %s can not contain null values", columns)))
-                .map(String.class::cast)
-                .collect(toImmutableSet());
-    }
-
-    @Override
     public List<PropertyMetadata<?>> getColumnProperties()
     {
         return List.of(stringProperty(
@@ -221,16 +169,5 @@ public class VastConnector
     public boolean isSingleStatementWritesOnly()
     {
         return false;
-    }
-
-    @Override
-    public List<PropertyMetadata<?>> getTableProperties()
-    {
-        return tableProperties;
-    }
-
-    @Override
-    public ConnectorAccessControl getAccessControl() {
-        return accessControl.isEnabled() ? accessControl : null;
     }
 }

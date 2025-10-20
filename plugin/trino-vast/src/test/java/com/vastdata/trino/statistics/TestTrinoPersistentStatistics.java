@@ -1,6 +1,4 @@
-/*
- *  Copyright (C) Vast Data Ltd.
- */
+/* Copyright (C) Vast Data Ltd. */
 
 package com.vastdata.trino.statistics;
 
@@ -20,10 +18,10 @@ import io.trino.spi.statistics.Estimate;
 import io.trino.spi.statistics.TableStatistics;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
+import org.testng.annotations.AfterTest;
+import org.testng.annotations.BeforeTest;
+import org.testng.annotations.Test;
 
 import java.net.ConnectException;
 import java.net.URI;
@@ -33,8 +31,6 @@ import java.util.Optional;
 import static com.vastdata.client.importdata.VastImportDataMetadataUtils.BIG_CATALOG_SCHEMA_PREFIX;
 import static com.vastdata.client.importdata.VastImportDataMetadataUtils.BIG_CATALOG_TABLE_NAME;
 import static java.lang.String.format;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
@@ -43,6 +39,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.MockitoAnnotations.openMocks;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 public class TestTrinoPersistentStatistics
 {
@@ -58,13 +56,13 @@ public class TestTrinoPersistentStatistics
 
     private AutoCloseable autoCloseable;
 
-    @BeforeEach
+    @BeforeTest
     public void setup()
     {
         autoCloseable = openMocks(this);
     }
 
-    @AfterEach
+    @AfterTest
     public void tearDown()
             throws Exception
     {
@@ -87,7 +85,7 @@ public class TestTrinoPersistentStatistics
     {
         VastClient client = mockClient;
         VastConfig config = getMockServerReadyVastConfig();
-        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(client, config, null);
+        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(client, config);
         VastTableHandle table = new VastTableHandle(BIG_CATALOG_SCHEMA_PREFIX + BIG_CATALOG_SCHEMA_PREFIX,
                 BIG_CATALOG_TABLE_NAME, "id", false);
         TableStatistics stats = TableStatistics.builder().setRowCount(Estimate.of(11.0)).build();
@@ -122,7 +120,7 @@ public class TestTrinoPersistentStatistics
     {
         VastClient client = mockClient;
         VastConfig config = getMockServerReadyVastConfig();
-        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(client, config, null);
+        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(client, config);
         Field field = Field.nullable("x", new ArrowType.Int(32, true));
         ColumnHandle colHandle = VastColumnHandle.fromField(field);
         TableStatistics stats = TableStatistics.builder()
@@ -145,7 +143,7 @@ public class TestTrinoPersistentStatistics
     {
         VastClient client = mockClient;
         VastConfig config = getMockServerReadyVastConfig();
-        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(client, config, null);
+        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(client, config);
         Field field = Field.nullable("x", new ArrowType.Int(32, true));
         ColumnHandle colHandle = VastColumnHandle.fromField(field);
         TableStatistics stats = TableStatistics.builder()
@@ -169,7 +167,7 @@ public class TestTrinoPersistentStatistics
     {
         VastClient client = mockClient;
         VastConfig config = getMockServerReadyVastConfig();
-        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(client, config, null);
+        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(client, config);
         Field field = Field.nullable("x", new ArrowType.Int(32, true));
         ColumnHandle colHandle = VastColumnHandle.fromField(field);
         TableStatistics stats = TableStatistics.builder()
@@ -191,8 +189,8 @@ public class TestTrinoPersistentStatistics
     public void testTableStatisticsFetchRetryOnNetworkError()
     {
         VastConfig config = getMockServerReadyVastConfig();
-        VastClient spyClient = spy(new VastClient(null, config, new VastTrinoDependenciesFactory(null)));
-        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(spyClient, config, null, stats -> "{}");
+        VastClient spyClient = spy(new VastClient(null, config, new VastTrinoDependenciesFactory()));
+        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(spyClient, config, stats -> "{}");
         VastTableHandle table = new VastTableHandle("buck/schem", "tab", "id", false);
         try {
             persistentStatistics.setTableStatistics(table, null);
@@ -224,12 +222,12 @@ public class TestTrinoPersistentStatistics
     {
         VastClient mockClient = this.mockClient;
         VastConfig config = getMockServerReadyVastConfig();
-        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(mockClient, config, null);
+        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(mockClient, config);
         TableStatistics stats = TableStatistics.builder()
                 .setRowCount(Estimate.of(11.0))
                 .build();
         VastTableHandle handle1 = new VastTableHandle("buck/schem", "tab", "id", false);
-        VastTableHandle handle2 = new VastTableHandle("buck/schem", "tab", List.of(), Optional.empty(), TupleDomain.all(), null, Optional.empty(), List.of(), Optional.of(13L), false, "id");
+        VastTableHandle handle2 = new VastTableHandle("buck/schem", "tab", List.of(), TupleDomain.all(), null, Optional.empty(), List.of(), Optional.of(13L), false, "id");
         VastTableHandle handle3 = new VastTableHandle("buck/schem", "tab2", "id", false);
 
         persistentStatistics.setTableStatistics(handle1, stats);

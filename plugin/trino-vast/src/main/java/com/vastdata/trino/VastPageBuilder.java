@@ -16,7 +16,6 @@ import io.trino.spi.block.BlockBuilder;
 import io.trino.spi.block.ByteArrayBlock;
 import io.trino.spi.block.ByteArrayBlockBuilder;
 import io.trino.spi.block.Fixed12BlockBuilder;
-import io.trino.spi.block.Int128ArrayBlockBuilder;
 import io.trino.spi.block.IntArrayBlock;
 import io.trino.spi.block.IntArrayBlockBuilder;
 import io.trino.spi.block.LongArrayBlock;
@@ -27,16 +26,13 @@ import io.trino.spi.block.ShortArrayBlock;
 import io.trino.spi.block.ShortArrayBlockBuilder;
 import io.trino.spi.block.VariableWidthBlock;
 import io.trino.spi.block.VariableWidthBlockBuilder;
-import io.trino.spi.connector.SourcePage;
 import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.CharType;
 import io.trino.spi.type.DecimalType;
 import io.trino.spi.type.Decimals;
 import io.trino.spi.type.RowType;
 import io.trino.spi.type.TimeType;
-import io.trino.spi.type.TimeZoneKey;
 import io.trino.spi.type.TimestampType;
-import io.trino.spi.type.TimestampWithTimeZoneType;
 import io.trino.spi.type.Type;
 import io.trino.spi.type.VarcharType;
 import org.apache.arrow.memory.ArrowBuf;
@@ -52,12 +48,10 @@ import org.apache.arrow.vector.types.pojo.Schema;
 import sun.misc.Unsafe;
 
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.LongFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -68,7 +62,6 @@ import static io.airlift.slice.SizeOf.SIZE_OF_SHORT;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
 import static io.trino.spi.type.Chars.trimTrailingSpaces;
-import static io.trino.spi.type.DateTimeEncoding.packDateTimeWithZone;
 import static io.trino.spi.type.DateType.DATE;
 import static io.trino.spi.type.DoubleType.DOUBLE;
 import static io.trino.spi.type.IntegerType.INTEGER;
@@ -78,10 +71,8 @@ import static io.trino.spi.type.TimeType.TIME_MICROS;
 import static io.trino.spi.type.TimeType.TIME_MILLIS;
 import static io.trino.spi.type.TimeType.TIME_NANOS;
 import static io.trino.spi.type.TimeType.TIME_SECONDS;
-import static io.trino.spi.type.TimeZoneKey.getTimeZoneKey;
 import static io.trino.spi.type.TimestampType.TIMESTAMP_MICROS;
 import static io.trino.spi.type.TinyintType.TINYINT;
-import static io.trino.spi.type.UuidType.UUID;
 import static io.trino.spi.type.VarbinaryType.VARBINARY;
 import static java.lang.Double.doubleToLongBits;
 import static java.lang.Float.floatToIntBits;
@@ -90,7 +81,7 @@ import static java.lang.String.format;
 import static org.apache.arrow.vector.BaseVariableWidthVector.OFFSET_WIDTH;
 
 public class VastPageBuilder
-        implements QueryDataPageBuilder<SourcePage>
+        implements QueryDataPageBuilder<Page>
 {
     private static final Logger LOG = Logger.get(VastPageBuilder.class);
     private static final int DEFAULT_BATCHES_CAPACITY = 4;
@@ -140,7 +131,7 @@ public class VastPageBuilder
     }
 
     @Override
-    public SourcePage build()
+    public Page build()
     {
         int positions = Math.toIntExact(batches.stream().mapToLong(batch -> (long) batch.getRowCount()).sum());
         List<Field> fields = schema.getFields();
@@ -157,7 +148,7 @@ public class VastPageBuilder
                     return buildBlock(types.get(column), fields.get(column), positions, vectors, Optional.empty());
                 })
                 .toArray(Block[]::new);
-        return SourcePage.create(new Page(positions, blocks));
+        return new Page(positions, blocks);
     }
 
     @Override
@@ -169,17 +160,22 @@ public class VastPageBuilder
 
     private boolean isTimeType(Type type, int precision)
     {
-        return (type instanceof TimeType timeType) && timeType.getPrecision() == precision;
+        if (type instanceof TimeType timeType) {
+            return timeType.getPrecision() == precision;
+        }
+        else {
+            return false;
+        }
     }
 
     private boolean isTimestampType(Type type, int precision)
     {
-        return (type instanceof TimestampType timestampType) &&  timestampType.getPrecision() == precision;
-    }
-
-    private boolean isTimestampWithTimeZoneType(Type type, int precision)
-    {
-        return (type instanceof TimestampWithTimeZoneType timestampType) && timestampType.getPrecision() == precision;
+        if (type instanceof TimestampType timestampType) {
+            return timestampType.getPrecision() == precision;
+        }
+        else {
+            return false;
+        }
     }
 
     private Optional<boolean[]> compactIsNull(Optional<boolean[]> vectorIsNull, Optional<boolean[]> parentVectorIsNull)
@@ -388,29 +384,13 @@ public class VastPageBuilder
             TimeUnit unit = ((ArrowType.Timestamp) arrowType).getUnit();
             if (timestampType.isShort()) {
                 // Trino represents ShortTimestampType as a long (microseconds from epoch)
-                long microsInUnit = TypeUtils.timeUnitToPicos(unit) / TypeUtils.timeUnitToPicos(TimeUnit.MICROSECOND);
+                long microsInUnit = TypeUtils.timeUnitToPicos(unit) / 1_000_000L;
                 verify(microsInUnit > 0, "%s is not supported for %s", unit, timestampType);
-                vectors.forEach(vector -> copyShortTimestamp(vector.getValueCount(), vector.getReader(), builder, microsInUnit == 1? m -> m : m -> microsInUnit * m, parentVectorIsNull));
+                vectors.forEach(vector -> copyShortTimestamp(vector.getValueCount(), vector.getReader(), builder, microsInUnit, parentVectorIsNull));
             }
             else {
                 // Trino represents LongTimestampType as a long (microseconds from epoch) + an int (microsecond fraction, in picoseconds)
                 vectors.forEach(vector -> copyTimestampNanos(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull));
-            }
-            return builder.build();
-        }
-        else if (type instanceof TimestampWithTimeZoneType timestampType) {
-            BlockBuilder builder = timestampType.createFixedSizeBlockBuilder(positions);
-            TimeUnit unit = ((ArrowType.Timestamp) arrowType).getUnit();
-            String zoneId = ((ArrowType.Timestamp) arrowType).getTimezone();
-            if (timestampType.isShort()) {
-                // Trino represents ShortTimestampType as a long (milliseconds from epoch)
-                long millisInUnit = TypeUtils.timeUnitToPicos(unit) / TypeUtils.timeUnitToPicos(TimeUnit.MILLISECOND);
-                verify(millisInUnit > 0, "%s is not supported for %s", unit, timestampType);
-                vectors.forEach(vector -> copyShortTimestampWithTimezone(vector.getValueCount(), vector.getReader(), builder, millisInUnit == 1? m -> m : m -> millisInUnit * m, parentVectorIsNull, zoneId));
-            }
-            else {
-                // Trino represents LongTimestampType as a long (milliseconds from epoch) + an int (millisecond fraction, in picoseconds)
-                vectors.forEach(vector -> copyTimestampNanosTimeZone(vector.getValueCount(), vector.getReader(), builder, parentVectorIsNull, zoneId));
             }
             return builder.build();
         }
@@ -480,11 +460,6 @@ public class VastPageBuilder
             LOG.debug("QueryData(%s) Row column - constructing from field blocks. positions=%s (original positions=%s), nulls=%s, blocks=%s",
                     traceStr, rowPositionCount, positions, compactedIsNull.map(Arrays::toString).orElse("empty"), Arrays.asList(nestedBlocks));
             return RowBlock.fromNotNullSuppressedFieldBlocks(rowPositionCount, compactedIsNull, nestedBlocks);
-        }
-        else if (UUID.equals(type)) {
-            BlockBuilder builder = type.createBlockBuilder(new PageBuilderStatus(positions * 16).createBlockBuilderStatus(), positions);
-            vectors.forEach(vector -> copyUuids(vector.getValueCount(), vector.getReader(), builder));
-            return builder.build();
         }
         throw new UnsupportedOperationException(format("QueryData(%s) unsupported %s type: %s", traceStr, type, vectors));
     }
@@ -749,13 +724,13 @@ public class VastPageBuilder
         }
     }
 
-    private static void copyShortTimestamp(int count, FieldReader reader, BlockBuilder builder, LongFunction<Long> unitConversion, Optional<boolean[]> optionalParentVectorIsNull)
+    private static void copyShortTimestamp(int count, FieldReader reader, BlockBuilder builder, long microsInUnit, Optional<boolean[]> optionalParentVectorIsNull)
     {
         if (optionalParentVectorIsNull.isEmpty()) {
             for (int i = 0; i < count; ++i) {
                 reader.setPosition(i);
                 if (reader.isSet()) {
-                    long micros = unitConversion.apply(reader.readLong());
+                    long micros = reader.readLong() * microsInUnit;
                     ((LongArrayBlockBuilder) builder).writeLong(micros);
                 }
                 else {
@@ -770,44 +745,8 @@ public class VastPageBuilder
                 reader.setPosition(i);
                 if (!parentNullsBitmap[i + builderPosition]) {
                     if (reader.isSet()) {
-                        long micros = unitConversion.apply(reader.readLong());
+                        long micros = reader.readLong() * microsInUnit;
                         ((LongArrayBlockBuilder) builder).writeLong(micros);
-                    }
-                    else {
-                        builder.appendNull();
-                    }
-                }
-                else {
-                    builder.appendNull();
-                }
-            }
-        }
-    }
-
-    private static void copyShortTimestampWithTimezone(int count, FieldReader reader, BlockBuilder builder, LongFunction<Long> unitConversion, Optional<boolean[]> optionalParentVectorIsNull, String zoneId)
-    {
-        final TimeZoneKey zoneKey = getTimeZoneKey(zoneId);
-        if (optionalParentVectorIsNull.isEmpty()) {
-            for (int i = 0; i < count; ++i) {
-                reader.setPosition(i);
-                if (reader.isSet()) {
-                    long millis = unitConversion.apply(reader.readLong());
-                    ((LongArrayBlockBuilder) builder).writeLong(packDateTimeWithZone(millis, zoneKey));
-                }
-                else {
-                    builder.appendNull();
-                }
-            }
-        }
-        else {
-            boolean[] parentNullsBitmap = optionalParentVectorIsNull.orElseThrow();
-            int builderPosition = builder.getPositionCount();
-            for (int i = 0; i < count; ++i) {
-                reader.setPosition(i);
-                if (!parentNullsBitmap[i + builderPosition]) {
-                    if (reader.isSet()) {
-                        long millis = unitConversion.apply(reader.readLong());
-                        ((LongArrayBlockBuilder) builder).writeLong(packDateTimeWithZone(millis, zoneKey));
                     }
                     else {
                         builder.appendNull();
@@ -827,8 +766,8 @@ public class VastPageBuilder
                 reader.setPosition(i);
                 if (reader.isSet()) {
                     long nanos = reader.readLong();
-                    TypeUtils.Pair<Long, Integer> objects = TypeUtils.convertLongNanoToTwoValues(nanos);
-                    ((Fixed12BlockBuilder) builder).writeFixed12(objects.first(), objects.second());
+                    Object[] objects = TypeUtils.convertLongNanoToTwoValues(nanos);
+                    ((Fixed12BlockBuilder) builder).writeFixed12((long) objects[0], (int) objects[1]);
                 }
                 else {
                     builder.appendNull();
@@ -843,46 +782,8 @@ public class VastPageBuilder
                 if (!parentNullsBitmap[i + builderPosition]) {
                     if (reader.isSet()) {
                         long nanos = reader.readLong();
-                        TypeUtils.Pair<Long, Integer> objects = TypeUtils.convertLongNanoToTwoValues(nanos);
-                        ((Fixed12BlockBuilder) builder).writeFixed12(objects.first(), objects.second());
-                    }
-                    else {
-                        builder.appendNull();
-                    }
-                }
-                else {
-                    builder.appendNull();
-                }
-            }
-        }
-    }
-
-    private static void copyTimestampNanosTimeZone(int count, FieldReader reader, BlockBuilder builder, Optional<boolean[]> optionalParentVectorIsNull, String zoneId)
-    {
-        final TimeZoneKey zoneKey = getTimeZoneKey(zoneId);
-        if (optionalParentVectorIsNull.isEmpty()) {
-            for (int i = 0; i < count; ++i) {
-                reader.setPosition(i);
-                if (reader.isSet()) {
-                    long nanos = reader.readLong();
-                    TypeUtils.Pair<Long, Integer> objects = TypeUtils.convertLongNanoToTwoValuesZone(nanos, zoneKey);
-                    ((Fixed12BlockBuilder) builder).writeFixed12(objects.first(), objects.second());
-                }
-                else {
-                    builder.appendNull();
-                }
-            }
-        }
-        else {
-            boolean[] parentNullsBitmap = optionalParentVectorIsNull.orElseThrow();
-            int builderPosition = builder.getPositionCount();
-            for (int i = 0; i < count; ++i) {
-                reader.setPosition(i);
-                if (!parentNullsBitmap[i + builderPosition]) {
-                    if (reader.isSet()) {
-                        long nanos = reader.readLong();
-                        TypeUtils.Pair<Long, Integer> objects = TypeUtils.convertLongNanoToTwoValuesZone(nanos, zoneKey);
-                        ((Fixed12BlockBuilder) builder).writeFixed12(objects.first(), objects.second());
+                        Object[] objects = TypeUtils.convertLongNanoToTwoValues(nanos);
+                        ((Fixed12BlockBuilder) builder).writeFixed12((long) objects[0], (int) objects[1]);
                     }
                     else {
                         builder.appendNull();
@@ -903,23 +804,6 @@ public class VastPageBuilder
                 byte[] bytes = reader.readByteArray();
                 Slice slice = trimTrailingSpaces(Slices.wrappedBuffer(bytes));
                 ((VariableWidthBlockBuilder) builder).writeEntry(slice);
-            }
-            else {
-                builder.appendNull();
-            }
-        }
-    }
-
-    private static void copyUuids(int count, FieldReader reader, BlockBuilder builder)
-    {
-        for (int i = 0; i < count; ++i) {
-            reader.setPosition(i);
-            if (reader.isSet()) {
-                byte[] bytes = reader.readByteArray();
-                ByteBuffer bb = ByteBuffer.wrap(bytes, 0, 16).order(ByteOrder.LITTLE_ENDIAN);
-                long high = bb.getLong();
-                long low = bb.getLong();
-                ((Int128ArrayBlockBuilder) builder).writeInt128(high, low);
             }
             else {
                 builder.appendNull();

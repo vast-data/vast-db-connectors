@@ -24,7 +24,7 @@ import static org.testng.Assert.assertTrue;
 public class TestEvenSizeWithLimitChunkifier
 {
     @Mock ImportDataFile mockImportDataFile;
-    private static final URI ENDPOINT = URI.create("http://localhost");
+    URI endpoint = URI.create("http://localhost");
 
     private AutoCloseable autoCloseable;
 
@@ -61,7 +61,7 @@ public class TestEvenSizeWithLimitChunkifier
     {
         ImportDataContext ctx = new ImportDataContext(Collections.nCopies(numOfFiles, mockImportDataFile), "dest")
                 .withChunkLimit(chunkLimit);
-        List<URI> endpoints = Collections.nCopies(numOfEndpoints, ENDPOINT);
+        List<URI> endpoints = Collections.nCopies(numOfEndpoints, endpoint);
         EvenSizeWithLimitChunkifier unit = new EvenSizeWithLimitChunkifier();
         List<ImportDataContext> chunksList = unit.apply(ctx, endpoints);
         verifyChunkedResult(chunksList, expectedChunksNumber, expectedMaxChunkSize);

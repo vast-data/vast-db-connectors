@@ -4,40 +4,43 @@
     <parent>
         <groupId>io.airlift</groupId>
         <artifactId>airbase</artifactId>
-        <version>253</version>
+        <version>156</version>
     </parent>
 
     <groupId>ndb</groupId>
     <artifactId>trino-vast</artifactId>
-    <version>5.4.0</version>
-    <description>Trino - VAST Connector</description>
+    <version>5.3.0</version>
     <packaging>trino-plugin</packaging>
+    <description>Trino - VAST Connector</description>
+
     <properties>
-        <dep.aws-sdk.version>1.12.782</dep.aws-sdk.version>
-        <air.modernizer.java-version>23</air.modernizer.java-version>
+        <air.modernizer.java-version>22</air.modernizer.java-version>
         <air.main.basedir>${project.basedir}</air.main.basedir>
         <air.release.preparation-goals>clean verify -DskipTests</air.release.preparation-goals>
         <dep.accumulo.version>1.7.4</dep.accumulo.version>
         <dep.accumulo-hadoop.version>2.7.7-1</dep.accumulo-hadoop.version>
-        <dep.antlr.version>4.13.2</dep.antlr.version>
-        <dep.okhttp.version>4.12.0</dep.okhttp.version>
-        <dep.jsonwebtoken.version>0.12.6</dep.jsonwebtoken.version>
+        <dep.antlr.version>4.9.3</dep.antlr.version>
+        <dep.okhttp.version>3.14.9</dep.okhttp.version>
+        <dep.jsonwebtoken.version>0.11.2</dep.jsonwebtoken.version>
         <dep.oracle.version>19.3.0.0</dep.oracle.version>
-        <dep.drift.version>1.22</dep.drift.version>
+        <dep.drift.version>1.14</dep.drift.version>
         <dep.scribejava.version>6.9.0</dep.scribejava.version>
-        <dep.tempto.version>202</dep.tempto.version>
+        <dep.tempto.version>187</dep.tempto.version>
+        <dep.gcs.version>2.0.0</dep.gcs.version>
         <dep.duct-tape.version>1.0.8</dep.duct-tape.version>
         <dep.docker-java.version>3.2.12</dep.docker-java.version>
-        <project.build.targetJdk>23</project.build.targetJdk>
-        <air.java.version>23</air.java.version>
-        <dep.trino.version>475</dep.trino.version>
-        <dep.trino.airlift.version>332</dep.trino.airlift.version>
+        <dep.coral.version>2.0.55</dep.coral.version>
+        <dep.confluent.version>5.5.2</dep.confluent.version>
+        <project.build.targetJdk>22</project.build.targetJdk>
+        <air.java.version>22.0.0</air.java.version>
+        <dep.trino.version>462</dep.trino.version>
+        <dep.trino.airlift.version>248</dep.trino.airlift.version>
         <dep.packaging.version>${dep.trino.airlift.version}</dep.packaging.version>
-        <dep.arrow.version>18.2.0</dep.arrow.version>
-        <maven.compiler.source>23</maven.compiler.source>
-        <maven.compiler.target>23</maven.compiler.target>
+        <dep.arrow.version>17.0.0</dep.arrow.version>
+        <maven.compiler.source>22</maven.compiler.source>
+        <maven.compiler.target>22</maven.compiler.target>
 
-        <dep.docker.images.version>110</dep.docker.images.version>
+        <dep.docker.images.version>53</dep.docker.images.version>
 
         <!--
           America/Bahia_Banderas has:
@@ -55,41 +58,57 @@
         <air.javadoc.lint>-missing</air.javadoc.lint>
     </properties>
 
-    <repositories>
-        <repository>
-            <id>internal-vast-maven-repository</id>
-            <name>VAST Internal Repo</name>
-            <url>https://artifactory.vastdata.com/artifactory/maven2</url>
-        </repository>
-        <repository>
-            <id>local-repo</id>
-            <name>Local Repository</name>
-            <url>file://${user.home}/.m2/repository</url>
-        </repository>
-    </repositories>
-
-    <pluginRepositories>
-        <pluginRepository>
-            <id>internal-vast-maven-repository</id>
-            <name>VAST Internal Repo</name>
-            <url>https://artifactory.vastdata.com/artifactory/maven2</url>
-        </pluginRepository>
-        <pluginRepository>
-            <id>local-repo</id>
-            <name>Local Repository</name>
-            <url>file://${user.home}/.m2/repository</url>
-        </pluginRepository>
-    </pluginRepositories>
     <dependencies>
         <dependency>
-            <groupId>io.trino</groupId>
-            <artifactId>trino-cache</artifactId>
-            <version>${dep.trino.version}</version>
+            <groupId>com.amazonaws</groupId>
+            <artifactId>aws-java-sdk-core</artifactId>
+            <version>1.12.172</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>commons-logging</groupId>
+                    <artifactId>commons-logging</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
-            <groupId>io.trino</groupId>
-            <artifactId>trino-plugin-toolkit</artifactId>
-            <version>${dep.trino.version}</version>
+            <groupId>com.amazonaws</groupId>
+            <artifactId>aws-java-sdk-s3</artifactId>
+            <version>1.12.172</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+            <version>${dep.jackson.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${dep.jackson.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jdk8</artifactId>
+            <version>${dep.jackson.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.module</groupId>
+            <artifactId>jackson-module-parameter-names</artifactId>
+            <version>${dep.jackson.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.flatbuffers</groupId>
+            <artifactId>flatbuffers-java</artifactId>
+            <version>2.0.3</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>32.0.0-jre</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.inject</groupId>
+            <artifactId>guice</artifactId>
+            <version>7.0.0</version>
         </dependency>
         <dependency>
             <groupId>io.airlift</groupId>
@@ -127,53 +146,14 @@
             <version>1.10</version>
         </dependency>
         <dependency>
-            <groupId>com.amazonaws</groupId>
-            <artifactId>aws-java-sdk-core</artifactId>
-            <version>${dep.aws-sdk.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>commons-logging</groupId>
-                    <artifactId>commons-logging</artifactId>
-                </exclusion>
-            </exclusions>
+            <groupId>io.trino</groupId>
+            <artifactId>trino-cache</artifactId>
+            <version>${dep.trino.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.amazonaws</groupId>
-            <artifactId>aws-java-sdk-s3</artifactId>
-            <version>${dep.aws-sdk.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-core</artifactId>
-            <version>${dep.jackson.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-            <version>${dep.jackson.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.datatype</groupId>
-            <artifactId>jackson-datatype-jdk8</artifactId>
-            <version>${dep.jackson.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.module</groupId>
-            <artifactId>jackson-module-parameter-names</artifactId>
-            <version>${dep.jackson.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.google.flatbuffers</groupId>
-            <artifactId>flatbuffers-java</artifactId>
-            <version>2.0.3</version>
-        </dependency>
-        <dependency>
-            <groupId>com.google.guava</groupId>
-            <artifactId>guava</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.google.inject</groupId>
-            <artifactId>guice</artifactId>
+            <groupId>io.trino</groupId>
+            <artifactId>trino-plugin-toolkit</artifactId>
+            <version>${dep.trino.version}</version>
         </dependency>
         <dependency>
             <groupId>ndb</groupId>
@@ -184,12 +164,7 @@
             <groupId>org.apache.arrow</groupId>
             <artifactId>arrow-format</artifactId>
             <version>${dep.arrow.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.google.flatbuffers</groupId>
-                    <artifactId>flatbuffers-java</artifactId>
-                </exclusion>
-            </exclusions>
+            <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.arrow</groupId>
@@ -205,22 +180,11 @@
             <groupId>org.apache.arrow</groupId>
             <artifactId>arrow-vector</artifactId>
             <version>${dep.arrow.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.google.flatbuffers</groupId>
-                    <artifactId>flatbuffers-java</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>commons-codec</groupId>
-                    <artifactId>commons-codec</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
         <dependency>
-            <groupId>io.trino</groupId>
-            <artifactId>trino-spi</artifactId>
-            <!-- TODO: Need to have CI that will upload artifacts -->
-            <version>${dep.trino.version}</version>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+            <version>${dep.jackson.version}</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -230,19 +194,22 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-annotations</artifactId>
-            <version>${dep.jackson.version}</version>
-            <scope>provided</scope>
-        </dependency>
-        <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-api</artifactId>
+            <version>1.26.0</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-context</artifactId>
+            <version>1.26.0</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.trino</groupId>
+            <artifactId>trino-spi</artifactId>
+            <!-- TODO: Need to have CI that will upload artifacts -->
+            <version>${dep.trino.version}</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -252,71 +219,14 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>io.trino</groupId>
-            <artifactId>trino-jmx</artifactId>
-            <!-- TODO: Need to have CI that will upload artifacts -->
-            <version>${dep.trino.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.trino</groupId>
-            <artifactId>trino-main</artifactId>
-            <version>${dep.trino.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.trino</groupId>
-            <artifactId>trino-testing</artifactId>
-            <!-- TODO: Need to have CI that will upload artifacts -->
-            <version>${dep.trino.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.airlift</groupId>
-            <artifactId>http-server</artifactId>
-            <version>${dep.trino.airlift.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.airlift</groupId>
-            <artifactId>jaxrs</artifactId>
-            <version>${dep.trino.airlift.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>io.airlift</groupId>
             <artifactId>testing</artifactId>
             <version>${dep.trino.airlift.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>ndb</groupId>
-            <artifactId>ndb-common</artifactId>
-            <type>test-jar</type>
-            <version>${project.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-api</artifactId>
-            <version>5.12.2</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-engine</artifactId>
-            <version>5.12.2</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-params</artifactId>
-            <version>5.12.2</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -332,14 +242,35 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <repositories>
+        <repository>
+            <id>internal-vast-maven-repository</id>
+            <name>VAST Internal Repo</name>
+            <url>https://artifactory.vastdata.com/artifactory/maven2</url>
+        </repository>
+        <repository>
+            <id>local-repo</id>
+            <name>Local Repository</name>
+            <url>file://${user.home}/.m2/repository</url>
+        </repository>
+    </repositories>
+
+    <pluginRepositories>
+        <pluginRepository>
+            <id>internal-vast-maven-repository</id>
+            <name>VAST Internal Repo</name>
+            <url>https://artifactory.vastdata.com/artifactory/maven2</url>
+        </pluginRepository>
+        <pluginRepository>
+            <id>local-repo</id>
+            <name>Local Repository</name>
+            <url>file://${user.home}/.m2/repository</url>
+        </pluginRepository>
+    </pluginRepositories>
+
     <build>
         <plugins>
-            <plugin>
-                <groupId>io.airlift.drift</groupId>
-                <artifactId>drift-maven-plugin</artifactId>
-                <version>${dep.drift.version}</version>
-            </plugin>
-
             <plugin>
                 <groupId>pl.project13.maven</groupId>
                 <artifactId>git-commit-id-plugin</artifactId>
@@ -360,34 +291,11 @@
                 <extensions>true</extensions>
             </plugin>
             <plugin>
-                <groupId>com.github.ekryd.sortpom</groupId>
-                <artifactId>sortpom-maven-plugin</artifactId>
-                <version>4.0.0</version>
-                <executions>
-                    <execution>
-                        <phase>validate</phase>
-                        <goals>
-                            <goal>verify</goal>
-                        </goals>
-                        <configuration>
-                            <skip>true</skip>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
                 <groupId>com.mycila</groupId>
                 <artifactId>license-maven-plugin</artifactId>
                 <version>4.2</version>
                 <configuration>
-                    <licenseSets>
-                        <licenseSet>
-                            <header>${project.basedir}/../../vast-license.txt</header>
-                            <includes>
-                                <include>**/*.java</include>
-                            </includes>
-                        </licenseSet>
-                    </licenseSets>
+                    <skip>true</skip>
                 </configuration>
             </plugin>
             <plugin>
@@ -429,6 +337,7 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-enforcer-plugin</artifactId>
                 <configuration>
+                    <fail>false</fail>
                     <rules>
                         <compound implementation="com.github.ferstl.maven.pomenforcers.CompoundPedanticEnforcer">
                             <enforcers>POM_SECTION_ORDER,MODULE_ORDER,DEPENDENCY_MANAGEMENT_ORDER,DEPENDENCY_ORDER,DEPENDENCY_ELEMENT</enforcers>
@@ -596,20 +505,6 @@
                         <!-- [org.eclipse.jetty.http2:http2-client, org.eclipse.jetty.http2:http2-common, org.eclipse.jetty.http2:http2-hpack, org.eclipse.jetty.http2:http2-http-client-transport, org.eclipse.jetty:jetty-alpn-client, org.eclipse.jetty:jetty-alpn-java-client, org.eclipse.jetty:jetty-client, org.eclipse.jetty:jetty-http, org.eclipse.jetty:jetty-io, org.eclipse.jetty:jetty-util] -->
                         <ignoredResourcePattern>about.html</ignoredResourcePattern>
                     </ignoredResourcePatterns>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>com.github.spotbugs</groupId>
-                <artifactId>spotbugs-maven-plugin</artifactId>
-                <configuration>
-                    <skip>true</skip>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-pmd-plugin</artifactId>
-                <configuration>
-                    <skip>true</skip>
                 </configuration>
             </plugin>
         </plugins>

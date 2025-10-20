@@ -9,6 +9,7 @@ import com.google.common.primitives.Ints;
 import com.vastdata.client.schema.EnumeratedSchema;
 import com.vastdata.trino.expression.VastExpression;
 import io.airlift.log.Logger;
+import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.type.Type;
 import org.apache.arrow.computeir.flatbuf.Project;
 import org.apache.arrow.vector.types.pojo.Field;
@@ -23,6 +24,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static io.trino.spi.type.TypeUtils.readNativeValue;
+import static java.util.Objects.isNull;
 import static java.util.Objects.nonNull;
 
 public class TrinoProjectionSerializer

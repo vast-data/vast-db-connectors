@@ -18,6 +18,7 @@ import com.vastdata.client.executor.WorkFactory;
 import com.vastdata.client.executor.WorkLoad;
 import com.vastdata.client.schema.ImportDataContext;
 import com.vastdata.client.schema.ImportDataFile;
+import com.vastdata.client.schema.StartTransactionContext;
 import com.vastdata.client.tx.VastTraceToken;
 import com.vastdata.client.tx.VastTransactionHandleManager;
 import io.airlift.log.Logger;
@@ -54,28 +55,28 @@ public class ImportDataExecutor<T extends VastTransaction>
     }
 
     public void execute(ImportDataContext ctx, VastTransactionHandleManager<T> vastTransactionHandleManager, List<URI> dataEndpoints,
-            Supplier<RetryStrategy> retryStrategy, boolean parallel, final String endUser)
+            Supplier<RetryStrategy> retryStrategy, boolean parallel)
             throws VastException
     {
-        T vastTransaction = vastTransactionHandleManager.startTransaction(endUser);
+        T vastTransaction = vastTransactionHandleManager.startTransaction(new StartTransactionContext(false, true));
         VastTraceToken traceToken = vastTransaction.generateTraceToken(Optional.empty());
         try {
-            execute(ctx, vastTransaction, traceToken, dataEndpoints, retryStrategy, parallel, endUser);
-            vastTransactionHandleManager.commit(vastTransaction, endUser);
+            execute(ctx, vastTransaction, traceToken, dataEndpoints, retryStrategy, parallel);
+            vastTransactionHandleManager.commit(vastTransaction);
         }
         catch (VastException failure) {
             LOG.error(failure, "ImportData(%s): procedure ended with failure", traceToken);
-            rollbackTransaction(vastTransactionHandleManager, vastTransaction, endUser);
+            rollbackTransaction(vastTransactionHandleManager, vastTransaction);
             throw failure;
         }
         catch (Throwable any) {
             LOG.error(any, "ImportData(%s): procedure execution failed with exception", traceToken);
-            rollbackTransaction(vastTransactionHandleManager, vastTransaction, endUser);
+            rollbackTransaction(vastTransactionHandleManager, vastTransaction);
             throw ioException(String.format("Failed importing data: %s", any.getMessage()), any);
         }
     }
 
-    public void execute(ImportDataContext ctx, T vastTransaction, VastTraceToken traceToken, List<URI> dataEndpoints, Supplier<RetryStrategy> retryStrategy, boolean parallel, final String endUser)
+    public void execute(ImportDataContext ctx, T vastTransaction, VastTraceToken traceToken, List<URI> dataEndpoints, Supplier<RetryStrategy> retryStrategy, boolean parallel)
             throws VastException
     {
         final ParsedURL of = ParsedURL.of(ctx.getDest());
@@ -84,9 +85,9 @@ public class ImportDataExecutor<T extends VastTransaction>
         final String tableName = of.getTableName();
         if (!hasSchema(ctx)) {
             VerifyParam.verify(client.listBuckets(false).contains(bucket), format("ImportData(%s): Bucket %s doesn't exist", traceToken, bucket));
-            VerifyParam.verify(client.schemaExists(vastTransaction, schemaName, endUser), format("ImportData(%s): Schema name %s doesn't exist", traceToken, schemaName));
-            VerifyParam.verify(client.listTables(vastTransaction, schemaName, 1000, endUser).anyMatch(tableName::equals), format("ImportData(%s): Table %s doesn't exist", traceToken, tableName));
-            final List<Field> fields = client.listColumns(vastTransaction, schemaName, VastImportDataMetadataUtils.getTableNameForAPI(tableName), 1000, Collections.emptyMap(), endUser);
+            VerifyParam.verify(client.schemaExists(vastTransaction, schemaName), format("ImportData(%s): Schema name %s doesn't exist", traceToken, schemaName));
+            VerifyParam.verify(client.listTables(vastTransaction, schemaName, 1000).anyMatch(tableName::equals), format("ImportData(%s): Table %s doesn't exist", traceToken, tableName));
+            final List<Field> fields = client.listColumns(vastTransaction, schemaName, VastImportDataMetadataUtils.getTableNameForAPI(tableName), 1000, Collections.emptyMap());
             final Map<String, Field> fieldsMap = fields.stream().collect(Collectors.toMap(Field::getName, Function.identity()));
             ctx.getSourceFiles().forEach(f -> f.setFieldsDefaultValues(fieldsMap));
         }
@@ -105,7 +106,7 @@ public class ImportDataExecutor<T extends VastTransaction>
             return false;
         };
         BiFunction<ImportDataContext, URI, VastResponse> work = (importDataContext, dataEndpoint) -> this.client.importData(vastTransaction, traceToken, importDataContext,
-                importDataResponseParser, dataEndpoint, endUser);
+                importDataResponseParser, dataEndpoint);
         if (parallel) {
             List<ImportDataContext> importDataContextsPerFile = chunkifyImportFilesList(ctx, dataEndpoints);
 
@@ -164,11 +165,11 @@ public class ImportDataExecutor<T extends VastTransaction>
         return allHaveSchema;
     }
 
-    private void rollbackTransaction(VastTransactionHandleManager<T> vastTransactionHandleManager, T vastTransaction, final String endUser)
+    private void rollbackTransaction(VastTransactionHandleManager<T> vastTransactionHandleManager, T vastTransaction)
     {
         if (vastTransactionHandleManager.isOpen(vastTransaction)) {
             try {
-                vastTransactionHandleManager.rollback(vastTransaction, endUser);
+                vastTransactionHandleManager.rollback(vastTransaction);
             }
             catch (Throwable t) {
                 LOG.error(t, "Transaction rollback failed: %s", vastTransaction);

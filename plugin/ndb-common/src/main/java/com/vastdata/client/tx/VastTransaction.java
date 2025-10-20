@@ -10,5 +10,7 @@ public interface VastTransaction
 {
     long getId();
 
+    boolean isReadOnly();
+
     VastTraceToken generateTraceToken(Optional<String> userTraceToken);
 }

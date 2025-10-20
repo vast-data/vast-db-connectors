@@ -24,7 +24,7 @@ public class VastTraceToken
     @Override
     public String toString()
     {
-        String prefix = userTraceToken.map(s -> format("%s:", s)).orElse("");
+        String prefix = userTraceToken.isPresent() ? format("%s:", userTraceToken.get()) : "";
         return format("%s%s:%s", prefix, transactionID, queryID);
     }
 }
