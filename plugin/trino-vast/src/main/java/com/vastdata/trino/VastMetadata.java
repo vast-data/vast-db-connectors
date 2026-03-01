@@ -885,7 +885,17 @@ public class VastMetadata
         TupleDomain<VastColumnHandle> summary = constraint.getSummary().transformKeys(VastColumnHandle.class::cast);
 
         // We support predicates over scalar columns (including "leaf column"-only projections)
-        BiPredicate<VastColumnHandle, Domain> isEnforcedFilterPushdown = (column, domain) -> column.getField().getChildren().isEmpty();
+        // If only_ordered_pushdown is true, only allow pushdown on sorted columns
+        BiPredicate<VastColumnHandle, Domain> isEnforcedFilterPushdown;
+        if (VastSessionProperties.getOnlyOrderedPushdown(session)) {
+            // Get sorted columns for this table
+            List<String> sortedColumns = getVastSortedBy(table, 1000, session.getUser());
+            isEnforcedFilterPushdown = (column, domain) ->
+                column.getField().getChildren().isEmpty() && sortedColumns.contains(column.getField().getName());
+        } else {
+            // Keep current behavior: scalar columns only
+            isEnforcedFilterPushdown = (column, domain) -> column.getField().getChildren().isEmpty();
+        }
         TupleDomain<VastColumnHandle> enforcedPredicate = summary.filter(isEnforcedFilterPushdown);
 
         enforcedPredicate = table.getPredicate().intersect(enforcedPredicate);

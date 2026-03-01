@@ -32,7 +32,7 @@ import com.vastdata.spark.statistics.SparkVastStatisticsManager;
 import com.vastdata.spark.statistics.SparkVastStatisticsManagerTestUtil;
 import com.vastdata.spark.statistics.TableLevelStatistics;
 import ndb.NDB;
-import ndb.ka.NDBJobsListener;
+import ndb.NDBJobsListener;
 import org.apache.spark.SparkConf;
 import org.apache.spark.scheduler.SparkListenerInterface;
 import org.apache.spark.sql.AnalysisException;
@@ -1012,6 +1012,19 @@ public class TestVastCatalog
         String testBucket = "buck";
         mockUtils.createBucket(this.testPort, testBucket);
         AtomicInteger getTxCtr = new AtomicInteger(0);
+        AtomicInteger closeTxCtr = new AtomicInteger(0);
+        Consumer<HttpExchange> closeTxCtrAction = he -> {
+            try {
+                closeTxCtr.incrementAndGet();
+                he.sendResponseHeaders(200, 0);
+                try (OutputStream os = he.getResponseBody()) {
+                    os.write("".getBytes(StandardCharsets.UTF_8));
+                }
+            }
+            catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        };
         Consumer<HttpExchange> getTxCtrAction = he -> {
             try {
                 getTxCtr.incrementAndGet();
@@ -1032,11 +1045,14 @@ public class TestVastCatalog
             session.sql("create database ndb.buck.schem");
             session.sql("create table ndb.buck.schem.tab (i integer)");
             handler.setHook("/", POST, getTxCtrAction);
+            handler.setHook("/", PUT, closeTxCtrAction);
+            handler.setHook("/", DELETE, closeTxCtrAction);
             session.sql("delete from ndb.buck.schem.tab where i is not null").explain();
         }
         catch (VastRuntimeException vre) {
             assertTrue(vre.getMessage().contains("QueryData("), vre.getMessage());
             assertEquals(getTxCtr.get(), 2); // one for loadTable, one for delete
+            assertEquals(closeTxCtr.get(), 2); // one for loadTable, one for delete
         }
     }
 

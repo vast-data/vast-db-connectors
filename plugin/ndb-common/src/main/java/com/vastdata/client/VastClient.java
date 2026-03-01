@@ -59,9 +59,7 @@ import org.apache.arrow.vector.VectorUnloader;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.ipc.ArrowStreamReader;
 import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.arrow.vector.types.pojo.FieldType;
 import org.apache.arrow.vector.types.pojo.Schema;
-import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.util.VectorSchemaRootAppender;
 import org.apache.commons.codec.binary.Hex;
 import vast_flatbuf.tabular.ColumnDetails;
@@ -1337,9 +1335,14 @@ public class VastClient
     public VastSchedulingInfo getSchedulingInfo(VastTransaction transaction, VastTraceToken traceToken, String schemaName, String tableName, final String endUser)
     {
         String path = format("/%s/%s", schemaName, tableName);
-        Multimap<String, String> headers = dependenciesFactory.getHeadersFactory(endUser)
-                .withTransaction(transaction)
-                .withTraceToken(traceToken)
+        VastRequestHeadersBuilder headersFactory = dependenciesFactory.getHeadersFactory(endUser);
+        if (traceToken != null) {
+            headersFactory = headersFactory.withTraceToken(traceToken);
+        }
+        if (transaction != null) {
+            headersFactory = headersFactory.withTransaction(transaction);
+        }
+        Multimap<String, String> headers = headersFactory
                 .build();
         Request req = new VastRequestBuilder(config, GET, path, ImmutableMap.of(Requests.GET_SCHEDULING_INFO.getRequestParam(), ""))
                 .addHeaders(headers)

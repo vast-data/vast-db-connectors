@@ -33,7 +33,7 @@ public class VastConnectorFactory
     public Connector create(String catalogName, Map<String, String> requiredConfig, ConnectorContext context)
     {
         requireNonNull(requiredConfig, "requiredConfig is null");
-        LOG.debug("catalogName=%s, requiredConfig=%s, context=%s", catalogName, requiredConfig, context);
+        LOG.info("catalogName=%s, requiredConfig=%s, context=%s", catalogName, requiredConfig, context);
 
         // A plugin is not required to use Guice; it is just very convenient
         Bootstrap app = new Bootstrap(

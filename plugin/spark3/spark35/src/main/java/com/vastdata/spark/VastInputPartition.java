@@ -11,14 +11,12 @@ import static java.lang.String.format;
 public class VastInputPartition
         implements InputPartition
 {
-    private final String tablePath;
     private final int splitId;
     private final int batchId;
     private final int numOfSplits;
 
-    public VastInputPartition(String tablePath, int splitId, int batchId, int numOfSplits)
+    public VastInputPartition(int splitId, int batchId, int numOfSplits)
     {
-        this.tablePath = tablePath;
         this.splitId = splitId;
         this.batchId = batchId;
         this.numOfSplits = numOfSplits;
@@ -30,14 +28,9 @@ public class VastInputPartition
     }
 
     @Override
-    public String[] preferredLocations() {
-        return new String[] { tablePath };
-    }
-
-    @Override
     public String toString()
     {
-        return format("VastInputPartition[path=%s, batchId=%s, splitId=%s/%s]", tablePath, batchId, splitId, numOfSplits);
+        return format("VastInputPartition[batchId=%s, splitId=%s/%s]", batchId, splitId, numOfSplits);
     }
 
     public int getNumOfSplits()

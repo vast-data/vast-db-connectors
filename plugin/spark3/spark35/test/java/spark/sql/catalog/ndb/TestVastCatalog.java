@@ -10,6 +10,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.error.VastConflictException;
 import com.vastdata.client.error.VastException;
+import com.vastdata.client.error.VastRuntimeException;
 import com.vastdata.client.error.VastUserException;
 import com.vastdata.client.stats.VastStatistics;
 import com.vastdata.client.tx.VastTransaction;
@@ -29,7 +30,7 @@ import com.vastdata.spark.statistics.SparkVastStatisticsManager;
 import com.vastdata.spark.statistics.SparkVastStatisticsManagerTestUtil;
 import com.vastdata.spark.statistics.TableLevelStatistics;
 import ndb.NDB;
-import ndb.ka.NDBJobsListener;
+import ndb.NDBJobsListener;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkException;
 import org.apache.spark.scheduler.SparkListenerInterface;
@@ -113,6 +114,7 @@ import static com.vastdata.client.VastClient.BIG_CATALOG_BUCKET_NAME;
 import static java.lang.String.format;
 import static java.lang.String.join;
 import static org.apache.spark.sql.types.DataTypes.createStructField;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.nullable;
@@ -407,6 +409,33 @@ public class TestVastCatalog
                     "(3, 'structstr', 'char7'), 'varcharstr', 'charstr', date '2008-11-11', " +
                     "timestamp '2008-11-09 15:45:21')").show();
             session.sql("select r.c, r.b from ndb.buck.schem.tab").explain("cost");
+        }
+    }
+
+    @Test(expectedExceptions = VastRuntimeException.class, expectedExceptionsMessageRegExp = ".*Failed committing transaction.*")
+    public void testInsertCommitError()
+            throws IOException
+    {
+        MockUtils mockUtils = new MockUtils();
+        String testBucket = "buck";
+        mockUtils.createBucket(this.testPort, testBucket);
+        try (SparkSession session = SparkTestUtils.getSession(testPort)) {
+            session.sql("create database ndb.buck.schem").show();
+            session.sql("create table ndb.buck.schem.tab (b boolean, i integer)").show();
+            String message = "Some bad request";
+            Consumer<HttpExchange> action = httpExchange -> {
+                try {
+                    httpExchange.sendResponseHeaders(400, message.length());
+                    try (OutputStream os = httpExchange.getResponseBody()) {
+                        os.write(message.getBytes(StandardCharsets.UTF_8));
+                    }
+                }
+                catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            };
+            handler.setHook("/", PUT, action);
+            session.sql("insert into ndb.buck.schem.tab(b, i) values (FALSE, 321)").show();
         }
     }
 
@@ -1100,20 +1129,6 @@ public class TestVastCatalog
         }
     }
 
-    @Test(expectedExceptions = SparkException.class, expectedExceptionsMessageRegExp = ".*QueryData.*")
-    public void testDeleteCharNException() // ORION-107547
-            throws IOException
-    {
-        MockUtils mockUtils = new MockUtils();
-        String testBucket = "buck";
-        mockUtils.createBucket(this.testPort, testBucket);
-        try (SparkSession session = SparkTestUtils.getSession(testPort)) {
-            session.sql("create database ndb.buck.schem");
-            session.sql("create table ndb.buck.schem.tab (b boolean, c char(5))");
-            session.sql("delete from ndb.buck.schem.tab where c is not null").explain();
-        }
-    }
-
     @Test(enabled = false)
     public void testAndPredicate()
             throws IOException
@@ -1592,6 +1607,58 @@ public class TestVastCatalog
             activeTx = JobEventService.getInstance().orElseThrow(IllegalStateException::new).getActiveTransactions();
             assertTrue(activeTx.isEmpty(), format("activeTransactions: %s", activeTx));
             assertTrue(getTxCtr.get() > 0);
+        }
+    }
+
+    @Test
+    public void testSparkImplicitTransactionLister_ORION292984()
+            throws IOException
+    {
+        MockUtils mockUtils = new MockUtils();
+        String testBucket = "buck";
+        mockUtils.createBucket(this.testPort, testBucket);
+        AtomicInteger putCounter = new AtomicInteger(0);
+        Consumer<HttpExchange> putResponder = httpExchange -> {
+            try {
+                putCounter.incrementAndGet();
+                httpExchange.sendResponseHeaders(200, 0);
+                try (OutputStream os = httpExchange.getResponseBody()) {
+                    os.write(new byte[0]);
+                }
+            }
+            catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        };
+        try (SparkSession session = SparkTestUtils.getSession(testPort)) {
+            session.sql("create database ndb.buck.schem");
+            session.sql("create table ndb.buck.schem.tab (s string)");
+            handler.setHook("/", PUT, putResponder);
+            int expectedCommits = 0;
+            assertThatThrownBy(() -> session.sql("select * from ndb.buck.schem.tab where s is not null").show()).isInstanceOf(SparkException.class).hasMessageContaining("QueryData");
+            session.sql("select now()").show(); // to make sure no race on the commit counter after the exception
+            expectedCommits += 2; // load table and batch
+            assertEquals(putCounter.get(), expectedCommits);
+            assertThatThrownBy(() -> session.read().table("ndb.buck.schem.tab").show()).isInstanceOf(SparkException.class).hasMessageContaining("QueryData");
+            session.sql("select now()").collect();
+            expectedCommits += 2; // load table and batch
+            assertEquals(putCounter.get(), expectedCommits);
+            Dataset<Row> ds = session.sql("select * from ndb.buck.schem.tab where s is not null");
+            expectedCommits++; // load table only
+            assertEquals(putCounter.get(), expectedCommits);
+            System.out.printf("%s: %s%n", ds.hashCode(), Arrays.toString(ds.columns()));
+            assertThatThrownBy(ds::count).isInstanceOf(SparkException.class).hasMessageContaining("QueryData");
+            session.sql("select now()").collect();
+            expectedCommits++; // batch
+            assertEquals(putCounter.get(), expectedCommits); // single batch + load table
+            session.sql("select ndb.create_tx()").show();
+            assertThatThrownBy(() -> session.sql("select * from ndb.buck.schem.tab where s is not null").show()).isInstanceOf(SparkException.class).hasMessageContaining("QueryData");
+            assertThatThrownBy(() -> session.read().table("ndb.buck.schem.tab").show()).isInstanceOf(SparkException.class).hasMessageContaining("QueryData");
+            ds = session.sql("select * from ndb.buck.schem.tab where s is not null");
+            System.out.printf("%s: %s%n", ds.hashCode(), Arrays.toString(ds.columns()));
+            assertThatThrownBy(ds::count).isInstanceOf(SparkException.class).hasMessageContaining("QueryData");
+            session.sql("select ndb.commit_tx()").show();
+            assertEquals(putCounter.get(), ++expectedCommits); // no commits
         }
     }
 

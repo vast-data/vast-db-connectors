@@ -1,3 +1,6 @@
+/*
+ *  Copyright (C) Vast Data Ltd.
+ */
 package com.vastdata.vdb;
 
 import com.vastdata.client.VastClient;
@@ -7,12 +10,12 @@ import com.vastdata.client.schema.CreateTableContext;
 import com.vastdata.client.schema.VastMetadataUtils;
 import com.vastdata.client.tx.SimpleVastTransaction;
 import com.vastdata.client.tx.VastTransactionFactory;
-import io.airlift.http.client.HttpClient;
-import io.airlift.http.client.jetty.JettyHttpClient;
 import com.vastdata.vdb.sdk.NoExternalRowIdColumnException;
 import com.vastdata.vdb.sdk.Table;
 import com.vastdata.vdb.sdk.VastSdk;
 import com.vastdata.vdb.sdk.VastSdkConfig;
+import io.airlift.http.client.HttpClient;
+import io.airlift.http.client.jetty.JettyHttpClient;
 import org.apache.arrow.memory.ArrowBuf;
 import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.vector.BigIntVector;
@@ -54,7 +57,7 @@ import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.arrow.vector.util.Text;
 import org.testng.Assert;
 import org.testng.SkipException;
-import org.testng.annotations.BeforeSuite;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -71,14 +74,13 @@ public class TestIntegration
 
     private VastSdk sdk;
 
-    @BeforeSuite
+    @BeforeClass
     public void setup()
             throws VastException
     {
         if (System.getenv("INTEG_TEST") == null) {
             throw new SkipException("Environment variable INTEG_TEST must be defined as these are integration tests");
         }
-
         String endpoint = "http://localhost:9090";
         String awsAccessKeyId = System.getProperty("AWS_ACCESS_KEY_ID");
         String awsSecretAccessKey = System.getProperty("AWS_SECRET_ACCESS_KEY");
@@ -101,11 +103,11 @@ public class TestIntegration
         VastClient client = this.sdk.getVastClient();
 
         TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction();
+        SimpleVastTransaction tx = transactionsManager.startTransaction(null);
 
-        client.createSchema(tx, schemaName, new VastMetadataUtils().getPropertiesString(Collections.emptyMap()));
+        client.createSchema(tx, schemaName, new VastMetadataUtils().getPropertiesString(Collections.emptyMap()), null);
 
-        transactionsManager.commit(tx);
+        transactionsManager.commit(tx, null);
 
         System.out.println("Database connection established.");
     }
@@ -133,11 +135,11 @@ public class TestIntegration
     {
         VastClient client = sdk.getVastClient();
         TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction();
+        SimpleVastTransaction tx = transactionsManager.startTransaction(null);
         client.createTable(tx, new CreateTableContext(
                 schemaName, "tab1", List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD, x, y),
-                null, null));
-        transactionsManager.commit(tx);
+                null, Collections.emptyMap()), null);
+        transactionsManager.commit(tx, null);
 
         Table table = sdk.getTable(schemaName, "tab1");
         table.loadSchema();
@@ -188,11 +190,11 @@ public class TestIntegration
     {
         VastClient client = sdk.getVastClient();
         TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction();
+        SimpleVastTransaction tx = transactionsManager.startTransaction(null);
         client.createTable(tx, new CreateTableContext(
                 schemaName, "tab2", List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD, x, y),
-                null, null));
-        transactionsManager.commit(tx);
+                null, Collections.emptyMap()), null);
+        transactionsManager.commit(tx, null);
 
         Table table = sdk.getTable(schemaName, "tab2");
         table.loadSchema();
@@ -243,11 +245,11 @@ public class TestIntegration
     {
         VastClient client = sdk.getVastClient();
         TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction();
+        SimpleVastTransaction tx = transactionsManager.startTransaction(null);
         client.createTable(tx, new CreateTableContext(
                 schemaName, "test" + nRows + "RowInserted", List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD, x, y),
-                null, null));
-        transactionsManager.commit(tx);
+                null, Collections.emptyMap()), null);
+        transactionsManager.commit(tx, null);
 
         Table table = sdk.getTable(schemaName, "test" + nRows + "RowInserted");
         table.loadSchema();
@@ -294,7 +296,7 @@ public class TestIntegration
     {
         VastClient client = sdk.getVastClient();
         TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction();
+        SimpleVastTransaction tx = transactionsManager.startTransaction(null);
         client.createTable(tx, new CreateTableContext(
                 schemaName, "nested1",
                 List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD,
@@ -307,8 +309,8 @@ public class TestIntegration
                                                         new Field("b", FieldType.nullable(new ArrowType.Int(32, true)), null),
                                                         new Field("c", FieldType.nullable(new ArrowType.Int(64, true)), null),
                                                         new Field("d", FieldType.nullable(new ArrowType.Utf8()), null)))))),
-                null, null));
-        transactionsManager.commit(tx);
+                null, Collections.emptyMap()), null);
+        transactionsManager.commit(tx, null);
 
         Table table = sdk.getTable(schemaName, "nested1");
         table.loadSchema();
@@ -370,11 +372,11 @@ public class TestIntegration
 
         VastClient client = sdk.getVastClient();
         TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction();
+        SimpleVastTransaction tx = transactionsManager.startTransaction(null);
         client.createTable(tx, new CreateTableContext(
                 schemaName, "no-external-rowid-column", List.of(x),
-                null, null));
-        transactionsManager.commit(tx);
+                null, Collections.emptyMap()), null);
+        transactionsManager.commit(tx, null);
 
         Table table = sdk.getTable(schemaName, "no-external-rowid-column");
         table.loadSchema();
@@ -386,12 +388,12 @@ public class TestIntegration
         String columnName = "col";
 
         TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction();
+        SimpleVastTransaction tx = transactionsManager.startTransaction(null);
         client.createTable(tx, new CreateTableContext(schema,
                 table,
                 List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD,
-                        new Field(columnName, FieldType.nullable(type), null)), null, null));
-        transactionsManager.commit(tx);
+                        new Field(columnName, FieldType.nullable(type), null)), null, Collections.emptyMap()), null);
+        transactionsManager.commit(tx, null);
         return columnName;
     }
 
@@ -653,7 +655,7 @@ public class TestIntegration
             throws VastException
     {
         String tableName = "types_decimal128";
-        String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Decimal(12, 2));
+        String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Decimal(12, 2, 128));
 
         Table table = sdk.getTable(schemaName, tableName);
         table.loadSchema();
@@ -884,15 +886,15 @@ public class TestIntegration
     {
         VastClient client = sdk.getVastClient();
         TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction();
+        SimpleVastTransaction tx = transactionsManager.startTransaction(null);
         client.createTable(tx, new CreateTableContext(
                 schemaName, "time_types",
                 List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD,
                         new Field("time32_second", FieldType.nullable(new ArrowType.Time(TimeUnit.SECOND, 32)), null),
                         new Field("time32_millisecond", FieldType.nullable(new ArrowType.Time(TimeUnit.MILLISECOND, 32)), null),
                         new Field("time64_nanosecond", FieldType.nullable(new ArrowType.Time(TimeUnit.NANOSECOND, 64)), null)),
-                null, null));
-        transactionsManager.commit(tx);
+                null, Collections.emptyMap()), null);
+        transactionsManager.commit(tx, null);
 
         Table table = sdk.getTable(schemaName, "time_types");
         table.loadSchema();
@@ -928,14 +930,14 @@ public class TestIntegration
     {
         VastClient client = sdk.getVastClient();
         TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction();
+        SimpleVastTransaction tx = transactionsManager.startTransaction(null);
         client.createTable(tx, new CreateTableContext(
                 schemaName, "nulls",
                 List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD,
                         new Field("x", FieldType.nullable(new ArrowType.Int(32, true)), null),
                         new Field("y", FieldType.nullable(new ArrowType.Int(32, true)), null)),
-                null, null));
-        transactionsManager.commit(tx);
+                null, Collections.emptyMap()), null);
+        transactionsManager.commit(tx, null);
 
         Table table = sdk.getTable(schemaName, "nulls");
         table.loadSchema();

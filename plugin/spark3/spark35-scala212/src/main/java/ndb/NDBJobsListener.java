@@ -2,7 +2,7 @@
  *  Copyright (C) Vast Data Ltd.
  */
 
-package ndb.ka;
+package ndb;
 
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastConfig;
@@ -10,9 +10,11 @@ import com.vastdata.client.tx.SimpleVastTransaction;
 import com.vastdata.client.tx.VastAutocommitTransaction;
 import com.vastdata.client.tx.ka.JobEventService;
 import org.apache.spark.scheduler.SparkListener;
-import org.apache.spark.scheduler.SparkListenerInterface;
+import org.apache.spark.scheduler.SparkListenerEvent;
 import org.apache.spark.scheduler.SparkListenerJobEnd;
 import org.apache.spark.scheduler.SparkListenerJobStart;
+import org.apache.spark.sql.execution.ui.SparkListenerSQLExecutionEnd;
+import org.apache.spark.sql.execution.ui.SparkListenerSQLExecutionStart;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,7 +33,7 @@ public class NDBJobsListener
         this.eventConsumer = eventConsumer;
     }
 
-    public static synchronized SparkListenerInterface instance(Supplier<VastClient> vastClientSupplier, VastConfig vastConf)
+    public static synchronized SparkListener instance(Supplier<VastClient> vastClientSupplier, VastConfig vastConf)
     {
         if (NDB_JOBS_LISTENER == null) {
             LOG.debug("instance() - new");
@@ -61,6 +63,22 @@ public class NDBJobsListener
         SimpleVastTransaction existing = VastAutocommitTransaction.getExisting();
         if (existing != null) {
             eventConsumer.notifyTxActivityEnd(existing);
+        }
+    }
+
+    @Override
+    public void onOtherEvent(SparkListenerEvent event)
+    {
+        if (event instanceof SparkListenerSQLExecutionStart) {
+            LOG.info("onOtherEvent() - SQL execution start. id: {}", ((SparkListenerSQLExecutionStart) event).executionId());
+        }
+        else if (event instanceof SparkListenerSQLExecutionEnd) {
+            long id = ((SparkListenerSQLExecutionEnd) event).executionId();
+            LOG.info("onOtherEvent() - SQL execution end. id: {}", id);
+            NDB.QUERY_TRANSACTIONS_REGISTRY.closeTransactions(id);
+        } else {
+            LOG.debug("onOtherEvent() unsupported event type: {}", event);
+            super.onOtherEvent(event);
         }
     }
 }

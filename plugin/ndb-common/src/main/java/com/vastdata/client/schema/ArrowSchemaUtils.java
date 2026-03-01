@@ -309,7 +309,6 @@ public class ArrowSchemaUtils
         int nameOffset = builder.createString(tablePath);
         int schemaOffset = schema.getSchema(builder); // serialize the schema
         int filterOffset = predicate.serialize(builder);
-
         org.apache.arrow.computeir.flatbuf.Source.startSource(builder);
         org.apache.arrow.computeir.flatbuf.Source.addName(builder, nameOffset);
         org.apache.arrow.computeir.flatbuf.Source.addSchema(builder, schemaOffset);

@@ -47,7 +47,6 @@ public class VastBatch
     private final VastTable table;
     private final StructType schema;
     private List<List<VastPredicate>> predicates;
-    private final String tablePath;
     private final VastConfig vastConfig;
     private final Integer limit;
     private VastPartitionReaderFactory vastPartitionReaderFactory;
@@ -61,7 +60,6 @@ public class VastBatch
         this.schema = schema;
         this.limit = limit;
         this.predicates = predicates;
-        this.tablePath = "/" + table.name(); // table name doesn't start with "/".
         try {
             this.vastConfig = NDB.getConfig();
         }
@@ -96,7 +94,7 @@ public class VastBatch
         }
         return IntStream
                .range(0, numOfSplits)
-               .mapToObj(i -> new VastInputPartition(tablePath, i, batchID, numOfSplits))
+               .mapToObj(i -> new VastInputPartition(i, batchID, numOfSplits))
                .toArray(VastInputPartition[]::new);
     }
 

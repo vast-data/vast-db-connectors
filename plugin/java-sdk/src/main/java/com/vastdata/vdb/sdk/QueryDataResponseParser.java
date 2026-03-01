@@ -1,3 +1,6 @@
+/*
+ *  Copyright (C) Vast Data Ltd.
+ */
 package com.vastdata.vdb.sdk;
 
 import com.vastdata.client.ArrowQueryDataSchemaHelper;
@@ -39,18 +42,27 @@ public class QueryDataResponseParser
     @Override
     protected VectorSchemaRoot joinPages(List<VectorSchemaRoot> list)
     {
-        verify(!list.isEmpty());
-        int rowCount = list.get(0).getRowCount();
-        List<FieldVector> vectors = list
-                .stream()
-                .flatMap(page -> page.getFieldVectors().stream())
-                .collect(Collectors.toList());
+        List<FieldVector> vectors = null;
+        try {
+            verify(!list.isEmpty());
+            int rowCount = list.get(0).getRowCount();
+            vectors = list
+                    .stream()
+                    .flatMap(page -> page.getFieldVectors().stream())
+                    .collect(Collectors.toList());
 
-        VectorSchemaRoot result = schemaHelper.construct(vectors, rowCount, allocator);
-        result.setRowCount(rowCount);
-        totalPositions.addAndGet(result.getRowCount());
-        LOG.debug("{} joined page: rowCount={}, totalPositions={}", traceStr, rowCount, totalPositions.get());
-        return result;
+            VectorSchemaRoot result = schemaHelper.construct(vectors, rowCount, allocator);
+            result.setRowCount(rowCount);
+            totalPositions.addAndGet(result.getRowCount());
+            LOG.debug("{} joined page: rowCount={}, totalPositions={}", traceStr, rowCount, totalPositions.get());
+            return result;
+        }
+        finally {
+            if (vectors != null) {
+                vectors.forEach(FieldVector::close);
+            }
+            list.forEach(VectorSchemaRoot::close);
+        }
     }
 
     @Override

@@ -5,6 +5,10 @@
 package com.vastdata.spark;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListeningExecutorService;
+import com.google.common.util.concurrent.MoreExecutors;
 import com.google.flatbuffers.FlatBufferBuilder;
 import com.vastdata.ListShuffler;
 import com.vastdata.client.VastClient;
@@ -13,14 +17,14 @@ import com.vastdata.client.error.VastRuntimeException;
 import com.vastdata.client.error.VastUserException;
 import com.vastdata.client.schema.EnumeratedSchema;
 import com.vastdata.client.tx.SimpleVastTransaction;
+import com.vastdata.client.tx.VastAutocommitTransaction;
 import com.vastdata.client.tx.VastTraceToken;
+import com.vastdata.client.tx.VastTransactionFactory;
 import com.vastdata.spark.predicate.VastPredicate;
 import com.vastdata.spark.predicate.VastPredicatePushdown;
-import com.vastdata.client.tx.VastAutocommitTransaction;
-import com.vastdata.client.tx.VastTransactionFactory;
 import com.vastdata.spark.tx.VastSparkTransactionsManager;
 import ndb.NDB;
-import ndb.ka.NDBJobsListener;
+import ndb.NDBJobsListener;
 import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.spark.scheduler.JobFailed;
@@ -46,13 +50,14 @@ import scala.collection.immutable.Seq$;
 import spark.sql.catalog.ndb.TypeUtil;
 
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.ForkJoinTask;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -60,7 +65,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_UINT64_FIELD;
@@ -224,22 +228,44 @@ public class VastDelete
             VastInputPartition[] inputPartitions = (VastInputPartition[]) batch.planInputPartitions();
             VastPartitionReaderFactory readerFactory = (VastPartitionReaderFactory) batch.createReaderFactory(new SimpleVastTransaction(tx.getId()));
             readerFactory.setForAlter();
-            Function<VastInputPartition, ForkJoinTask<Boolean>> queryDataSplit = inputPartition -> forkJoinPool.submit(() -> {
-                try (VastColumnarBatchReader reader = (VastColumnarBatchReader) readerFactory.createColumnarReader(inputPartition)) {
-                    int splitId = inputPartition.getSplitId();
-                    readersForVerifyAllocation.add(reader);
-                    Thread.currentThread().setName(format("VastDelete-%s-%s", token, splitId));
-                    return iterateReader(pages, token, () -> errorRef.get() != null, reader, splitId);
-                }
-                catch (InterruptedException | RuntimeException re) {
-                    LOG.error(format("%s VastDelete query page processor %s caught exception", token, inputPartition.getSplitId()), re);
-                    setErrorIfNotSet(errorRef, re);
-                    tx.setCommit(false);
-                    throw re instanceof RuntimeException ? (RuntimeException) re : toRuntime(re);
-                }
-            });
-            List<ForkJoinTask<Boolean>> splits = Arrays.stream(inputPartitions).map(queryDataSplit).collect(Collectors.toList());
-            processRowIdPages(client, endpointsSupplier, forkJoinPool, pages, tx, token, splits);
+
+            ListeningExecutorService collectPagesExecutorService = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(16));
+            List<ListenableFuture<Boolean>> collectFutures = new ArrayList<>();
+            for (VastInputPartition inputPartition : inputPartitions) {
+                collectFutures.add(collectPagesExecutorService.submit(() -> {
+                    try (VastColumnarBatchReader reader = (VastColumnarBatchReader) readerFactory.createColumnarReader(inputPartition)) {
+                        int splitId = inputPartition.getSplitId();
+                        readersForVerifyAllocation.add(reader);
+                        Thread.currentThread().setName(format("VastDelete-%s-%s", token, splitId));
+                        return iterateReader(pages, token, () -> errorRef.get() != null, reader, splitId);
+                    }
+                    catch (InterruptedException | RuntimeException re) {
+                        LOG.error(format("%s VastDelete query page processor %s caught exception", token, inputPartition.getSplitId()), re);
+                        setErrorIfNotSet(errorRef, re);
+                        tx.setCommit(false);
+                        throw re instanceof RuntimeException ? (RuntimeException) re : toRuntime(re);
+                    }
+                }));
+            }
+
+            ListeningExecutorService executorService = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(4));
+            final int deleters = 4;
+            List<ListenableFuture<Throwable>> deleteFutures = new ArrayList<>();
+            for (int i = 0; i < deleters; i++) {
+                deleteFutures.add(executorService.submit(() -> deleteSelectedPages(client, endpointsSupplier, tx, pages, token)));
+            }
+            ListenableFuture<List<Boolean>> allCollectDone = Futures.allAsList(collectFutures);
+            allCollectDone.get();
+            LOG.debug("{} All page collectors done", token);
+            ListenableFuture<List<Throwable>> allDeleteDone = Futures.allAsList(deleteFutures);
+            List<Throwable> results = allDeleteDone.get();
+
+            Throwable executionFailure = anyFailed(results);
+            executorService.shutdownNow();
+            if (executionFailure != null) {
+                LOG.error("{} Process failed with exception", token, executionFailure);
+                throw executionFailure;
+            }
             SparkListenerJobEnd jobEnd = new SparkListenerJobEnd(-1, System.currentTimeMillis(), null);
             sparkListenerInterface.onJobEnd(jobEnd);
         }
@@ -264,28 +290,6 @@ public class VastDelete
                     throw illegalStateException;
                 }
             });
-        }
-    }
-
-    private void processRowIdPages(VastClient client, Supplier<URI> endpointsSupplier, ForkJoinPool forkJoinPool,
-            LinkedBlockingQueue<FieldVector> pages, VastAutocommitTransaction tx, VastTraceToken token, List<ForkJoinTask<Boolean>> splits)
-            throws Throwable
-    {
-        LOG.info("{} Submitted select pages tasks", token);
-        while (!isDone(splits)) {
-            LOG.debug("{} Select tasks in progress", token);
-            deleteSelectedPages(client, endpointsSupplier, tx, pages, token);
-        }
-        LOG.info("{} Select tasks are done", token);
-        Throwable executionFailure = anyFailed(splits);
-        forkJoinPool.shutdownNow();
-        if (executionFailure != null) {
-            LOG.error("{} Process failed with exception", token, executionFailure);
-            throw executionFailure;
-        }
-        else {
-            LOG.info("{} Deleting available row id pages", token);
-            deleteSelectedPages(client, endpointsSupplier, tx, pages, token);
         }
     }
 
@@ -327,7 +331,7 @@ public class VastDelete
     private static VastAutocommitTransaction getTransaction(VastClient client, VastSparkTransactionsManager transactionsManager)
     {
         final String endUser = null;
-        return VastAutocommitTransaction.createNewOrReuseFromEnv(client, () -> transactionsManager.startTransaction(endUser), endUser);
+        return VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser);
     }
 
     @NotNull
@@ -337,7 +341,7 @@ public class VastDelete
                 ROW_ID_UINT64_FIELD.createVector(reader.getAllocator()));
     }
 
-    private void deleteSelectedPages(VastClient client, Supplier<URI> endpointsSupplier, VastAutocommitTransaction tx, LinkedBlockingQueue<FieldVector> pages, VastTraceToken token)
+    private Throwable deleteSelectedPages(VastClient client, Supplier<URI> endpointsSupplier, VastAutocommitTransaction tx, LinkedBlockingQueue<FieldVector> pages, VastTraceToken token)
     {
         final String endUser = null;
         FieldVector fieldVector = null;
@@ -353,7 +357,7 @@ public class VastDelete
             }
         }
         catch (InterruptedException | VastException e) {
-            throw toRuntime(e);
+            return e;
         }
         finally {
             if (fieldVector != null) {
@@ -361,27 +365,13 @@ public class VastDelete
             }
             pages.forEach(FieldVector::close);
         }
+        return null;
     }
 
-    private Throwable anyFailed(List<ForkJoinTask<Boolean>> splits)
+    private Throwable anyFailed(List<Throwable> results)
     {
-        Throwable e = null;
-        for (ForkJoinTask<Boolean> split : splits) {
-            if (split.getException() != null) {
-                if (e == null) {
-                    e = split.getException();
-                }
-                else {
-                    e.addSuppressed(split.getException());
-                }
-            }
-        }
-        return e;
-    }
-
-    private boolean isDone(List<ForkJoinTask<Boolean>> splits)
-    {
-        return splits.stream().allMatch(ForkJoinTask::isDone);
+        Optional<Throwable> anyError = results.stream().filter(e -> e != null).findFirst();
+        return anyError.orElse(null);
     }
 
     private Supplier<URI> getClientsSupplier()

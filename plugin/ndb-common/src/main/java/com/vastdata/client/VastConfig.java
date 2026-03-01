@@ -73,7 +73,7 @@ public class VastConfig
 
     private int dynamicFilterCompactionThreshold = 1000;
     private int dynamicFilterPushdownThreshold = 99;
-    private int dynamicFilterElysiumCompactionMultiplier = 30;
+    private int dynamicFilterElysiumCompactionMultiplier = 10;
     private int dynamicFilterMaxValuesThreshold = 10000;
     private int minMaxCompactionMinValuesThreshold = 15;
 
@@ -84,6 +84,7 @@ public class VastConfig
     private boolean complexPredicatePushdown = false;
     private boolean expressionProjectionPushdown = false;
     private boolean enableSortedProjections = true;
+    private boolean onlyOrderedPushdown = false;
 
     private int maxRowCountPerInsert = Integer.MAX_VALUE;
     private int maxRowCountPerUpdate = 2048;
@@ -495,6 +496,18 @@ public class VastConfig
     public VastConfig setEnableSortedProjections(boolean enableSortedProjections)
     {
         this.enableSortedProjections = enableSortedProjections;
+        return this;
+    }
+
+    public boolean getOnlyOrderedPushdown()
+    {
+        return onlyOrderedPushdown;
+    }
+
+    @Config("only_ordered_pushdown")
+    public VastConfig setOnlyOrderedPushdown(boolean onlyOrderedPushdown)
+    {
+        this.onlyOrderedPushdown = onlyOrderedPushdown;
         return this;
     }
 

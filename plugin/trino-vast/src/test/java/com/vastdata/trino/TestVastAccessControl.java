@@ -45,6 +45,7 @@ import java.util.stream.Stream;
 import static com.vastdata.client.VastClient.AUDIT_LOG_BUCKET_NAME;
 import static com.vastdata.client.VastClient.BIG_CATALOG_BUCKET_NAME;
 import static com.vastdata.trino.tx.VastTrinoTransactionHandleManager.ALWAYS_EMPTY_TRANSACTION;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.nullable;
@@ -52,7 +53,6 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 import static org.mockito.MockitoAnnotations.openMocks;
-import static org.testng.Assert.assertThrows;
 
 public class TestVastAccessControl
 {
@@ -159,7 +159,9 @@ public class TestVastAccessControl
                                                       final Map<String, String> maskedColumns)
             throws VastServerException, VastUserException
     {
-        assertThrows(AccessDeniedException.class, () -> runCheckCanSelectFromColumnsScenario(true, shouldEnableEndUserImpersonation, rowFilters, allowedColumns, deniedColumns, maskedColumns));
+        assertThatThrownBy(
+                () -> runCheckCanSelectFromColumnsScenario(true, shouldEnableEndUserImpersonation, rowFilters, allowedColumns, deniedColumns, maskedColumns))
+                .isInstanceOf(AccessDeniedException.class);
     }
 
     @ParameterizedTest

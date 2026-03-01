@@ -42,7 +42,7 @@ public class TestVastConfig
                 .setDynamicFilterCompactionThreshold(VastConfig.DYNAMIC_FILTER_COMPACTION_THRESHOLD_DEFAULT_VALUE)
                 .setDynamicFilterMaxValuesThreshold(10000)
                 .setDynamicFilteringWaitTimeout(2 * 1000)
-                .setDynamicFilterElysiumCompactionMultiplier(30)
+                .setDynamicFilterElysiumCompactionMultiplier(10)
                 .setDynamicFilterPushdownThreshold(99)
                 .setPredicatePushdownEnabled(true)
                 .setMatchSubstringPushdown(true)

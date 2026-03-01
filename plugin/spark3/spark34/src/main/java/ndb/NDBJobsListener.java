@@ -2,7 +2,7 @@
  *  Copyright (C) Vast Data Ltd.
  */
 
-package ndb.ka;
+package ndb;
 
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastConfig;
@@ -10,7 +10,6 @@ import com.vastdata.client.tx.SimpleVastTransaction;
 import com.vastdata.client.tx.VastAutocommitTransaction;
 import com.vastdata.client.tx.ka.JobEventService;
 import org.apache.spark.scheduler.SparkListener;
-import org.apache.spark.scheduler.SparkListenerInterface;
 import org.apache.spark.scheduler.SparkListenerJobEnd;
 import org.apache.spark.scheduler.SparkListenerJobStart;
 import org.slf4j.Logger;
@@ -31,7 +30,7 @@ public class NDBJobsListener
         this.eventConsumer = eventConsumer;
     }
 
-    public static synchronized SparkListenerInterface instance(Supplier<VastClient> vastClientSupplier, VastConfig vastConf)
+    public static synchronized SparkListener instance(Supplier<VastClient> vastClientSupplier, VastConfig vastConf)
     {
         if (NDB_JOBS_LISTENER == null) {
             LOG.debug("instance() - new");

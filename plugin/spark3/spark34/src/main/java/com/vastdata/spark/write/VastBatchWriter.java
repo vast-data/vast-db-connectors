@@ -29,14 +29,12 @@ public class VastBatchWriter
         implements BatchWrite
 {
     private static final Logger LOG = LoggerFactory.getLogger(VastBatchWriter.class);
-    private final VastClient client;
     private final VastSparkTransactionsManager transactionsManager;
     private final VastTable table;
     private VastAutocommitTransaction tx;
 
     public VastBatchWriter(VastClient client, VastTable table) {
         this.table = table;
-        this.client = client;
         this.transactionsManager = VastSparkTransactionsManager.getInstance(client, new VastTransactionFactory());
 
     }
@@ -46,7 +44,7 @@ public class VastBatchWriter
     {
         final String endUser = null;
         LOG.info("createBatchWriterFactory() number of partitions: {}", info.numPartitions());
-        this.tx = VastAutocommitTransaction.createNewOrReuseFromEnv(client, () -> transactionsManager.startTransaction(endUser), endUser);
+        this.tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser);
         try {
             ListShuffler<URI> listShuffler = new ListShuffler<>(Optional.ofNullable(NDB.getConfig().getSeedForShufflingEndpoints()));
             return new VastDataWriteFactory(tx.getTransaction(), NDB.getConfig(), table, listShuffler.randomizeList(NDB.getConfig().getDataEndpoints()));

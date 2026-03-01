@@ -41,7 +41,7 @@ public final class VastCatalogUtils
             LOG.debug("listNamespaces ALL");
             stringPredicate = Predicates.alwaysTrue();
         }
-        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(vastClient, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
             return vastClient.listAllSchemas(tx, pageSize, endUser).filter(stringPredicate).map(s -> {
                 String[] rawParts = ParsedURL.parse(s);
                 String[] parts = Arrays.copyOfRange(rawParts, 1, rawParts.length);

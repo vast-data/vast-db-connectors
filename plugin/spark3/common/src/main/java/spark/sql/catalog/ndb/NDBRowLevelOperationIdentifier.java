@@ -4,10 +4,7 @@
 
 package spark.sql.catalog.ndb;
 
-import scala.collection.immutable.List;
-import scala.collection.immutable.Seq;
-import scala.collection.mutable.Builder;
-
+import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
 import static java.lang.String.format;
@@ -35,13 +32,11 @@ public final class NDBRowLevelOperationIdentifier
                 tableName;
     }
 
-    public static Seq<String> adaptTableIdentifiersToRowLevelOp(Seq<String> origIdentifiers)
+    public static void adaptTableIdentifiersToRowLevelOp(java.util.List<String> origIdentifier, Consumer<String> newIdentifierElementConsumer)
     {
-        Builder<String, List<String>> newIdentifiersBuilder = List.newBuilder();
-        IntStream.range(0, origIdentifiers.size() - 1).forEachOrdered(i -> newIdentifiersBuilder.$plus$eq(origIdentifiers.apply(i)));
-        String adaptedTableName = adaptTableNameToRowLevelOp(origIdentifiers.apply(origIdentifiers.size() - 1));
-        newIdentifiersBuilder.$plus$eq(adaptedTableName);
-        return newIdentifiersBuilder.result();
+        IntStream.range(0, origIdentifier.size() - 1).forEachOrdered(i -> newIdentifierElementConsumer.accept(origIdentifier.get(i)));
+        String adaptedTableName = adaptTableNameToRowLevelOp(origIdentifier.get(origIdentifier.size() - 1));
+        newIdentifierElementConsumer.accept(adaptedTableName);
     }
 
     private static String adaptTableNameToRowLevelOp(String tableName)
