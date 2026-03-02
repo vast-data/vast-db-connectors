@@ -1,5 +1,6 @@
-/* Copyright (C) Vast Data Ltd. */
-
+/*
+ *  Copyright (C) Vast Data Ltd.
+ */
 package com.vastdata.client;
 
 import com.google.common.base.MoreObjects;
