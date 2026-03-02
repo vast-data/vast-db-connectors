@@ -55,7 +55,7 @@
         <air.javadoc.lint>-missing</air.javadoc.lint>
     </properties>
 
-    <repositories>
+    <!-- <repositories>
         <repository>
             <id>internal-vast-maven-repository</id>
             <name>VAST Internal Repo</name>
@@ -79,7 +79,7 @@
             <name>Local Repository</name>
             <url>file://${user.home}/.m2/repository</url>
         </pluginRepository>
-    </pluginRepositories>
+    </pluginRepositories> -->
     <dependencies>
         <dependency>
             <groupId>io.trino</groupId>
