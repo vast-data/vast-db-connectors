@@ -34,7 +34,7 @@ public class VastSdkDependenciesFactory
     }
 
     @Override
-    public VastRequestHeadersBuilder getHeadersFactory()
+    public VastRequestHeadersBuilder getHeadersFactory(String userName)
     {
         return new CommonRequestHeadersBuilder(() -> VAST_SDK_V_1 + vastConfig.getEngineVersion());
     }

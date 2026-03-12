@@ -57,6 +57,7 @@ public class VastSessionProperties
     private static final String COMPLEX_PREDICATE_PUSHDOWN = "complex_predicate_pushdown";
     private static final String EXPRESSION_PROJECTION_PUSHDOWN = "expression_projection_pushdown";
     private static final String ENABLE_SORTED_PROJECTIONS = "enable_sorted_projections";
+    private static final String ONLY_ORDERED_PUSHDOWN = "only_ordered_pushdown";
 
     private static final String MAX_ROWS_PER_INSERT = "max_rows_per_insert";
     private static final String MAX_ROWS_PER_UPDATE = "max_rows_per_update";
@@ -192,6 +193,11 @@ public class VastSessionProperties
                         ENABLE_SORTED_PROJECTIONS,
                         "Enable sorted projections usage during QueryData",
                         config.isEnableSortedProjections(),
+                        false))
+                .add(booleanProperty(
+                        ONLY_ORDERED_PUSHDOWN,
+                        "Only push down predicates on ordered columns",
+                        config.getOnlyOrderedPushdown(),
                         false))
                 .add(booleanProperty(
                         DEBUG_DISABLE_ARROW_PARSING,
@@ -391,6 +397,11 @@ public class VastSessionProperties
     public static boolean getEnableSortedProjections(ConnectorSession session)
     {
         return session.getProperty(ENABLE_SORTED_PROJECTIONS, Boolean.class);
+    }
+
+    public static boolean getOnlyOrderedPushdown(ConnectorSession session)
+    {
+        return session.getProperty(ONLY_ORDERED_PUSHDOWN, Boolean.class);
     }
 
     public static int getMaxRowsPerInsert(ConnectorSession session)

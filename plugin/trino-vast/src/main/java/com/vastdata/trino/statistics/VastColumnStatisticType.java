@@ -37,7 +37,7 @@ public enum VastColumnStatisticType
     {
         String connectorAggregationId = name();
         if (columnStatisticType.isPresent()) {
-            return new ColumnStatisticMetadata(columnName, connectorAggregationId, columnStatisticType.get());
+            return new ColumnStatisticMetadata(columnName, connectorAggregationId, columnStatisticType.orElseThrow());
         }
         return new ColumnStatisticMetadata(columnName, connectorAggregationId, aggregationName.orElseThrow());
     }

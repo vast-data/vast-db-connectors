@@ -1,5 +1,6 @@
-/* Copyright (C) Vast Data Ltd. */
-
+/*
+ *  Copyright (C) Vast Data Ltd.
+ */
 package com.vastdata.client.schema;
 
 import com.google.common.collect.ImmutableMap;

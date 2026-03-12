@@ -64,7 +64,7 @@ public class AlterNDBViewAsCommand
         try {
             VastClient vastClient = NDB.getVastClient(NDB.getConfig());
             VastSparkTransactionsManager transactionsManager = VastSparkTransactionsManager.getInstance(vastClient, new VastTransactionFactory());
-            try (final VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(vastClient, () -> transactionsManager.startTransaction(endUser), endUser)) {
+            try (final VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
                 try {
                     Optional<VastTransaction> txToUse = Optional.of(tx);
                     VastView vastView = catalog.loadView(viewIdentifier, txToUse);

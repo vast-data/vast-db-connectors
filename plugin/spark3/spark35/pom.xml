@@ -13,8 +13,8 @@
 
     <artifactId>spark-vast-spark35</artifactId>
     <version>5.4.0</version>
-    <name>spark-35</name>
-    <description>Spark - VAST for Spark 3.5</description>
+    <name>spark-35-scala-213</name>
+    <description>Spark - VAST for Spark 3.5 - Scala 2.13</description>
     <packaging>jar</packaging>
     <properties>
         <spark.version>${spark35.version}</spark.version>
@@ -61,6 +61,12 @@
             <version>31.0.1-jre</version>
         </dependency>
         <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-library</artifactId>
+            <version>2.13.10</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
             <groupId>ndb</groupId>
             <artifactId>ndb-common</artifactId>
             <version>${project.version}</version>
@@ -69,17 +75,6 @@
             <groupId>ndb</groupId>
             <artifactId>spark-vast-common</artifactId>
             <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.spark</groupId>
-            <artifactId>spark-VDB-thriftserver_2.13</artifactId>
-            <version>3.5.2.1414466</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>*</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
         <dependency>
             <groupId>io.airlift</groupId>
@@ -134,6 +129,11 @@
             <artifactId>spark-unsafe_2.13</artifactId>
             <version>${spark.version}</version>
             <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>ndb</groupId>
@@ -226,7 +226,6 @@
                         <configuration>
                             <failOnWarning>false</failOnWarning>
                             <ignoredDependencies>
-                                <ignoredDependency>org.apache.spark:spark-VDB-thriftserver_2.13</ignoredDependency>
                                 <ignoredDependency>io.airlift:http-client</ignoredDependency>
                                 <ignoredDependency>com.amazonaws:aws-java-sdk-core</ignoredDependency>
                             </ignoredDependencies>

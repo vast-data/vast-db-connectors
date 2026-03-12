@@ -71,7 +71,7 @@ public class VastAccessControl
             LOG.warn(error, "Please verify etc/catalog/vast.properties");
             throw error;
         }
-        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(client, () -> transactionManager.startTransaction(endUser), endUser)) {
+        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionManager, () -> transactionManager.startTransaction(endUser), endUser)) {
             String tableName = schemaTableName.getTableName();
             if (isImportDataTableName(tableName)) {
                 tableName = getTableNameForAPI(tableName);

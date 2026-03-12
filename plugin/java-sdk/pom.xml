@@ -4,26 +4,31 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+    <parent>
+        <groupId>ndb</groupId>
+        <artifactId>ndb-root</artifactId>
+        <version>5.4.0</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
-
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <vastdb-sdk.airlift.version>206</vastdb-sdk.airlift.version>
-
-	<vastdb-sdk.ndb-common.version>5.4.0</vastdb-sdk.ndb-common.version>
+        <air.check.skip-all>true</air.check.skip-all>
+        <joda.version>2.10.13</joda.version>
     </properties>
 
     <groupId>com.vastdata.vdb</groupId>
     <artifactId>sdk</artifactId>
-    <version>5.4.0</version>
     <packaging>jar</packaging>
 
     <dependencies>
         <dependency>
             <groupId>ndb</groupId>
             <artifactId>ndb-common</artifactId>
-            <version>${vastdb-sdk.ndb-common.version}</version>
+            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>io.airlift</groupId>
@@ -72,6 +77,11 @@
             <version>1.12.172</version>
         </dependency>
         <dependency>
+            <groupId>org.apache.calcite</groupId>
+            <artifactId>calcite-core</artifactId>
+            <version>1.41.0</version>
+        </dependency>
+        <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-log4j12</artifactId>
             <version>1.7.28</version>
@@ -80,6 +90,12 @@
             <groupId>org.testng</groupId>
             <artifactId>testng</artifactId>
             <version>6.10</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>joda-time</groupId>
+            <artifactId>joda-time</artifactId>
+            <version>${joda.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

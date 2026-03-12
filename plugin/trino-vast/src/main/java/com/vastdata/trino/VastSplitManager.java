@@ -22,12 +22,15 @@ import io.trino.spi.connector.ConnectorTableHandle;
 import io.trino.spi.connector.ConnectorTransactionHandle;
 import io.trino.spi.connector.Constraint;
 import io.trino.spi.connector.DynamicFilter;
+import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.statistics.Estimate;
 import io.trino.spi.statistics.TableStatistics;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
@@ -35,7 +38,6 @@ import java.util.function.DoubleSupplier;
 import java.util.function.IntSupplier;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.vastdata.client.util.NumOfSplitsEstimator.getNumOfSplitsEstimation;
@@ -51,6 +53,7 @@ import static com.vastdata.trino.VastSessionProperties.getEstimateSplitsFromElys
 import static com.vastdata.trino.VastSessionProperties.getEstimateSplitsFromRowIdPredicate;
 import static com.vastdata.trino.VastSessionProperties.getNumOfSplits;
 import static com.vastdata.trino.VastSessionProperties.getNumOfSubSplits;
+import static com.vastdata.trino.VastSessionProperties.getOnlyOrderedPushdown;
 import static com.vastdata.trino.VastSessionProperties.getQueryDataRowsPerSplit;
 import static com.vastdata.trino.VastSessionProperties.getRowGroupsPerSubSplit;
 import static com.vastdata.trino.VastSessionProperties.getSplitSizeMultiplier;
@@ -139,9 +142,26 @@ public class VastSplitManager
             List<String> sorted = null;
             if (!getEstimateSplitsFromRowIdPredicate(session) && getEstimateSplitsFromElysium(session)
                 && !((tupleDomain.isAll() && dynamicPredicate.isAll()) || (tupleDomain.isNone() && dynamicPredicate.isNone()))) {
-                Optional<List<String>> s = table.getSortedColumns();
-                if (s.isPresent() && !s.orElseThrow().isEmpty()) {
-                    sorted = s.get();
+                // Get sorted columns from table handle
+                Optional<List<String>> sortedColumns = table.getSortedColumns();
+                if (sortedColumns.isPresent() && !sortedColumns.orElseThrow().isEmpty()) {
+                    sorted = sortedColumns.orElseThrow();
+                }
+            }
+
+            // If only_ordered_pushdown is enabled, filter dynamic predicate to only include sorted columns
+            if (getOnlyOrderedPushdown(session)) {
+                // Get sorted columns from table handle
+                Optional<List<String>> sortedColumns = table.getSortedColumns();
+                if (sortedColumns.isPresent() && !sortedColumns.orElseThrow().isEmpty()) {
+                    // Filter dynamic predicate to only include sorted columns
+                    final List<String> finalSortedColumns = sortedColumns.orElseThrow(); // Make it final for lambda
+                    Map<VastColumnHandle, Domain> dynamicDomains = dynamicPredicate.getDomains().orElse(Map.of());
+                    Map<VastColumnHandle, Domain> filteredDomains = dynamicDomains.entrySet().stream()
+                        .filter(entry -> finalSortedColumns.contains(entry.getKey().getField().getName()))
+                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+                    dynamicPredicate = TupleDomain.withColumnDomains(filteredDomains);
+                    LOG.debug("QueryData(%s) filtered dynamic predicate to sorted columns only: %s", traceToken, dynamicPredicate);
                 }
             }
             if (sorted == null || getEstimateSplitsFromRowIdPredicate(session)) {
@@ -281,4 +301,5 @@ public class VastSplitManager
     {
         return Optional.of(limit.orElseThrow().doubleValue());
     }
+
 }

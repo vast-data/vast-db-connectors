@@ -1,3 +1,6 @@
+/*
+ *  Copyright (C) Vast Data Ltd.
+ */
 package com.vastdata.vdb;
 
 import com.vastdata.client.VastClient;

@@ -75,18 +75,6 @@
             <artifactId>spark-vast-common</artifactId>
             <version>${project.version}</version>
         </dependency>
-
-        <dependency>
-            <groupId>org.apache.spark</groupId>
-            <artifactId>spark-VDB-thriftserver_2.13</artifactId>
-            <version>3.4.4.1414476</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>*</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
         <dependency>
             <groupId>io.airlift</groupId>
             <artifactId>units</artifactId>
@@ -127,6 +115,12 @@
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-unsafe_2.13</artifactId>
             <version>${spark.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-library</artifactId>
+            <version>2.13.10</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -220,7 +214,6 @@
                         <configuration>
                             <failOnWarning>false</failOnWarning>
                             <ignoredDependencies>
-                                <ignoredDependency>org.apache.spark:spark-VDB-thriftserver_2.13</ignoredDependency>
                                 <ignoredDependency>io.airlift:http-client</ignoredDependency>
                                 <ignoredDependency>com.amazonaws:aws-java-sdk-core</ignoredDependency>
                             </ignoredDependencies>

@@ -28,8 +28,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import scala.Function1;
 import scala.PartialFunction;
+import scala.collection.immutable.List;
 import scala.collection.immutable.Seq;
 import scala.collection.immutable.Seq$;
+import scala.collection.mutable.Builder;
+
+import java.util.ArrayList;
+import java.util.function.Consumer;
+import java.util.stream.IntStream;
 
 import static spark.sql.catalog.ndb.NDBRowLevelOperationIdentifier.adaptTableIdentifiersToRowLevelOp;
 
@@ -55,7 +61,13 @@ public class NDBParser implements ParserInterface {
             Function1<LogicalPlan, LogicalPlan> func = p -> {
                 if (p instanceof UnresolvedRelation) {
                     UnresolvedRelation unresolvedRel = (UnresolvedRelation) p;
-                    Seq<String> adaptedIdentifiers = adaptTableIdentifiersToRowLevelOp(unresolvedRel.multipartIdentifier());
+                    Seq<String> origIdentifiers = unresolvedRel.multipartIdentifier();
+                    java.util.List<String> origIdentList = new ArrayList<>(origIdentifiers.size());
+                    IntStream.range(0, origIdentifiers.size()).forEachOrdered(i -> origIdentList.add(origIdentifiers.apply(i)));
+                    Builder<String, List<String>> newIdentifiersBuilder = List.newBuilder();
+                    Consumer<String> resultConsumer = newIdentifiersBuilder::$plus$eq;
+                    adaptTableIdentifiersToRowLevelOp(origIdentList, resultConsumer);
+                    Seq<String> adaptedIdentifiers =  newIdentifiersBuilder.result();
                     return unresolvedRel.copy(adaptedIdentifiers, unresolvedRel.options(), unresolvedRel.isStreaming());
                 }
                 else {

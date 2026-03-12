@@ -80,7 +80,7 @@ public final class StatsUtils
     {
         final String endUser = null;
         VastTransactionHandleManager<SimpleVastTransaction> transactionsManager = VastSparkTransactionsManager.getInstance(client, new VastTransactionFactory());
-        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(client,
+        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager,
                 () -> transactionsManager.startTransaction(endUser), endUser)) {
             // compute statistics via RPC
             VastStatistics tableStats = client.getTableStats(tx, schemaName, tableName, endUser);

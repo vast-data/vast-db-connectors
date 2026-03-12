@@ -21,7 +21,7 @@ public abstract class VastTransactionHandleManager<T extends VastTransaction>
 
     private final VastClient client;
     private final VastTransactionResponseParser parser = new VastTransactionResponseParser();
-    private final Set<T> openTransactions = Sets.newConcurrentHashSet();
+    private final Set<VastTransaction> openTransactions = Sets.newConcurrentHashSet();
     private final VastTransactionInstantiator<T> transactionInstantiationFunction;
 
     @Inject
@@ -41,7 +41,7 @@ public abstract class VastTransactionHandleManager<T extends VastTransaction>
         return newTransHandle;
     }
 
-    public void commit(T handle, final String endUser)
+    public void commit(VastTransaction handle, final String endUser)
     {
         if (!openTransactions.remove(handle)) {
             LOG.error("Committing not open transaction: %s", handle);
@@ -53,7 +53,7 @@ public abstract class VastTransactionHandleManager<T extends VastTransaction>
         });
     }
 
-    public void rollback(T handle, final String endUser)
+    public void rollback(VastTransaction handle, final String endUser)
     {
         if (!openTransactions.remove(handle)) {
             LOG.error("Rolling back not open transaction: %s", handle);

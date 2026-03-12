@@ -11,9 +11,6 @@ import com.vastdata.client.error.VastUserException;
 import com.vastdata.client.tx.SimpleVastTransaction;
 import com.vastdata.client.tx.VastTraceToken;
 import com.vastdata.spark.predicate.VastPredicate;
-import com.vastdata.client.tx.VastAutocommitTransaction;
-import com.vastdata.client.tx.VastTransactionFactory;
-import com.vastdata.spark.tx.VastSparkTransactionsManager;
 import ndb.NDB;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.connector.read.InputPartition;
@@ -69,11 +66,8 @@ public class VastPartitionReaderFactory
         catch (VastUserException e) {
             throw toRuntime(e);
         }
-        VastSparkTransactionsManager transactionsManager = VastSparkTransactionsManager.getInstance(vastClient, new VastTransactionFactory());
-        try (VastAutocommitTransaction schedTx = VastAutocommitTransaction.wrapVastTransactionOrCreateNew(Optional.ofNullable(tx), vastClient, () -> transactionsManager.startTransaction(endUser), endUser)) {
-            VastTraceToken traceToken = schedTx.generateTraceToken(Optional.empty());
-            return vastClient.getSchedulingInfo(schedTx, traceToken, schemaName, tableName, endUser);
-        }
+        VastTraceToken traceToken = tx != null? tx.generateTraceToken(Optional.empty()) : null;
+        return vastClient.getSchedulingInfo(tx, traceToken, schemaName, tableName, endUser);
     }
 
     @Override

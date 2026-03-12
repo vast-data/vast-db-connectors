@@ -34,7 +34,7 @@ import com.vastdata.client.tx.VastTransactionFactory;
 import com.vastdata.spark.tx.VastSparkTransactionsManager;
 import ndb.DefaultSource;
 import ndb.NDB;
-import ndb.ka.NDBJobsListener;
+import ndb.NDBJobsListener;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkContext;
@@ -216,7 +216,7 @@ public class VastCatalog
             if (namespace.length == 1) {
                 return vastClient.listBuckets(false).contains(namespace[0]);
             }
-            try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(vastClient, () -> transactionsManager.startTransaction(endUser), endUser)) {
+            try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
                 return vastClient.schemaExists(tx, String.join(PATH_SEPERATOR, namespace), endUser);
             }
         }
@@ -242,7 +242,7 @@ public class VastCatalog
             throw toRuntime(new VastUserException(format("Namespace identifier must include full schema path: %s", Arrays.toString(namespace))));
         }
         String schemaName = compose(namespace);
-        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(vastClient, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
             if (!vastClient.schemaExists(tx, schemaName, endUser)) {
                 Map<String, Object> newmap = metadata.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
                 vastClient.createSchema(tx, schemaName, new VastMetadataUtils().getPropertiesString(newmap), endUser);
@@ -276,7 +276,7 @@ public class VastCatalog
             throw toRuntime(new VastUserException(format("Namespace identifier must include full schema path: %s", Arrays.toString(namespace))));
         }
         String schemaName = compose(namespace);
-        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(vastClient, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
             if (vastClient.schemaExists(tx, schemaName, endUser)) {
                 vastClient.dropSchema(tx, schemaName, endUser);
                 return true;
@@ -305,7 +305,7 @@ public class VastCatalog
             throw new NoSuchNamespaceException(namespace);
         }
         String schemaName = compose(namespace);
-        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(vastClient, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
             if (!vastClient.schemaExists(tx, schemaName, endUser)) {
                 throw new NoSuchNamespaceException(namespace);
             }
@@ -329,7 +329,7 @@ public class VastCatalog
         LOG.debug("tableExists {}", ident);
 
         String schemaName = compose(ident.namespace());
-        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(vastClient, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
             boolean exists = vastClient.tableExists(tx, schemaName, ident.name(), endUser);
             LOG.debug("tableExists {} return {}", ident, exists);
             return exists;
@@ -361,7 +361,7 @@ public class VastCatalog
             tableName = trimTableNameFromRowLevelOpSuffix(ident.name());
             LOG.debug("loadTable row level operation on table {}", tableName);
         }
-        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(vastClient, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
             Optional<String> vastTableHandleId = vastClient.getVastTableHandleId(tx, schemaName, tableName, endUser);
             if (vastTableHandleId.isPresent()) {
                 List<Field> fields = vastClient.listColumns(tx, schemaName, tableName, PAGE_SIZE, Collections.emptyMap(), endUser);
@@ -417,7 +417,7 @@ public class VastCatalog
         List<Field> fieldList = TypeUtil.adaptVerifiedSparkSchemaToArrowFieldsList(schema);
         CreateTableContext ctx = new CreateTableContext(schemaName, tableName, fieldList, Optional.empty(), ImmutableMap.of());
 
-        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(vastClient, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
             if (vastClient.schemaExists(tx, schemaName, endUser)) {
                 if (!vastClient.tableExists(tx, schemaName, tableName, endUser)) {
                     vastClient.createTable(tx, ctx, endUser);
@@ -454,7 +454,7 @@ public class VastCatalog
         if (isImportDataTableName(tableName)) {
             throw toRuntime(new VastUserException(format("Illegal table name for alter table: %s", tableName)));
         }
-        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(vastClient, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
             VastTableChangeFactory vastTableChangeFactory = new VastTableChangeFactory(schemaName, tableName);
             Optional<String> vastTableHandleId = vastClient.getVastTableHandleId(tx, schemaName, tableName, endUser);
             if (vastTableHandleId.isPresent()) {
@@ -487,7 +487,7 @@ public class VastCatalog
 
         DropTableContext ctx = new DropTableContext(schemaName, tableName);
 
-        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(vastClient, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
             if (vastClient.tableExists(tx, schemaName, tableName, endUser)) {
                 vastClient.dropTable(tx, ctx, endUser);
                 tx.setCommit(true);
@@ -530,7 +530,7 @@ public class VastCatalog
         }
         String format = format("%s/%s", newSchemaName, newTableName);
         AlterTableContext ctx = new AlterTableContext(format, null);
-        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(vastClient, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
             if (!vastClient.tableExists(tx, schemaName, tableName, endUser)) {
                 throw new NoSuchTableException(oldIdent);
             }
@@ -566,7 +566,7 @@ public class VastCatalog
         }
 
         final String schemaName = compose(namespace);
-        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(vastClient, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
             if (!vastClient.schemaExists(tx, schemaName, endUser)) {
                 throw new NoSuchNamespaceException(namespace);
             }
@@ -589,14 +589,14 @@ public class VastCatalog
         LOG.debug("loadViewSql {}", ident);
         final String schemaName = compose(ident.namespace());
         final String viewName = ident.name();
-        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.wrapVastTransactionOrCreateNew(existingTransaction, vastClient, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.wrapVastTransactionOrCreateNew(existingTransaction, transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
             if (vastClient.schemaExists(tx, schemaName, endUser)) {
                 if (vastClient.viewExists(tx, schemaName, viewName, endUser)) {
                     VastTraceToken token = tx.generateTraceToken(Optional.of(format("getViewMetadata:%s", viewName)));
                     VastConfig config = NDB.getConfig();
                     VastSchedulingInfo schedulingInfo = vastClient.getSchedulingInfo(tx, token, schemaName, viewName, endUser);
                     SimpleVastTransaction transaction = new SimpleVastTransaction(tx.getId());
-                    VastInputPartition partition = new VastInputPartition(null, 0, 0, 1);
+                    VastInputPartition partition = new VastInputPartition(0, 0, 1);
                     StructType structType = TypeUtil.arrowFieldsListToSparkSchema(ImmutableList.of(SQL_FIELD, COLUMN_ALIASES_FIELD, COLUMN_COMMENTS_FIELD, COMMENT_FIELD));
                     Map<String, String> extraQueryParams = ImmutableMap.of("sub-table", VIEW_METADATA_TABLE);
                     List<Field> fields = vastClient.listColumns(tx, schemaName, viewName, 1000, ImmutableMap.of(), endUser);
@@ -646,7 +646,7 @@ public class VastCatalog
         LOG.debug("createView: CreateSparkViewContext: {}", ctx);
         final String schemaName = compose(ctx.getIdentifier().namespace());
         final String viewName = ctx.getIdentifier().name();
-        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.wrapVastTransactionOrCreateNew(existingTransaction, vastClient, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.wrapVastTransactionOrCreateNew(existingTransaction, transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
             if (vastClient.schemaExists(tx, schemaName, endUser)) {
                 if (!vastClient.viewExists(tx, schemaName, viewName, endUser)) {
                     vastClient.createView(tx, ctx.toVastCreateViewContext(), endUser);
@@ -683,7 +683,7 @@ public class VastCatalog
 
         final DropViewContext ctx = new DropViewContext(schemaName, viewName);
 
-        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.wrapVastTransactionOrCreateNew(existingTransaction, vastClient, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.wrapVastTransactionOrCreateNew(existingTransaction, transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
             if (vastClient.viewExists(tx, schemaName, viewName, endUser)) {
                 vastClient.dropView(tx, ctx, endUser);
                 tx.setCommit(true);

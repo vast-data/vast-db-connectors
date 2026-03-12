@@ -8,9 +8,9 @@ public class VastVersion
 {
     public final static int MAJOR = 5;
     public final static int MINOR = 4;
-    public final static int PATCH = 0;
-    public final static int PROTOCOL = 19;
-    public final static String FEATURES_HASH = "0x70f192e7884e803c";
-    public final static String SYS_VERSION = "5.4.0.19.8138447524757143612";
-    public final static String HASH = "ae9424337af5e6a7f39adf534fa2edbff1967ef1";
+    public final static int PATCH = 4;
+    public final static int PROTOCOL = 0;
+    public final static String FEATURES_HASH = "0xb4af7925a4fe5fed";
+    public final static String SYS_VERSION = "5.4.4.0.13019758250340278253";
+    public final static String HASH = "1e14fabd355e2984876355180953500b154dd7a8";
 }

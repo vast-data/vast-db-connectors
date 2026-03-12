@@ -4,7 +4,6 @@
 
 package com.vastdata.client.tx;
 
-import com.vastdata.client.VastClient;
 import com.vastdata.client.error.ErrorType;
 import com.vastdata.client.error.VastIOException;
 import com.vastdata.client.error.VastRuntimeException;
@@ -21,7 +20,6 @@ public class VastAutocommitTransaction implements VastTransaction, AutoCloseable
 {
     private static final Logger LOG = Logger.get(VastAutocommitTransaction.class);
     private final String endUser;
-    private final VastClient client;
     private final VastTransaction transaction;
     private final boolean autoCreated;
     private boolean rollback = false;
@@ -29,9 +27,10 @@ public class VastAutocommitTransaction implements VastTransaction, AutoCloseable
     public static BiConsumer<Boolean, UnaryOperator<Optional<String>>> alterTransaction = (cancelOnFailure, f) -> {
         throw new IllegalStateException("Env supplier is unset");
     };
+    private VastTransactionHandleManager<? extends VastTransaction> manager;
 
-    private VastAutocommitTransaction(VastClient client, VastTransaction transaction, boolean autoCreated, final String endUser) {
-        this.client = client;
+    private VastAutocommitTransaction(VastTransactionHandleManager<?> manager, VastTransaction transaction, boolean autoCreated, final String endUser) {
+        this.manager = manager;
         if (transaction == null) {
             throw new RuntimeException("missing transaction");
         }
@@ -40,8 +39,7 @@ public class VastAutocommitTransaction implements VastTransaction, AutoCloseable
         this.endUser = endUser;
     }
 
-    public VastAutocommitTransaction(SimpleVastTransaction fromString, boolean autoCreated, final String endUser) {
-        this.client = null;
+    public VastAutocommitTransaction(VastTransaction fromString, boolean autoCreated, final String endUser) {
         this.transaction = fromString;
         this.autoCreated = autoCreated;
         this.endUser = endUser;
@@ -55,14 +53,14 @@ public class VastAutocommitTransaction implements VastTransaction, AutoCloseable
             // manually created, therefore should be manually closed
             return;
         }
-        if (client != null) {
+        if (manager != null) {
             if (rollback) {
                 LOG.debug("VastAutocommitTransaction.wrap ROLLBACK: tx: {}", transaction);
-                client.rollbackTransaction(transaction, endUser);
+                manager.rollback(transaction, endUser);
             }
             else {
                 LOG.debug("VastAutocommitTransaction.wrap COMMIT: tx: {}", transaction);
-                client.commitTransaction(transaction, endUser);
+                manager.commit(transaction, endUser);
             }
         }
         else {
@@ -113,16 +111,16 @@ public class VastAutocommitTransaction implements VastTransaction, AutoCloseable
         return result.get();
     }
 
-    public static VastAutocommitTransaction wrapVastTransactionOrCreateNew(Optional<VastTransaction> tx, VastClient vastClient, Supplier<VastTransaction> vastTransactionSupplier, final String endUser) {
+    public static VastAutocommitTransaction wrapVastTransactionOrCreateNew(Optional<VastTransaction> tx, VastTransactionHandleManager<?> manager, Supplier<VastTransaction> vastTransactionSupplier, final String endUser) {
         if (tx != null && tx.isPresent()) {
-            return new VastAutocommitTransaction(vastClient, tx.get(), false, endUser);
+            return new VastAutocommitTransaction(manager, tx.get(), false, endUser);
         }
         else {
-            return createNewOrReuseFromEnv(vastClient, vastTransactionSupplier, endUser);
+            return createNewOrReuseFromEnv(manager, vastTransactionSupplier, endUser);
         }
     }
 
-    public static VastAutocommitTransaction createNewOrReuseFromEnv(VastClient vastClient, Supplier<VastTransaction> vastTransactionSupplier, final String endUser) {
+    public static VastAutocommitTransaction createNewOrReuseFromEnv(VastTransactionHandleManager<?> manager, Supplier<VastTransaction> vastTransactionSupplier, final String endUser) {
         final AtomicReference<VastAutocommitTransaction> result = new AtomicReference<>();
         alterTransaction.accept(false, maybeTransaction -> {
             if (maybeTransaction.isPresent()) {
@@ -136,7 +134,7 @@ public class VastAutocommitTransaction implements VastTransaction, AutoCloseable
                 }
             }
             else {
-                VastAutocommitTransaction vastAutocommitTransaction = new VastAutocommitTransaction(vastClient, vastTransactionSupplier.get(), true, endUser);
+                VastAutocommitTransaction vastAutocommitTransaction = new VastAutocommitTransaction(manager, vastTransactionSupplier.get(), true, endUser);
                 LOG.info("VastAutocommitTransaction.wrap NEW: {}", vastAutocommitTransaction);
                 result.set(vastAutocommitTransaction);
             }

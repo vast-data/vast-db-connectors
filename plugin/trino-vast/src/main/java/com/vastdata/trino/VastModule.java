@@ -9,6 +9,7 @@ import com.google.inject.Module;
 import com.google.inject.Scopes;
 import com.vastdata.client.ForVast;
 import com.vastdata.client.VastClient;
+import com.vastdata.client.VastVersion;
 import com.vastdata.client.VastConfig;
 import com.vastdata.client.VastDependenciesFactory;
 import com.vastdata.mockserver.VastMockS3ServerStarter;
@@ -31,7 +32,7 @@ public class VastModule
     public void configure(Binder binder)
     {
         VastMockS3ServerStarter.fromEnv();
-        LOG.info("Configuring VastModule");
+        LOG.info("Configuring VastModule sys_version={} version_hash={}", VastVersion.SYS_VERSION, VastVersion.HASH);
         httpClientBinder(binder).bindHttpClient("vast", ForVast.class)
                 .withConfigDefaults(VastTrinoDependenciesFactory.HTTP_CLIENT_CONFIG_CONFIG_DEFAULTS);
 

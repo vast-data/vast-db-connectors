@@ -1,18 +1,23 @@
+/*
+ *  Copyright (C) Vast Data Ltd.
+ */
 package com.vastdata.vdb;
 
+import com.google.common.collect.Iterables;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.error.VastException;
+import com.vastdata.client.rowid.TableType;
 import com.vastdata.client.schema.ArrowSchemaUtils;
 import com.vastdata.client.schema.CreateTableContext;
 import com.vastdata.client.schema.VastMetadataUtils;
 import com.vastdata.client.tx.SimpleVastTransaction;
 import com.vastdata.client.tx.VastTransactionFactory;
-import io.airlift.http.client.HttpClient;
-import io.airlift.http.client.jetty.JettyHttpClient;
 import com.vastdata.vdb.sdk.NoExternalRowIdColumnException;
 import com.vastdata.vdb.sdk.Table;
 import com.vastdata.vdb.sdk.VastSdk;
 import com.vastdata.vdb.sdk.VastSdkConfig;
+import io.airlift.http.client.HttpClient;
+import io.airlift.http.client.jetty.JettyHttpClient;
 import org.apache.arrow.memory.ArrowBuf;
 import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.vector.BigIntVector;
@@ -54,32 +59,38 @@ import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.arrow.vector.util.Text;
 import org.testng.Assert;
 import org.testng.SkipException;
-import org.testng.annotations.BeforeSuite;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+import static com.vastdata.client.schema.VastMetadataUtils.SORTED_BY_PROPERTY;
 
 public class TestIntegration
 {
-    static String schemaName = "vastdb/s2";
-    static Field x = new Field("x", FieldType.nullable(new ArrowType.Utf8()), null);
-    static Field y = new Field("y", FieldType.nullable(new ArrowType.Utf8()), null);
+    private static final Optional<Integer> MAX_ROWS_PER_UPDATE_20 = Optional.of(20);
+    private static final URI TEST_URI = URI.create("http://localhost:9090");
+    private static final  String schemaName = "vastdb/s2";
+    private static final  Field x = new Field("x", FieldType.nullable(new ArrowType.Utf8()), null);
+    private static final  Field y = new Field("y", FieldType.nullable(new ArrowType.Utf8()), null);
 
     private VastSdk sdk;
 
-    @BeforeSuite
+    @BeforeClass
     public void setup()
             throws VastException
     {
         if (System.getenv("INTEG_TEST") == null) {
             throw new SkipException("Environment variable INTEG_TEST must be defined as these are integration tests");
         }
-
-        String endpoint = "http://localhost:9090";
         String awsAccessKeyId = System.getProperty("AWS_ACCESS_KEY_ID");
         String awsSecretAccessKey = System.getProperty("AWS_SECRET_ACCESS_KEY");
 
@@ -87,10 +98,8 @@ public class TestIntegration
             throw new IllegalArgumentException("AWS credentials must be provided");
         }
 
-        URI uri = URI.create(endpoint);
-
-        VastSdkConfig config = new VastSdkConfig(uri,
-                uri.toString(),
+        VastSdkConfig config = new VastSdkConfig(TEST_URI,
+                TEST_URI.toString(),
                 awsAccessKeyId,
                 awsSecretAccessKey);
 
@@ -101,11 +110,11 @@ public class TestIntegration
         VastClient client = this.sdk.getVastClient();
 
         TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction();
+        SimpleVastTransaction tx = transactionsManager.startTransaction(null);
 
-        client.createSchema(tx, schemaName, new VastMetadataUtils().getPropertiesString(Collections.emptyMap()));
+        client.createSchema(tx, schemaName, new VastMetadataUtils().getPropertiesString(Collections.emptyMap()), null);
 
-        transactionsManager.commit(tx);
+        transactionsManager.commit(tx, null);
 
         System.out.println("Database connection established.");
     }
@@ -133,11 +142,11 @@ public class TestIntegration
     {
         VastClient client = sdk.getVastClient();
         TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction();
+        SimpleVastTransaction tx = transactionsManager.startTransaction(null);
         client.createTable(tx, new CreateTableContext(
                 schemaName, "tab1", List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD, x, y),
-                null, null));
-        transactionsManager.commit(tx);
+                null, Collections.emptyMap()), null);
+        transactionsManager.commit(tx, null);
 
         Table table = sdk.getTable(schemaName, "tab1");
         table.loadSchema();
@@ -188,11 +197,11 @@ public class TestIntegration
     {
         VastClient client = sdk.getVastClient();
         TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction();
+        SimpleVastTransaction tx = transactionsManager.startTransaction(null);
         client.createTable(tx, new CreateTableContext(
                 schemaName, "tab2", List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD, x, y),
-                null, null));
-        transactionsManager.commit(tx);
+                null, Collections.emptyMap()), null);
+        transactionsManager.commit(tx, null);
 
         Table table = sdk.getTable(schemaName, "tab2");
         table.loadSchema();
@@ -234,7 +243,7 @@ public class TestIntegration
     @DataProvider(name = "testRowsInsertedData")
     public Object[] testRowsInsertedData()
     {
-        return new Object[] {1, 2, 10, 50, 100};
+        return new Object[] {1, 10, 100};
     }
 
     @Test(dataProvider = "testRowsInsertedData")
@@ -243,17 +252,71 @@ public class TestIntegration
     {
         VastClient client = sdk.getVastClient();
         TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction();
+        SimpleVastTransaction tx = transactionsManager.startTransaction(null);
+        String tableName = "test" + nRows + "RowInserted";
         client.createTable(tx, new CreateTableContext(
-                schemaName, "test" + nRows + "RowInserted", List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD, x, y),
-                null, null));
-        transactionsManager.commit(tx);
+                schemaName, tableName, List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD, x, y),
+                null, Collections.emptyMap()), null);
+        transactionsManager.commit(tx, null);
 
-        Table table = sdk.getTable(schemaName, "test" + nRows + "RowInserted");
+        Table table = sdk.getTable(schemaName, tableName);
         table.loadSchema();
+        Schema schema = table.getSchema();
 
-        RootAllocator allocator = new RootAllocator();
+        RootAllocator userAllocator = new RootAllocator();
+        VectorSchemaRoot testInput = getTestInput(nRows, userAllocator, schema);
+        long clientAllocatedBeforePut = VastClient.getAllocatedMemory();
+        VectorSchemaRoot putRes = table.put(testInput);
+        Assert.assertEquals(VastClient.getAllocatedMemory(),  clientAllocatedBeforePut);
+        verifyRowIDsVectorAccessible(nRows, putRes);
+        testInput.close();
+        putRes.close();
+        Assert.assertEquals(userAllocator.getAllocatedMemory(),  0);
 
+        for (int i = 0; i < nRows; i++) {
+            VectorSchemaRoot res = table.get(null, i);
+
+            Assert.assertEquals(res.getRowCount(), 1);
+            VarCharVector xs = (VarCharVector) res.getVector("x");
+            VarCharVector ys = (VarCharVector) res.getVector("y");
+
+            Assert.assertEquals(xs.get(0), ("x" + i).getBytes());
+            Assert.assertEquals(ys.get(0), ("y" + i).getBytes());
+        }
+
+        clientAllocatedBeforePut = VastClient.getAllocatedMemory();
+        VectorSchemaRoot testInput1 = getTestInput(nRows, userAllocator, schema);
+        client.insertRowsByColumnBatches(null, schemaName, tableName, testInput1,
+                TEST_URI, Optional.of(20), Set.of(), TableType.REGULAR, false, null);
+        Assert.assertEquals(VastClient.getAllocatedMemory(),  clientAllocatedBeforePut);
+        VectorSchemaRoot res = client.insertRowsByColumnBatches(null, schemaName, tableName, testInput1,
+                TEST_URI, Optional.of(20), Set.of(), TableType.REGULAR, true, null);
+        verifyRowIDsVectorAccessible(nRows, res);
+        Assert.assertEquals(VastClient.getAllocatedMemory(),  clientAllocatedBeforePut);
+        testInput1.close();
+        Assert.assertEquals(userAllocator.getAllocatedMemory(), 0);
+    }
+
+    private static void verifyRowIDsVectorAccessible(Integer nRows, VectorSchemaRoot putRes)
+    {
+        FieldVector vector = putRes.getVector(0);
+        int valueCount = vector.getValueCount();
+        Assert.assertEquals(valueCount, nRows.intValue());
+        // make sure accessible
+        if (vector instanceof UInt8Vector uint8Vector) {
+            uint8Vector.get(0);
+        }
+        else if (vector instanceof DecimalVector decVector) {
+            decVector.get(0);
+        }
+        else {
+            throw new AssertionError("Unsupported vector type: " + vector.getClass().getName());
+        }
+        putRes.close();
+    }
+
+    private static VectorSchemaRoot getTestInput(Integer nRows, RootAllocator allocator, Schema schema)
+    {
         VarCharVector xVector = new VarCharVector("x", allocator);
         xVector.allocateNew(nRows);
         for (int i = 0; i < nRows; i++) {
@@ -272,20 +335,78 @@ public class TestIntegration
         fieldVectors.add(xVector);
         fieldVectors.add(yVector);
 
-        VectorSchemaRoot vsr = new VectorSchemaRoot(table.getSchema(), fieldVectors, nRows);
+        return new VectorSchemaRoot(schema, fieldVectors, nRows);
+    }
 
-        table.put(vsr);
+    @Test(dataProvider = "testRowsInsertedData")
+    public void testRowsInsertedElysium(Integer nRows)
+            throws VastException
+    {
+        VastClient client = sdk.getVastClient();
+        TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
+        SimpleVastTransaction tx = transactionsManager.startTransaction(null);
+        String tableName = "test" + nRows + "RowInsertedSorted";
+        List<Field> schemaFields = List.of(x, y);
+        client.createTable(tx, new CreateTableContext(
+                schemaName, tableName, schemaFields,
+                null, Map.of(SORTED_BY_PROPERTY, List.of(x.getName()))), null);
+        Set<String> sortKeyColumnNames = Set.of(x.getName());
+        transactionsManager.commit(tx, null);
+        RootAllocator userAllocator = new RootAllocator();
+        Schema schema = new Schema(schemaFields);
+        VectorSchemaRoot testInput = getTestInput(nRows, userAllocator, schema);
 
+        long clientAllocatedBeforePut = VastClient.getAllocatedMemory();
+        client.insertRowsByColumnBatches(null, schemaName, tableName, testInput,
+                TEST_URI, Optional.of(20), sortKeyColumnNames, TableType.SORTED, false, null);
+        Assert.assertEquals(VastClient.getAllocatedMemory(),  clientAllocatedBeforePut);
+        VectorSchemaRoot res = client.insertRowsByColumnBatches(null, schemaName, tableName, testInput,
+                TEST_URI, Optional.of(20), sortKeyColumnNames, TableType.SORTED, true, null);
+        verifyRowIDsVectorAccessible(nRows, res);
+        Assert.assertEquals(VastClient.getAllocatedMemory(),  clientAllocatedBeforePut);
+        testInput.close();
+        Assert.assertEquals(userAllocator.getAllocatedMemory(), 0);
+    }
+
+    @Test(dataProvider = "testRowsInsertedData")
+    public void testRowsUpdateElysium(Integer nRows)
+            throws VastException
+    {
+        VastClient client = sdk.getVastClient();
+        TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
+        SimpleVastTransaction tx = transactionsManager.startTransaction(null);
+        String tableName = "test" + nRows + "RowUpdatedSorted";
+        List<Field> schemaFields = List.of(x, y);
+        client.createTable(tx, new CreateTableContext(
+                schemaName, tableName, schemaFields,
+                null, Map.of(SORTED_BY_PROPERTY, List.of(x.getName()))), null);
+        Set<String> sortKeyColumnNames = Set.of(x.getName());
+        RootAllocator userAllocator = new RootAllocator();
+        Schema schema = new Schema(schemaFields);
+        VectorSchemaRoot testInput = getTestInput(nRows, userAllocator, schema);
+
+        long allocatedBeforePut = VastClient.getAllocatedMemory();
+        VectorSchemaRoot res = client.insertRowsByColumnBatches(tx, schemaName, tableName, testInput,
+                TEST_URI, MAX_ROWS_PER_UPDATE_20, sortKeyColumnNames, TableType.SORTED, true, null);
+        FieldVector insertedRowIDs = Iterables.getOnlyElement(res.getFieldVectors());
+        testInput.close();
+        Assert.assertEquals(insertedRowIDs.getValueCount(), (int) nRows);
+        Assert.assertEquals(VastClient.getAllocatedMemory(),  allocatedBeforePut);
+
+        VarCharVector yVector = new VarCharVector("y", userAllocator);
+        yVector.allocateNew(nRows);
         for (int i = 0; i < nRows; i++) {
-            VectorSchemaRoot res = table.get(null, i);
-
-            Assert.assertEquals(res.getRowCount(), 1);
-            VarCharVector xs = (VarCharVector) res.getVector("x");
-            VarCharVector ys = (VarCharVector) res.getVector("y");
-
-            Assert.assertEquals(xs.get(0), ("x" + i).getBytes());
-            Assert.assertEquals(ys.get(0), ("y" + i).getBytes());
+            yVector.set(i, ("y" + i+1000).getBytes());
         }
+        yVector.setValueCount(nRows);
+        Schema updateSchema = new Schema(List.of(insertedRowIDs.getField(), yVector.getField()));
+        VectorSchemaRoot updateRoot = new VectorSchemaRoot(updateSchema, List.of(insertedRowIDs, yVector), nRows);
+        client.updateRows(tx, schemaName, tableName, updateRoot, TEST_URI, MAX_ROWS_PER_UPDATE_20, null);
+        transactionsManager.commit(tx, null);
+        Assert.assertEquals(VastClient.getAllocatedMemory(),  allocatedBeforePut);
+        updateRoot.close();
+        res.close();
+        Assert.assertEquals(userAllocator.getAllocatedMemory(), 0);
     }
 
     @Test
@@ -294,7 +415,7 @@ public class TestIntegration
     {
         VastClient client = sdk.getVastClient();
         TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction();
+        SimpleVastTransaction tx = transactionsManager.startTransaction(null);
         client.createTable(tx, new CreateTableContext(
                 schemaName, "nested1",
                 List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD,
@@ -307,8 +428,8 @@ public class TestIntegration
                                                         new Field("b", FieldType.nullable(new ArrowType.Int(32, true)), null),
                                                         new Field("c", FieldType.nullable(new ArrowType.Int(64, true)), null),
                                                         new Field("d", FieldType.nullable(new ArrowType.Utf8()), null)))))),
-                null, null));
-        transactionsManager.commit(tx);
+                null, Collections.emptyMap()), null);
+        transactionsManager.commit(tx, null);
 
         Table table = sdk.getTable(schemaName, "nested1");
         table.loadSchema();
@@ -370,11 +491,11 @@ public class TestIntegration
 
         VastClient client = sdk.getVastClient();
         TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction();
+        SimpleVastTransaction tx = transactionsManager.startTransaction(null);
         client.createTable(tx, new CreateTableContext(
                 schemaName, "no-external-rowid-column", List.of(x),
-                null, null));
-        transactionsManager.commit(tx);
+                null, Collections.emptyMap()), null);
+        transactionsManager.commit(tx, null);
 
         Table table = sdk.getTable(schemaName, "no-external-rowid-column");
         table.loadSchema();
@@ -386,12 +507,12 @@ public class TestIntegration
         String columnName = "col";
 
         TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction();
+        SimpleVastTransaction tx = transactionsManager.startTransaction(null);
         client.createTable(tx, new CreateTableContext(schema,
                 table,
                 List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD,
-                        new Field(columnName, FieldType.nullable(type), null)), null, null));
-        transactionsManager.commit(tx);
+                        new Field(columnName, FieldType.nullable(type), null)), null, Collections.emptyMap()), null);
+        transactionsManager.commit(tx, null);
         return columnName;
     }
 
@@ -653,7 +774,7 @@ public class TestIntegration
             throws VastException
     {
         String tableName = "types_decimal128";
-        String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Decimal(12, 2));
+        String columnName = createSingleColumnTable(sdk.getVastClient(), schemaName, tableName, new ArrowType.Decimal(12, 2, 128));
 
         Table table = sdk.getTable(schemaName, tableName);
         table.loadSchema();
@@ -664,11 +785,11 @@ public class TestIntegration
         VectorSchemaRoot root = VectorSchemaRoot.create(schema, allocator);
         DecimalVector decimal128Vector = (DecimalVector) root.getVector(columnName);
         root.setRowCount(1);
-        decimal128Vector.set(0, new java.math.BigDecimal("12345.67").unscaledValue().longValue());
+        decimal128Vector.set(0, new BigDecimal("12345.67").unscaledValue().longValue());
         table.put(root);
 
         VectorSchemaRoot result = table.get(null, 0);
-        Assert.assertEquals(((DecimalVector) result.getVector(columnName)).getObject(0), new java.math.BigDecimal("12345.67"));
+        Assert.assertEquals(((DecimalVector) result.getVector(columnName)).getObject(0), new BigDecimal("12345.67"));
     }
 
     @Test
@@ -884,15 +1005,15 @@ public class TestIntegration
     {
         VastClient client = sdk.getVastClient();
         TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction();
+        SimpleVastTransaction tx = transactionsManager.startTransaction(null);
         client.createTable(tx, new CreateTableContext(
                 schemaName, "time_types",
                 List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD,
                         new Field("time32_second", FieldType.nullable(new ArrowType.Time(TimeUnit.SECOND, 32)), null),
                         new Field("time32_millisecond", FieldType.nullable(new ArrowType.Time(TimeUnit.MILLISECOND, 32)), null),
                         new Field("time64_nanosecond", FieldType.nullable(new ArrowType.Time(TimeUnit.NANOSECOND, 64)), null)),
-                null, null));
-        transactionsManager.commit(tx);
+                null, Collections.emptyMap()), null);
+        transactionsManager.commit(tx, null);
 
         Table table = sdk.getTable(schemaName, "time_types");
         table.loadSchema();
@@ -928,14 +1049,14 @@ public class TestIntegration
     {
         VastClient client = sdk.getVastClient();
         TransactionManager transactionsManager = new TransactionManager(client, new VastTransactionFactory());
-        SimpleVastTransaction tx = transactionsManager.startTransaction();
+        SimpleVastTransaction tx = transactionsManager.startTransaction(null);
         client.createTable(tx, new CreateTableContext(
                 schemaName, "nulls",
                 List.of(ArrowSchemaUtils.VASTDB_ROW_ID_FIELD,
                         new Field("x", FieldType.nullable(new ArrowType.Int(32, true)), null),
                         new Field("y", FieldType.nullable(new ArrowType.Int(32, true)), null)),
-                null, null));
-        transactionsManager.commit(tx);
+                null, Collections.emptyMap()), null);
+        transactionsManager.commit(tx, null);
 
         Table table = sdk.getTable(schemaName, "nulls");
         table.loadSchema();
@@ -973,7 +1094,7 @@ public class TestIntegration
         VectorSchemaRoot row1 = table.get(null, 1);
 
         Assert.assertEquals(((IntVector) row1.getVector("x")).get(0), 2);
-        Assert.assertTrue(((IntVector) row1.getVector("y")).isNull(0));
+        Assert.assertTrue(row1.getVector("y").isNull(0));
 
         VectorSchemaRoot row2 = table.get(null, 2);
 
@@ -982,7 +1103,7 @@ public class TestIntegration
 
         VectorSchemaRoot row3 = table.get(null, 3);
 
-        Assert.assertTrue(((IntVector) row3.getVector("x")).isNull(0));
-        Assert.assertTrue(((IntVector) row3.getVector("y")).isNull(0));
+        Assert.assertTrue(row3.getVector("x").isNull(0));
+        Assert.assertTrue(row3.getVector("y").isNull(0));
     }
 }

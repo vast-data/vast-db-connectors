@@ -1,24 +1,51 @@
+# VAST DB Connectors
+
+Connectors for **Trino** and **Apache Spark** to query VAST data.
+
+---
+
+## Contents
+
+- [Build requirements](#build-requirements)
+- [Trino connector](#building-trino-vast-connector)
+- [Spark connector](#building-spark-vast-connector)
+
+---
+
 ## Build requirements
 
-* Mac OS X or Linux
-* Java 17.0.9+, 11.0.11+ 64-bit
+- **OS:** macOS or Linux
+- **Java:** Java 23+ (Trino) or Java 11 64-bit (Spark)
+- **Build:** Git, Maven (or use the included `./mvnw`)
 
+---
 
-## Building Trino VAST connector on Ubuntu/Debian
+## Building Trino VAST connector
+
+**Ubuntu/Debian:**
+
+```bash
+sudo apt install openjdk-23-jdk git
+./mvnw -N clean install && ./mvnw -pl plugin/ndb-common clean install
+./mvnw -f plugin/trino-vast/pom.xml clean package
 ```
-sudo apt install openjdk-17-jdk git
-./mvnw -pl ndb:ndb-common,ndb:trino-vast clean package
-```
-The artifact should be at `plugin/trino-vast/target/trino-vast-*.zip`.
 
+**Output:** `plugin/trino-vast/target/trino-vast-*.zip`
 
-## Building Spark3.4 VAST connector on Ubuntu/Debian
-```
+---
+
+## Building Spark VAST connector
+
+**Ubuntu/Debian – install Java 11:**
+
+```bash
 sudo apt install openjdk-11-jdk git
-./mvnw -pl '!ndb:trino-vast' clean package
 ```
-The artifact should be at `plugin/spark3/spark34/target/spark-vast-spark34-*.jar`. 
-Dependencies for `spark.jars` should be at plugin/spark3/spark34/target/dependencies
 
+Then build for your Spark/Scala version:
 
-
+| Target | Command | Output | Dependencies (`spark.jars`) |
+|--------|---------|--------|-----------------------------|
+| **Spark 3.4** | `./mvnw -pl plugin/spark3/spark34 -am clean package` | `plugin/spark3/spark34/target/spark-vast-spark34-*.jar` | `plugin/spark3/spark34/target/dependencies` |
+| **Spark 3.5** (Scala 2.13) | `./mvnw -pl plugin/spark3/spark35 -am clean package` | `plugin/spark3/spark35/target/spark-vast-spark35-*.jar` | `plugin/spark3/spark35/target/dependencies` |
+| **Spark 3.5** (Scala 2.12) | `./mvnw -pl plugin/spark3/spark35-scala212 -am clean package` | `plugin/spark3/spark35-scala212/target/spark-vast-spark35-scala212-*.jar` | `plugin/spark3/spark35-scala212/target/dependencies` |

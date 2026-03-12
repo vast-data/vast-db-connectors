@@ -18,6 +18,7 @@ import static com.vastdata.client.ArrowComputeFunction.IS_VALID;
 import static com.vastdata.client.ArrowComputeFunction.LESS;
 import static com.vastdata.client.ArrowComputeFunction.LESS_EQUAL;
 import static com.vastdata.client.ArrowComputeFunction.MATCH_SUBSTRING;
+import static com.vastdata.client.ArrowComputeFunction.NOT_EQUAL;
 import static com.vastdata.client.ArrowComputeFunction.OR;
 
 public abstract class VastExpressionSerializer
@@ -71,6 +72,11 @@ public abstract class VastExpressionSerializer
     protected int buildEqual(int column, int literal)
     {
         return buildFunction(EQUAL, column, literal);
+    }
+
+    protected int buildNotEqual(int column, int literal)
+    {
+        return buildFunction(NOT_EQUAL, column, literal);
     }
 
     protected int buildLess(int column, int literal, boolean inclusive)

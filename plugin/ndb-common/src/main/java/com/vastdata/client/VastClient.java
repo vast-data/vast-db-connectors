@@ -52,16 +52,21 @@ import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.HttpStatus;
 import io.airlift.http.client.Request;
 import io.airlift.log.Logger;
+import org.apache.arrow.flatbuf.MessageHeader;
+import org.apache.arrow.memory.ArrowBuf;
+import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.VectorLoader;
-import org.apache.arrow.vector.VectorUnloader;
 import org.apache.arrow.vector.VectorSchemaRoot;
-import org.apache.arrow.vector.ipc.ArrowStreamReader;
+import org.apache.arrow.vector.compression.NoCompressionCodec;
+import org.apache.arrow.vector.ipc.ReadChannel;
+import org.apache.arrow.vector.ipc.message.ArrowRecordBatch;
+import org.apache.arrow.vector.ipc.message.MessageChannelReader;
+import org.apache.arrow.vector.ipc.message.MessageResult;
+import org.apache.arrow.vector.ipc.message.MessageSerializer;
 import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.arrow.vector.types.pojo.FieldType;
 import org.apache.arrow.vector.types.pojo.Schema;
-import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.util.VectorSchemaRootAppender;
 import org.apache.commons.codec.binary.Hex;
 import vast_flatbuf.tabular.ColumnDetails;
@@ -82,6 +87,7 @@ import java.net.NoRouteToHostException;
 import java.net.URI;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -151,6 +157,10 @@ public class VastClient
 
     private final RecordBatchSplitter splitter;
 
+    public static long getAllocatedMemory()
+    {
+        return allocator.getAllocatedMemory();
+    }
     private static ListSchemasResponse parseListSchemasResponse(VastResponse response)
     {
         try {
@@ -870,15 +880,18 @@ public class VastClient
         return (int)((split.getCurrentSplit() + i + (tableName.hashCode() & Integer.MAX_VALUE)) % size);
     }
 
-    private VectorSchemaRoot sendSomeRows(final VastTransaction transaction,
+    private VectorSchemaRoot insertRows(final VastTransaction transaction,
                                           final URI endpoint,
-                                          final Requests requestType,
                                           final String path,
                                           final byte[] body,
                                           final boolean readResult,
-                                          final String endUser)
+                                          final String endUser, BufferAllocator allocatorForTransfer)
             throws VastException
     {
+        if (readResult && allocatorForTransfer == null)
+        {
+            throw new RuntimeException("allocatorForTransfer must not be null if readResult is true");
+        }
         VastRequestHeadersBuilder headersFactory = dependenciesFactory.getHeadersFactory(endUser)
                 .withContentLength(body.length);
 
@@ -887,7 +900,7 @@ public class VastClient
         }
         final Multimap<String, String> headers = headersFactory.build();
 
-        final Request request = new VastRequestBuilder(endpoint, config, POST, path, ImmutableMap.of(requestType.getRequestParam(), "") )
+        final Request request = new VastRequestBuilder(endpoint, config, POST, path, ImmutableMap.of(Requests.INSERT_ROWS.getRequestParam(), "") )
                 .addHeaders(headers)
                 .setBody(Optional.of(body))
                 .build();
@@ -901,26 +914,31 @@ public class VastClient
             return null;
         }
         else {
-            try (ArrowStreamReader reader = new ArrowStreamReader(new ByteArrayInputStream(response.getBytes()), allocator)) {
-                try {
-                    if (!reader.loadNextBatch()) {
-                        throw toRuntime(serverException("Expecting a RecordBatch in response containing inserted row ids"));
-                    }
-                    final VectorSchemaRoot root = reader.getVectorSchemaRoot();
-                    final VectorUnloader unloader = new VectorUnloader(root);
-                    final VectorSchemaRoot copy = VectorSchemaRoot.create(root.getSchema(), allocator);
-                    final VectorLoader loader = new VectorLoader(copy);
-                    loader.load(unloader.getRecordBatch());
-
-                    if (reader.loadNextBatch()) {
-                        throw toRuntime(serverException("Expecting exactly one batch. got more"));
-                    }
-                    return copy;
-                } catch (IOException e) {
-                    throw new VastIOException("Failed to read response", e);
+            try (MessageChannelReader reader = new MessageChannelReader(new ReadChannel(Channels.newChannel(new ByteArrayInputStream(response.getBytes()))), allocatorForTransfer)) {
+                MessageResult result = reader.readNext();
+                if (result.getMessage().headerType() != MessageHeader.Schema) {
+                    throw new IOException("Expected schema but header was " + result.getMessage().headerType());
                 }
-            } catch (IOException e) {
-                throw toRuntime("Failed reading insert response", e);
+                final Schema schema = MessageSerializer.deserializeSchema(result.getMessage());
+                VectorSchemaRoot root = VectorSchemaRoot.create(schema, allocatorForTransfer);
+                result = reader.readNext();
+                if (result.getMessage().headerType() == MessageHeader.RecordBatch) {
+                    ArrowBuf bodyBuffer = result.getBodyBuffer();
+                    if (bodyBuffer == null) {
+                        bodyBuffer = allocatorForTransfer.getEmpty();
+                    }
+
+                    try (ArrowRecordBatch batch = MessageSerializer.deserializeRecordBatch(result.getMessage(), bodyBuffer)) {
+                        new VectorLoader(root, NoCompressionCodec.Factory.INSTANCE).load(batch);
+                        return root;
+                    }
+
+                } else {
+                    throw new RuntimeException(format("Unexpected message type: %s", result.getMessage().headerType()));
+                }
+            }
+            catch (IOException e) {
+                throw new VastIOException("Failed to read response", e);
             }
         }
     }
@@ -973,13 +991,14 @@ public class VastClient
 
         VectorSchemaRoot rowIdsRoot = null;
         try {
+            List<FieldVector> vectorsForUpdate = otherVectors.subList(otherVectorsForInsertCount, otherVectors.size());
             // 1. Insert the first batch containing sorted keys and other columns.
             LOG.info("Inserting initial batch with %d columns for %s/%s",
                     insertBatch.getFieldVectors().size(), schema, table);
-            rowIdsRoot = this.insertRows(transaction, schema, table, insertBatch, dataEndpoint, maxRowsPerInsert, true, endUser, tableType);
+            boolean needRowIDs = readResult || !vectorsForUpdate.isEmpty();
+            rowIdsRoot = this.insertRows(transaction, schema, table, insertBatch, dataEndpoint, maxRowsPerInsert, needRowIDs, endUser, tableType);
 
             // 2. Update remaining columns in subsequent batches (chunks).
-            List<FieldVector> vectorsForUpdate = otherVectors.subList(otherVectorsForInsertCount, otherVectors.size());
             if (!vectorsForUpdate.isEmpty()) {
                 FieldVector rowIdVector = rowIdsRoot.getVector(0);
                 int maxUpdateColumns = maxColumnsPerBatch - 1; // -1 for the row ID vector
@@ -1003,9 +1022,7 @@ public class VastClient
             }
 
             if (readResult) {
-                VectorSchemaRoot resultToReturn = rowIdsRoot;
-                rowIdsRoot = null; // Transfer ownership to the caller
-                return resultToReturn;
+                return rowIdsRoot;
             }
             else {
                 return null; // rowIdsRoot will be closed in finally
@@ -1014,7 +1031,7 @@ public class VastClient
         finally {
             // The VSRs 'insertBatch' and 'updateBatch' are temporary views over vectors
             // owned by 'root' and 'rowIdsRoot', so they should not be closed here.
-            if (rowIdsRoot != null) {
+            if (!readResult && rowIdsRoot != null) {
                 rowIdsRoot.close();
             }
         }
@@ -1025,30 +1042,34 @@ public class VastClient
     {
         final String path = format("/%s/%s", schema, table);
         for (byte[] body : splitter.split(root, maxRowsPerInsert.orElse(config.getMaxRowsPerInsert()))) {
-            sendSomeRows(transaction, dataEndpoint, Requests.INSERT_ROWS, path, body, false, endUser);
+            insertRows(transaction, dataEndpoint, path, body, false, endUser, getVectorsAllocator(root));
         }
     }
 
-    public VectorSchemaRoot insertRows(VastTransaction transaction, String schema, String table, VectorSchemaRoot root, URI dataEndpoint, Optional<Integer> maxRowsPerInsert, final boolean readResult, final String endUser, final TableType tableType)
+    public VectorSchemaRoot insertRows(VastTransaction transaction, String schema, String table, VectorSchemaRoot root,
+            URI dataEndpoint, Optional<Integer> maxRowsPerInsert, final boolean readResult, final String endUser, final TableType tableType)
             throws VastException
     {
         String path = format("/%s/%s", schema, table);
 
-        final VectorSchemaRoot allRowIds = VectorSchemaRoot.create(RowIdListSchemaFactory.get(tableType), allocator);
+        BufferAllocator insertChunkAllocator = getVectorsAllocator(root);
+        final VectorSchemaRoot allRowIds = VectorSchemaRoot.create(RowIdListSchemaFactory.get(tableType), insertChunkAllocator);
 
         for (byte[] body : splitter.split(root, maxRowsPerInsert.orElse(config.getMaxRowsPerInsert()))) {
-            final VectorSchemaRoot rowIds = sendSomeRows(transaction, dataEndpoint, Requests.INSERT_ROWS, path, body, readResult, endUser);
-            VectorSchemaRootAppender.append(allRowIds, rowIds);
+            try (final VectorSchemaRoot rowIds = insertRows(transaction, dataEndpoint,
+                    path, body, readResult, endUser, allocator)){
+                if (readResult) {
+                    VectorSchemaRootAppender.append(allRowIds, rowIds);
+                }
+            }
         }
         return allRowIds;
     }
 
-    public VectorSchemaRoot insertRows(VastTransaction transaction, String schema, String table, VectorSchemaRoot root, URI dataEndpoint, Optional<Integer> maxRowsPerInsert, final boolean readResult, final String endUser)
-            throws VastException
+    private static BufferAllocator getVectorsAllocator(VectorSchemaRoot root)
     {
-        return insertRows(transaction, schema, table, root, dataEndpoint, maxRowsPerInsert, readResult, endUser, TableType.REGULAR);
+        return root.getFieldVectors().get(0).getAllocator();
     }
-
 
     public void deleteRows(VastTransaction transaction, String schema, String table, VectorSchemaRoot root, URI dataEndpoint, Optional<Integer> maxRowsPerDelete, final String endUser)
             throws VastException
@@ -1337,9 +1358,14 @@ public class VastClient
     public VastSchedulingInfo getSchedulingInfo(VastTransaction transaction, VastTraceToken traceToken, String schemaName, String tableName, final String endUser)
     {
         String path = format("/%s/%s", schemaName, tableName);
-        Multimap<String, String> headers = dependenciesFactory.getHeadersFactory(endUser)
-                .withTransaction(transaction)
-                .withTraceToken(traceToken)
+        VastRequestHeadersBuilder headersFactory = dependenciesFactory.getHeadersFactory(endUser);
+        if (traceToken != null) {
+            headersFactory = headersFactory.withTraceToken(traceToken);
+        }
+        if (transaction != null) {
+            headersFactory = headersFactory.withTransaction(transaction);
+        }
+        Multimap<String, String> headers = headersFactory
                 .build();
         Request req = new VastRequestBuilder(config, GET, path, ImmutableMap.of(Requests.GET_SCHEDULING_INFO.getRequestParam(), ""))
                 .addHeaders(headers)

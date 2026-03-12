@@ -271,12 +271,22 @@ public class VastRecordBatchBuilder
                 else if (zoneId != null && (unit == TimeUnit.MICROSECOND || unit == TimeUnit.NANOSECOND)) {
                     final TimeZoneKey zoneKey = getTimeZoneKey(zoneId);
                     Fixed12BlockApi fixed12Api = BlockApiFactory.getFixed12ApiInstance(block);
-                    longSupplier = x -> {
-                        // See LongTimestampType docs
-                        long millis = fixed12Api.getFixed12First(x);
-                        int picos = fixed12Api.getFixed12Second(x);
-                        return TypeUtils.convertTwoValuesNanoToLongMilli(unpackMillisUtc(millis), picos);
-                    };
+                    if (unit == TimeUnit.MICROSECOND) {
+                        longSupplier = x -> {
+                            // See LongTimestampType docs
+                            long millis = fixed12Api.getFixed12First(x);
+                            int picos = fixed12Api.getFixed12Second(x);
+                            return TypeUtils.convertTwoValuesMicroToLong(unpackMillisUtc(millis), picos);
+                        };
+                    }
+                    else {
+                        longSupplier = x -> {
+                            // See LongTimestampType docs
+                            long millis = fixed12Api.getFixed12First(x);
+                            int picos = fixed12Api.getFixed12Second(x);
+                            return TypeUtils.convertTwoValuesNanoToLongMilli(unpackMillisUtc(millis), picos);
+                        };
+                    }
                 }
                 else if (zoneId == null) {
                     LongBlockApi longApi = BlockApiFactory.getLongApiInstance(block);
