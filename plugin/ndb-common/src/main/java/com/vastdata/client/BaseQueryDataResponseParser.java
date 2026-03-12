@@ -191,12 +191,11 @@ abstract public class BaseQueryDataResponseParser<T>
                                 traceStr, streamId, requestedSchema.getFields().size(), requestedSchema, batch, bodyBuffer);
                     }
                     VectorLoader loader;
-		    if (batch.getBodyCompression().equals(NoCompressionCodec.DEFAULT_BODY_COMPRESSION)) {
-			LOG.debug("No compression");
+                    if (batch.getBodyCompression().equals(NoCompressionCodec.DEFAULT_BODY_COMPRESSION)) {
                         loader = new VectorLoader(root, NoCompressionCodec.Factory.INSTANCE);
                     }
                     else {
-			LOG.debug("Compression : {}", batch.getBodyCompression());
+                        LOG.debug("Compression : {}", batch.getBodyCompression());
                         loader = new VectorLoader(root, CommonsCompressionFactory.INSTANCE);
                     }
                     loader.load(batch); // load `root` vectors from batch
