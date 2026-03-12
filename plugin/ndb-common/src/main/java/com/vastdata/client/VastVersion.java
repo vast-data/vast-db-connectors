@@ -10,7 +10,7 @@ public class VastVersion
     public final static int MINOR = 4;
     public final static int PATCH = 4;
     public final static int PROTOCOL = 0;
-    public final static String FEATURES_HASH = "0xc7fc60b550ae1d6e";
-    public final static String SYS_VERSION = "5.4.4.0.14410499239537679726";
-    public final static String HASH = "ee27d896cdc2ac32482d05b8f7d28758967b2956";
+    public final static String FEATURES_HASH = "0xb4af7925a4fe5fed";
+    public final static String SYS_VERSION = "5.4.4.0.13019758250340278253";
+    public final static String HASH = "1e14fabd355e2984876355180953500b154dd7a8";
 }
