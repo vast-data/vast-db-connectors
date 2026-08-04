@@ -11,7 +11,8 @@ public abstract class StatisticsUrlExtractor<T>
     private final Function<T, String> bucketExtractor;
     private final Function<T, String> handleIdExtractor;
 
-    public StatisticsUrlExtractor(Function<T, String> bucketExtractor, Function<T, String> handleIdExtractor)
+    public StatisticsUrlExtractor(Function<T, String> bucketExtractor,
+            Function<T, String> handleIdExtractor)
     {
         this.bucketExtractor = bucketExtractor;
         this.handleIdExtractor = handleIdExtractor;

@@ -23,3 +23,5 @@ spark.python.authenticate.socketTimeout=1m
 spark.speculation=false
 spark.task.maxFailures=1
 spark.sql.readSideCharPadding=False
+spark.driver.extraJavaOptions=-Djava.util.logging.config.file=logging.properties
+spark.executor.extraJavaOptions=-Djava.util.logging.config.file=logging.properties

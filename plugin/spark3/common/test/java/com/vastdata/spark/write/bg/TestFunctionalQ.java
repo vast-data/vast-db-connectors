@@ -40,7 +40,8 @@ public class TestFunctionalQ
             System.out.println("predicate exits");
             return true;
         };
-        FunctionalQ<Integer> unit = new FunctionalQ<>(Integer.class, "race", 0, 10, 100, myPredicate);
+        FunctionalQ<Integer> unit = new FunctionalQ<>(Integer.class, "race", 0,
+                10, 100, myPredicate);
         new Thread(() -> {
             try {
                 synchronized (once) {

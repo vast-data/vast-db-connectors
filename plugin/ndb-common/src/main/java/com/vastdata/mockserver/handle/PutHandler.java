@@ -20,7 +20,8 @@ public class PutHandler
 {
     private static final Logger LOG = Logger.get(PutHandler.class);
 
-    public PutHandler(Map<String, Set<MockMapSchema>> schema, Set<String> openTransactions)
+    public PutHandler(Map<String, Set<MockMapSchema>> schema,
+            Set<String> openTransactions)
     {
         super(schema, openTransactions);
     }
@@ -30,10 +31,15 @@ public class PutHandler
             throws Exception
     {
         URI requestURI = he.getRequestURI();
+        String query = requestURI.getQuery();
         LOG.info(format("PUT %s", requestURI));
         ParsedURL of = ParsedURL.of(requestURI.getPath());
         if (of.isBaseUrl()) {
             removeTransaction(he);
+        }
+        else if (of.hasTable() && "rows".equals(query)) {
+            readAllBytes(he.getRequestBody());
+            respondOK(he);
         }
         else {
             respondError(he);

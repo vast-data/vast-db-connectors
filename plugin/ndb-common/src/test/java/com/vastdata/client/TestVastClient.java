@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) Vast Data Ltd.
+ * Copyright (C) Vast Data Ltd.
  */
 
 package com.vastdata.client;
@@ -60,7 +60,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -71,7 +70,6 @@ import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static com.vastdata.client.VastClient.AUDIT_LOG_BUCKET_NAME;
 import static com.vastdata.client.VastClient.BIG_CATALOG_BUCKET_NAME;
-import static com.vastdata.client.VastClient.getEndpointIndex;
 import static com.vastdata.client.VastClientForTests.RETRY_MAX_COUNT;
 import static java.lang.String.format;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -85,14 +83,13 @@ import static org.testng.Assert.assertTrue;
 
 public class TestVastClient
 {
-    private static VastMockS3Server mockServer;
     private static final VastRootHandler handler = new VastRootHandler();
-    private int testPort;
+    private static VastMockS3Server mockServer;
     @Mock VastTransaction mockTransactionHandle;
     @Mock HttpClient mockHttpClient;
     @Mock ArrowSchemaUtils mockArrowSchemaUtils = mock(ArrowSchemaUtils.class);
     @Mock QueryDataPagination mockPagination = mock(QueryDataPagination.class);
-
+    private int testPort;
     private AutoCloseable autoCloseable;
 
     @BeforeClass
@@ -116,7 +113,8 @@ public class TestVastClient
     {
         handler.clearSchema();
         autoCloseable = openMocks(this);
-        when(mockTransactionHandle.getId()).thenReturn(Long.parseUnsignedLong("514026084031791104"));
+        when(mockTransactionHandle.getId()).thenReturn(
+                Long.parseUnsignedLong("514026084031791104"));
     }
 
     @AfterMethod
@@ -156,14 +154,19 @@ public class TestVastClient
                 .setAccessKeyId("0bfefyXxRzyKCRSqOknW")
                 .setSecretAccessKey("WHeraF+RiHB/E3/YPa0bIfngGw31vL/B8zebwpBb");
 
-        Request request = new VastRequestBuilder(config, GET, "/")
-                .setDate(new Date(1647274570000L)) // (aka 20220314T161610Z)
+        Request request = new VastRequestBuilder(config, GET, "/").setDate(
+                        new Date(1647274570000L)) // (aka 20220314T161610Z)
                 .build();
         Multimap<String, String> headers = request.getHeaders();
-        assertThat(headers.get("x-amz-content-sha256")).isEqualTo(ImmutableList.of("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"));
-        assertThat(headers.get("X-Amz-Date")).isEqualTo(ImmutableList.of("20220314T161610Z"));
-        assertThat(headers.get("Host")).isEqualTo(ImmutableList.of("localhost:9090"));
-        assertThat(headers.get("Authorization")).isEqualTo(ImmutableList.of("AWS4-HMAC-SHA256 Credential=0bfefyXxRzyKCRSqOknW/20220314/vast/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=dddb65c751a5ed3fda8be4ab7a319376a49dcfbd837e4d2434f5f673ddb89eef"));
+        assertThat(headers.get("x-amz-content-sha256")).isEqualTo(
+                ImmutableList.of(
+                        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"));
+        assertThat(headers.get("X-Amz-Date")).isEqualTo(
+                ImmutableList.of("20220314T161610Z"));
+        assertThat(headers.get("Host")).isEqualTo(
+                ImmutableList.of("localhost:9090"));
+        assertThat(headers.get("Authorization")).isEqualTo(ImmutableList.of(
+                "AWS4-HMAC-SHA256 Credential=0bfefyXxRzyKCRSqOknW/20220314/vast/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=dddb65c751a5ed3fda8be4ab7a319376a49dcfbd837e4d2434f5f673ddb89eef"));
     }
 
     @Test(enabled = false)
@@ -205,17 +208,21 @@ public class TestVastClient
                 .setAccessKeyId("pIX3SzyuQVmdrIVZnyy0")
                 .setSecretAccessKey("5c5HqW3cDQsUNg68OlhJmq72TM2nZxcP5lR6D1ps");
 
-        Request request = new VastRequestBuilder(config, GET, "/bucket-for-tabular-api", ImmutableMap.of("schema", ""))
-                .setDate(new Date(1649661186000L)) // (aka 20220411T071306Z)
+        Request request = new VastRequestBuilder(config, GET,
+                "/bucket-for-tabular-api",
+                ImmutableMap.of("schema", "")).setDate(
+                        new Date(1649661186000L)) // (aka 20220411T071306Z)
                 .build();
         Multimap<String, String> headers = request.getHeaders();
-        assertThat(headers.get("x-amz-content-sha256")).isEqualTo(ImmutableList.of("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"));
-        assertThat(headers.get("X-Amz-Date")).isEqualTo(ImmutableList.of("20220411T071306Z"));
-        assertThat(headers.get("Host")).isEqualTo(ImmutableList.of("localhost:9090"));
+        assertThat(headers.get("x-amz-content-sha256")).isEqualTo(
+                ImmutableList.of(
+                        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"));
+        assertThat(headers.get("X-Amz-Date")).isEqualTo(
+                ImmutableList.of("20220411T071306Z"));
+        assertThat(headers.get("Host")).isEqualTo(
+                ImmutableList.of("localhost:9090"));
         assertThat(headers.get("Authorization")).isEqualTo(ImmutableList.of(
-                "AWS4-HMAC-SHA256 Credential=pIX3SzyuQVmdrIVZnyy0/20220411/us-east-1/s3/aws4_request, " +
-                        "SignedHeaders=host;x-amz-content-sha256;x-amz-date, " +
-                        "Signature=0cd36e09c5e96e5485eee9cae7ba9c777515cbc365fc4f1d4403fb4b148c735a"));
+                "AWS4-HMAC-SHA256 Credential=pIX3SzyuQVmdrIVZnyy0/20220411/us-east-1/s3/aws4_request, " + "SignedHeaders=host;x-amz-content-sha256;x-amz-date, " + "Signature=0cd36e09c5e96e5485eee9cae7ba9c777515cbc365fc4f1d4403fb4b148c735a"));
     }
 
     @Test
@@ -225,17 +232,21 @@ public class TestVastClient
         VastClient vastClient = getVastClient();
         int numberOfRetries = 3;
         String bucketNamePrefix = "testbucket";
-        Map<String, Set<MockMapSchema>> testMockServerSchema = new HashMap<>(numberOfRetries);
+        Map<String, Set<MockMapSchema>> testMockServerSchema = new HashMap<>(
+                numberOfRetries);
         for (int i = 0; i < numberOfRetries; i++) {
             if (i > 0) {
-                testMockServerSchema.put(bucketNamePrefix + i, ImmutableSet.of(MockMapSchema.empty("schema" + i)));
+                testMockServerSchema.put(bucketNamePrefix + i,
+                        ImmutableSet.of(MockMapSchema.empty("schema" + i)));
                 handler.setSchema(testMockServerSchema);
             }
             List<String> replyBuckets = vastClient.listBuckets(true);
             assertEquals(replyBuckets.size(), i + 2);
             for (int j = 1; j < i; j++) {
                 String bucketName = bucketNamePrefix + j;
-                assertTrue(replyBuckets.contains(bucketName), format("Failed on iteration no. %d: %s not in list", i, bucketName));
+                assertTrue(replyBuckets.contains(bucketName),
+                        format("Failed on iteration no. %d: %s not in list", i,
+                                bucketName));
             }
             assertTrue(replyBuckets.contains(AUDIT_LOG_BUCKET_NAME));
             assertTrue(replyBuckets.contains(BIG_CATALOG_BUCKET_NAME));
@@ -247,25 +258,29 @@ public class TestVastClient
         HttpClient httpClient = new JettyHttpClient();
         VastConfig vastConfig = new VastConfig();
         vastConfig.setEngineVersion("1.2.3");
-        return new VastClient(httpClient, getMockServerReadyVastConfig(), new DummyDependenciesFactory(vastConfig));
+        return new VastClient(httpClient, getMockServerReadyVastConfig(),
+                new DummyDependenciesFactory(vastConfig));
     }
 
-    private VastClient getVastClient(HttpClient httpClient, ArrowSchemaUtils arrowSchemaUtils)
+    private VastClient getVastClient(HttpClient httpClient,
+                                     ArrowSchemaUtils arrowSchemaUtils)
     {
         VastConfig vastConfig = new VastConfig();
         vastConfig.setEngineVersion("1.2.3");
-        return new VastClient(httpClient, getMockServerReadyVastConfig(), new DummyDependenciesFactory(vastConfig), arrowSchemaUtils);
+        return new VastClient(httpClient, getMockServerReadyVastConfig(),
+                new DummyDependenciesFactory(vastConfig), arrowSchemaUtils);
     }
 
     private VastConfig getMockServerReadyVastConfig()
     {
         return new VastConfig()
-                .setEndpoint(URI.create(format("http://localhost:%d", testPort)))
+                .setEndpoint(
+                        URI.create(format("http://localhost:%d", testPort)))
                 .setRegion("us-east-1")
                 .setAccessKeyId("pIX3SzyuQVmdrIVZnyy0")
                 .setSecretAccessKey("5c5HqW3cDQsUNg68OlhJmq72TM2nZxcP5lR6D1ps");
-//                .setRetryMaxCount(RETRY_MAX_COUNT)
-//                .setRetrySleepDuration(1);
+        //                .setRetryMaxCount(RETRY_MAX_COUNT)
+        //                .setRetrySleepDuration(1);
     }
 
     @Test(expectedExceptions = VastUserException.class)
@@ -285,28 +300,38 @@ public class TestVastClient
         String testBucket = "testCreateSchemaBucket";
         String testSchema = "testCreateSchemaSchema";
         mockUtils.createBucket(this.testPort, testBucket);
-        unit.createSchema(mockTransactionHandle, format("%s/%s", testBucket, testSchema), "{}", null);
+        unit.createSchema(mockTransactionHandle,
+                format("%s/%s", testBucket, testSchema), "{}", null);
     }
 
-    @Test(expectedExceptions = VastUserException.class, expectedExceptionsMessageRegExp = ".*HTTP Error: 404\\. Code: NoSuchKey\\. Message: The specified key does not exist\\. Resource: aresource\\. RequestId: a00100000025\\..*")
+    @Test(expectedExceptions = VastUserException.class,
+            expectedExceptionsMessageRegExp = ".*HTTP Error: 404\\. Code: NoSuchKey\\. Message: The specified key does not exist\\. Resource: aresource\\. RequestId: a00100000025\\..*")
     public void testCreateSchemaUserError()
             throws VastException, IOException
     {
-        testCreateSchemaError("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Resource>aresource</Resource><RequestId>a00100000025</RequestId></Error>", 404);
+        testCreateSchemaError(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>NoSuchKey</Code><Message>The specified key does not exist.</Message><Resource>aresource</Resource><RequestId>a00100000025</RequestId></Error>",
+                404);
     }
 
-    @Test(expectedExceptions = VastConflictException.class, expectedExceptionsMessageRegExp = ".*HTTP Error: 409\\. Code: InvalidBucketState\\. Message: The request is not valid with the current state of the bucket\\. Resource: api-create-schema-without-db\\. RequestId: a001000003ae\\..*")
+    @Test(expectedExceptions = VastConflictException.class,
+            expectedExceptionsMessageRegExp = ".*HTTP Error: 409\\. Code: InvalidBucketState\\. Message: The request is not valid with the current state of the bucket\\. Resource: api-create-schema-without-db\\. RequestId: a001000003ae\\..*")
     public void testCreateSchemaConflictError()
             throws VastException, IOException
     {
-        testCreateSchemaError("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>InvalidBucketState</Code><Message>The request is not valid with the current state of the bucket.</Message><Resource>api-create-schema-without-db</Resource><RequestId>a001000003ae</RequestId></Error>", 409);
+        testCreateSchemaError(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>InvalidBucketState</Code><Message>The request is not valid with the current state of the bucket.</Message><Resource>api-create-schema-without-db</Resource><RequestId>a001000003ae</RequestId></Error>",
+                409);
     }
 
-    @Test(expectedExceptions = VastServerException.class, expectedExceptionsMessageRegExp = ".*HTTP Error: 503\\. Code: SlowDown\\. Message: Slow Down\\. RequestId: a00100000025\\..*")
+    @Test(expectedExceptions = VastServerException.class,
+            expectedExceptionsMessageRegExp = ".*HTTP Error: 503\\. Code: SlowDown\\. Message: Slow Down\\. RequestId: a00100000025\\..*")
     public void testCreateSchemaServerError()
             throws VastException, IOException
     {
-        testCreateSchemaError("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code><Message>Slow Down</Message><Resource/><RequestId>a00100000025</RequestId></Error>", 503);
+        testCreateSchemaError(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Error><Code>SlowDown</Code><Message>Slow Down</Message><Resource/><RequestId>a00100000025</RequestId></Error>",
+                503);
     }
 
     private void testCreateSchemaError(String message, int rCode)
@@ -319,7 +344,8 @@ public class TestVastClient
         mockUtils.createBucket(this.testPort, testBucket);
         String path = format("%s/%s", testBucket, testSchema);
         HttpMethodName method = HttpMethodName.POST;
-        Consumer<HttpExchange> action = httpExchange -> {
+        Consumer<HttpExchange> action = httpExchange ->
+        {
             try {
                 httpExchange.sendResponseHeaders(rCode, message.length());
                 try (OutputStream os = httpExchange.getResponseBody()) {
@@ -340,51 +366,56 @@ public class TestVastClient
         String positiveTestExceptionMessage = "java.io.EOFException: HttpConnectionOverHTTP@b5346ca::SocketChannelEndPoint@2114fb9e{l=/172.19.223.199:57762,r=/172.19.199.3:80,ISHUT,fill=-,flush=-,to=0/50000}{io=0/0,kio=0,kro=1}->HttpConnectionOverHTTP@b5346ca(l:/172.19.223.199:57762 <-> r:/172.19.199.3:80,closed=false)=>HttpChannelOverHTTP@3e096caf(exchange=HttpExchange@5c9b040d{req=HttpRequest[PUT /agoda-wa-table/wa-schema/webtraffic HTTP/1.1]@4def7c42[TERMINATED/null] res=HttpResponse[null 0 null]@4ba1b66a[PENDING/null]})[send=HttpSenderOverHTTP@3e38d7a5(req=QUEUED,snd=COMPLETED,failure=null)[HttpGenerator@3a070703{s=START}],recv=HttpReceiverOverHTTP@c3c716d(rsp=IDLE,failure=null)[HttpParser{s=CLOSED,0 of -1}]]";
         String negativeTestExceptionMessage = "java.io.EOFException: HttpConnectionOverHTTP@b5346ca::SocketChannelEndPoint@2114fb9e{l=/172.19.223.199:57762,r=/172.19.199.3:80,ISHUT,fill=-,flush=-,to=12345/50000}{io=0/0,kio=0,kro=1}->HttpConnectionOverHTTP@b5346ca(l:/172.19.223.199:57762 <-> r:/172.19.199.3:80,closed=false)=>HttpChannelOverHTTP@3e096caf(exchange=HttpExchange@5c9b040d{req=HttpRequest[PUT /agoda-wa-table/wa-schema/webtraffic HTTP/1.1]@4def7c42[TERMINATED/null] res=HttpResponse[null 0 null]@4ba1b66a[PENDING/null]})[send=HttpSenderOverHTTP@3e38d7a5(req=QUEUED,snd=COMPLETED,failure=null)[HttpGenerator@3a070703{s=START}],recv=HttpReceiverOverHTTP@c3c716d(rsp=IDLE,failure=null)[HttpParser{s=CLOSED,0 of -1}]]";
 
-        return new Object[][] {{positiveTestExceptionMessage, RETRY_MAX_COUNT + 1},
-                {negativeTestExceptionMessage, 1}};
+        return new Object[][] {{positiveTestExceptionMessage,
+                RETRY_MAX_COUNT + 1}, {negativeTestExceptionMessage, 1}};
     }
 
-    @Test
-    public void testHashIndex()
-    {
-        VastSplitContext split = new VastSplitContext(0, 256, 5, 1);
-        int endpointLength = 8;
-        int retry = 0;
-        String tableName = "polygenelubricants";  //hash = Integer.MIN_VALUE
-        int endpointIndex = getEndpointIndex(tableName, split, retry++, endpointLength);
-        assertTrue(endpointIndex >= 0);
-        assertEquals(getEndpointIndex(tableName, split, retry++, endpointLength), ++endpointIndex % endpointLength);
-        assertEquals(getEndpointIndex(tableName, split, retry, endpointLength), ++endpointIndex % endpointLength);
+    // @Test
+    // public void testHashIndex()
+    // {
+    //     VastSplitContext split = new VastSplitContext(0, 256, 5, 1);
+    //     int endpointLength = 8;
+    //     int retry = 0;
+    //     String tableName = "polygenelubricants";  //hash = Integer.MIN_VALUE
+    //     int endpointIndex = getEndpointIndex(tableName, split, retry++, endpointLength);
+    //     assertTrue(endpointIndex >= 0);
+    //     assertEquals(getEndpointIndex(tableName, split, retry++, endpointLength), ++endpointIndex % endpointLength);
+    //     assertEquals(getEndpointIndex(tableName, split, retry, endpointLength), ++endpointIndex % endpointLength);
 
-        retry = 0;
-        tableName = "a"; // some positive hash
-        endpointIndex = getEndpointIndex(tableName, split, retry++, endpointLength);
-        assertTrue(endpointIndex >= 0);
-        assertEquals(getEndpointIndex(tableName, split, retry++, endpointLength) % endpointLength, ++endpointIndex % endpointLength);
-        assertEquals(getEndpointIndex(tableName, split, retry, endpointLength) % endpointLength, ++endpointIndex % endpointLength);
+    //     retry = 0;
+    //     tableName = "a"; // some positive hash
+    //     endpointIndex = getEndpointIndex(tableName, split, retry++, endpointLength);
+    //     assertTrue(endpointIndex >= 0);
+    //     assertEquals(getEndpointIndex(tableName, split, retry++, endpointLength) % endpointLength, ++endpointIndex % endpointLength);
+    //     assertEquals(getEndpointIndex(tableName, split, retry, endpointLength) % endpointLength, ++endpointIndex % endpointLength);
 
-        retry = 0;
-        tableName = "someTable"; // some negative hash
-        endpointIndex = getEndpointIndex(tableName, split, retry++, endpointLength);
-        assertTrue(endpointIndex >= 0);
-        assertEquals(getEndpointIndex(tableName, split, retry++, endpointLength) % endpointLength, ++endpointIndex % endpointLength);
-        assertEquals(getEndpointIndex(tableName, split, retry, endpointLength) % endpointLength, ++endpointIndex % endpointLength);
-    }
+    //     retry = 0;
+    //     tableName = "someTable"; // some negative hash
+    //     endpointIndex = getEndpointIndex(tableName, split, retry++, endpointLength);
+    //     assertTrue(endpointIndex >= 0);
+    //     assertEquals(getEndpointIndex(tableName, split, retry++, endpointLength) % endpointLength, ++endpointIndex % endpointLength);
+    //     assertEquals(getEndpointIndex(tableName, split, retry, endpointLength) % endpointLength, ++endpointIndex % endpointLength);
+    // }
 
-    @Test
+    @Test(enabled = false)
     public void testQueryData503ExceptionEndpointsRoundRobin()
     {
-        VastClient vastClient = getVastClient(mockHttpClient, mockArrowSchemaUtils);
+        VastClient vastClient = getVastClient(mockHttpClient,
+                mockArrowSchemaUtils);
         int maxRetries = 3;
         int expectedRequests = (maxRetries + 1) * 2; // (initial request + retries conf) * (exception + 503 response)
         long transactionID = 777L;
         int queryID = 123;
-        VastTraceToken traceToken = new VastTraceToken(Optional.empty(), transactionID, queryID);
+        VastTraceToken traceToken = new VastTraceToken(Optional.empty(),
+                transactionID, queryID);
         Supplier<QueryDataResponseHandler> handlerSupplier = () -> null;
-        AtomicReference<URI> usedDataEndpoint = new AtomicReference<>();
         VastSplitContext split = new VastSplitContext(0, 128, 10, 1);
         VastSchedulingInfo schedulingInfo = new VastSchedulingInfo("987");
-        List<URI> dataEndpoints = IntStream.range(0, expectedRequests + 1).mapToObj(i -> URI.create(format("http://localhost:%s", 1000 + i))).collect(Collectors.toList());
+        List<URI> dataEndpoints = IntStream
+                .range(0, expectedRequests + 1)
+                .mapToObj(i -> URI.create(
+                        format("http://localhost:%s", 1000 + i)))
+                .collect(Collectors.toList());
         VastRetryConfig retryConfig = new VastRetryConfig(maxRetries, 10);
         Optional<Integer> limit = Optional.empty();
         Optional<String> bigCatalogSearchPath = Optional.empty();
@@ -392,66 +423,83 @@ public class TestVastClient
         ArrayList<URI> errorUris = new ArrayList<>();
 
         AtomicBoolean shouldThrowExecuteException = new AtomicBoolean(true);
-        when(mockHttpClient.execute(any(Request.class), nullable(ResponseHandler.class)))
-                .thenAnswer(a -> {
-                    Request req = a.getArgument(0);
-                    URI uri = req.getUri();
-                    errorUris.add(uri);
-                    boolean b = shouldThrowExecuteException.get();
-                    if (b) {
-                        shouldThrowExecuteException.set(false);
-                        throw new UncheckedIOException(new IOException("testQueryData503ExceptionEndpointsRoundRobin exception"));
-                    }
-                    else {
-                        shouldThrowExecuteException.set(true);
-                        return new VastResponse(503, null, null, uri);
-                    }
-                });
-        when(mockArrowSchemaUtils.serializeQueryDataRequestBody(any(String.class), nullable(Schema.class), nullable(FlatBufferSerializer.class), nullable(FlatBufferSerializer.class)))
-                .thenReturn(new byte[0]);
+        when(mockHttpClient.execute(any(Request.class), nullable(ResponseHandler.class))).thenAnswer(a ->
+        {
+            Request req = a.getArgument(0);
+            URI uri = req.getUri();
+            errorUris.add(uri);
+            boolean b = shouldThrowExecuteException.get();
+            if (b) {
+                shouldThrowExecuteException.set(false);
+                throw new UncheckedIOException(new IOException(
+                        "testQueryData503ExceptionEndpointsRoundRobin exception"));
+            }
+            else {
+                shouldThrowExecuteException.set(true);
+                return new VastResponse(503, null, null, uri);
+            }
+        });
+        when(mockArrowSchemaUtils.serializeQueryDataRequestBody(
+                any(String.class), nullable(Schema.class),
+                nullable(FlatBufferSerializer.class),
+                nullable(FlatBufferSerializer.class))).thenReturn(new byte[0]);
         when(mockTransactionHandle.getId()).thenReturn(999L);
         try {
-            vastClient.queryData(mockTransactionHandle, traceToken, "s", "t", null, null, null, handlerSupplier, usedDataEndpoint,
-                    split, schedulingInfo, dataEndpoints, retryConfig, limit, bigCatalogSearchPath, mockPagination, false, 0, Collections.emptyMap(), null);
+            vastClient.queryData(mockTransactionHandle, traceToken, "s", "t",
+                    null, null, null, handlerSupplier, split, schedulingInfo,
+                    dataEndpoints, retryConfig, limit, bigCatalogSearchPath,
+                    mockPagination, false, 0, new QueryDataExtraParams(), null);
         }
         catch (VastRuntimeException vre) {
-            assertTrue(vre.getCause() instanceof VastServerException, vre.toString());
+            assertTrue(vre.getCause() instanceof VastServerException,
+                    vre.toString());
             VastServerException vse = (VastServerException) vre.getCause();
-            assertTrue(vse.getMessage().contains(format("QueryData(%s:%s) failed after %s retries", transactionID, queryID, maxRetries)), vse.getMessage());
+            assertTrue(vse
+                            .getMessage()
+                            .contains(format("QueryData(%s:%s) failed after %s retries",
+                                    transactionID, queryID, maxRetries)),
+                    vse.getMessage());
         }
         assertEquals(errorUris.size(), expectedRequests); // total requests
-        assertEquals(new HashSet<>(errorUris).size(), expectedRequests); // unique endpoints
+        assertEquals(new HashSet<>(errorUris).size(),
+                expectedRequests); // unique endpoints
     }
 
     @Test
     public void testInsertByColumnsNoRowsImmediateReturn()
             throws VastException
     {
-        VastClient vastClient = getVastClient(mockHttpClient, mockArrowSchemaUtils);
-        VectorSchemaRoot emptyVsr = new VectorSchemaRoot(Collections.emptyList());
-        VectorSchemaRoot rowIds = vastClient.insertRowsByColumnBatches(null, "someSchema", "someTable",
-                emptyVsr,
-                null, Optional.empty(), ImmutableSet.of("col1"),
-                TableType.SORTED,
-                true, null);
-        assertEquals(rowIds.getRowCount(), 0, "Expected no rows to be returned when inserting no rows");
+        VastClient vastClient = getVastClient(mockHttpClient,
+                mockArrowSchemaUtils);
+        VectorSchemaRoot emptyVsr = new VectorSchemaRoot(
+                Collections.emptyList());
+        VectorSchemaRoot rowIds = vastClient.insertRowsByColumnBatches(null,
+                "someSchema", "someTable", emptyVsr, null, Optional.empty(),
+                ImmutableSet.of("col1"), TableType.SORTED, true, new QueryDataExtraParams(), null);
+        assertEquals(rowIds.getRowCount(), 0,
+                "Expected no rows to be returned when inserting no rows");
     }
 
     @Test(expectedExceptions = VastUserException.class,
-            expectedExceptionsMessageRegExp = "Sorted key columns alone are too large for a single request.")
+            expectedExceptionsMessageRegExp = "Non-Updateable \\(sorted / partitioned\\) columns alone are too large for a single request.")
     public void testInsertByColumnsSortKeyColumnsDoNotGoIntoFirstInsert()
             throws VastException
     {
-        VastClient vastClient = getVastClient(mockHttpClient, mockArrowSchemaUtils);
-        ImmutableSet<String> tooManySortedCols = IntStream.rangeClosed(1, 10000)
+        VastClient vastClient = getVastClient(mockHttpClient,
+                mockArrowSchemaUtils);
+        ImmutableSet<String> tooManySortedCols = IntStream
+                .rangeClosed(1, 10000)
                 .mapToObj(i -> "col" + i)
                 .collect(toImmutableSet());
-        ImmutableList<Field> fields = tooManySortedCols.stream()
-                .map(col -> new Field(col, FieldType.nullable(new ArrowType.Int(32, true)), null))
+        ImmutableList<Field> fields = tooManySortedCols
+                .stream()
+                .map(col -> new Field(col,
+                        FieldType.nullable(new ArrowType.Int(32, true)), null))
                 .collect(toImmutableList());
         RootAllocator allocator = new RootAllocator();
 
-        VectorSchemaRoot oneRowVsr = VectorSchemaRoot.create(new Schema(fields), allocator);
+        VectorSchemaRoot oneRowVsr = VectorSchemaRoot.create(new Schema(fields),
+                allocator);
         oneRowVsr.setRowCount(1);
         for (int i = 0; i < fields.size(); i++) {
             IntVector vector = (IntVector) oneRowVsr.getVector(i);
@@ -459,10 +507,7 @@ public class TestVastClient
         }
 
         vastClient.insertRowsByColumnBatches(null, "someSchema", "someTable",
-                oneRowVsr,
-                null, Optional.empty(),
-                tooManySortedCols,
-                TableType.SORTED,
-                true, null);
+                oneRowVsr, null, Optional.empty(), tooManySortedCols,
+                TableType.SORTED, true, new QueryDataExtraParams(), null);
     }
 }

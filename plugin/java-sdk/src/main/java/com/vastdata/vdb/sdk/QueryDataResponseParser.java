@@ -3,6 +3,7 @@
  */
 package com.vastdata.vdb.sdk;
 
+import com.vastdata.ShapingLoggerFactory;
 import com.vastdata.client.ArrowQueryDataSchemaHelper;
 import com.vastdata.client.BaseQueryDataResponseParser;
 import com.vastdata.client.QueryDataPageBuilder;
@@ -23,38 +24,48 @@ import java.util.stream.Collectors;
 import static com.google.common.base.Verify.verify;
 
 public class QueryDataResponseParser
-        extends BaseQueryDataResponseParser<VectorSchemaRoot>
+        extends BaseQueryDataResponseParser<VectorSchemaRoot, Void>
 {
-    private static final Logger LOG = LoggerFactory.getLogger(QueryDataResponseParser.class);
+    private static final Logger LOG = LoggerFactory.getLogger(
+            QueryDataResponseParser.class);
 
     private final BufferAllocator allocator;
     private final ArrowQueryDataSchemaHelper schemaHelper;
 
-    public QueryDataResponseParser(
+    public QueryDataResponseParser(ShapingLoggerFactory shapingLoggerFactory,
             VastTraceToken traceToken, ArrowQueryDataSchemaHelper schemaHelper,
-            VastDebugConfig debugConfig, QueryDataPagination pagination, Optional<Long> limitTotalRows, BufferAllocator allocator)
+            VastDebugConfig debugConfig, QueryDataPagination pagination,
+            Optional<Long> limitTotalRows, BufferAllocator allocator)
     {
-        super(traceToken, schemaHelper.getFields(), pagination, limitTotalRows, debugConfig);
+        super(shapingLoggerFactory,
+                traceToken,
+                schemaHelper.getFields(),
+                pagination,
+                limitTotalRows,
+                debugConfig,
+                Optional.empty());
         this.allocator = allocator;
         this.schemaHelper = schemaHelper;
     }
 
     @Override
-    protected VectorSchemaRoot joinPages(List<VectorSchemaRoot> list)
+    protected VectorSchemaRoot joinPages(List<VectorSchemaRoot> list,
+            QueryDataPageBuilder<VectorSchemaRoot, Void> pageBuilder)
     {
         List<FieldVector> vectors = null;
         try {
             verify(!list.isEmpty());
             int rowCount = list.get(0).getRowCount();
-            vectors = list
-                    .stream()
-                    .flatMap(page -> page.getFieldVectors().stream())
-                    .collect(Collectors.toList());
+            vectors = list.stream().flatMap(
+                    page -> page.getFieldVectors().stream()).collect(
+                    Collectors.toList());
 
-            VectorSchemaRoot result = schemaHelper.construct(vectors, rowCount, allocator);
+            VectorSchemaRoot result = schemaHelper.construct(vectors, rowCount,
+                    allocator);
             result.setRowCount(rowCount);
-            totalPositions.addAndGet(result.getRowCount());
-            LOG.debug("{} joined page: rowCount={}, totalPositions={}", traceStr, rowCount, totalPositions.get());
+            metrics.addTotalPositions(result.getRowCount());
+            LOG.debug("{} joined page: rowCount={}, totalPositions={}",
+                    traceStr, rowCount, metrics.getTotalPositions());
             return result;
         }
         finally {
@@ -66,7 +77,8 @@ public class QueryDataResponseParser
     }
 
     @Override
-    protected QueryDataPageBuilder<VectorSchemaRoot> createPageBuilder(Schema schema)
+    protected QueryDataPageBuilder<VectorSchemaRoot, Void> createPageBuilder(
+            Schema schema)
     {
         return new VastPageBuilder(schema, allocator);
     }

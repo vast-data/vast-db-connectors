@@ -10,12 +10,14 @@ import org.apache.spark.sql.catalyst.expressions.SpecializedGetters;
 import org.apache.spark.sql.execution.arrow.ArrowFieldWriter;
 
 public class CharNWriter
-        extends ArrowFieldWriter implements ICharNWriter
+        extends ArrowFieldWriter
+        implements ICharNWriter
 {
     private final FixedSizeBinaryVector vector;
     private final int typeLength;
 
-    public CharNWriter(FixedSizeBinaryVector vector, int typeLength) {
+    public CharNWriter(FixedSizeBinaryVector vector, int typeLength)
+    {
         this.vector = vector;
         this.typeLength = typeLength;
     }

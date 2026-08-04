@@ -6,6 +6,7 @@ package com.vastdata.client.schema;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
+import com.vastdata.client.VastObjectDetails;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
@@ -17,17 +18,35 @@ import static org.testng.Assert.assertEquals;
 
 public class TestVastMetadataUtils
 {
+    public static VastObjectDetails createObjectDetails(String tableName, String handle)
+    {
+        return new VastObjectDetails(
+                tableName,
+                "{\"key\": \"value\"}",
+                handle,
+                /*numRows=*/ 1000L,
+                /*sizeInBytes=*/ 4096L,
+                /*numPartitions=*/ 4L,
+                /*sortingKeyEnabled=*/ true,
+                /*sortingScore=*/ 90L,
+                /*writeAmplification=*/ 2L,
+                /*acummulativeRowInseritionCount=*/ 500L,
+                1L);
+    }
+
     @Test
     public void testNullMap()
     {
-        String propertiesString = new VastMetadataUtils().getPropertiesString(null);
+        String propertiesString = new VastMetadataUtils().getPropertiesString(
+                null);
         assertEquals(propertiesString, "{}");
     }
 
     @Test
     public void testEmptyMap()
     {
-        String propertiesString = new VastMetadataUtils().getPropertiesString(ImmutableMap.of());
+        String propertiesString = new VastMetadataUtils().getPropertiesString(
+                ImmutableMap.of());
         assertEquals(propertiesString, "{}");
     }
 
@@ -40,7 +59,10 @@ public class TestVastMetadataUtils
         Map<String, Object> nestedMap = new HashMap<>();
         nestedMap.put("key", "val");
         testMap.put("compoundValue", nestedMap);
-        String propertiesString = new VastMetadataUtils().getPropertiesString(testMap);
-        assertEquals(new ObjectMapper().readValue(propertiesString.getBytes(UTF_8), Map.class), testMap);
+        String propertiesString = new VastMetadataUtils().getPropertiesString(
+                testMap);
+        assertEquals(
+                new ObjectMapper().readValue(propertiesString.getBytes(UTF_8),
+                        Map.class), testMap);
     }
 }

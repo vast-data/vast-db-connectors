@@ -11,6 +11,7 @@ import io.trino.spi.connector.ConnectorOutputTableHandle;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 
@@ -23,17 +24,20 @@ public class VastInsertTableHandle
 
     private final boolean forImportData;
 
+    private final Optional<VastPartitioningHandle> partitioning;
+
     @JsonCreator
-    public VastInsertTableHandle(
-            @JsonProperty("table") VastTableHandle table,
-            @JsonProperty("columns") List<VastColumnHandle> columns,
-            @JsonProperty("create") boolean create,
-            @JsonProperty("forImportData") boolean forImportData)
+    public VastInsertTableHandle(@JsonProperty("table") VastTableHandle table,
+                                 @JsonProperty("columns") List<VastColumnHandle> columns,
+                                 @JsonProperty("create") boolean create,
+                                 @JsonProperty("forImportData") boolean forImportData,
+                                 @JsonProperty("partitioning") Optional<VastPartitioningHandle> partitioning)
     {
         this.table = table;
         this.columns = columns;
         this.create = create;
         this.forImportData = forImportData;
+        this.partitioning = partitioning;
     }
 
     @JsonProperty("table")
@@ -58,6 +62,12 @@ public class VastInsertTableHandle
     public List<VastColumnHandle> getColumns()
     {
         return columns;
+    }
+
+    @JsonProperty("partitioning")
+    public Optional<VastPartitioningHandle> getPartitioning()
+    {
+        return partitioning;
     }
 
     @Override

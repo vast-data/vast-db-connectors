@@ -10,7 +10,8 @@ import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan;
 import scala.collection.IndexedSeq;
 import scala.collection.Seq;
 
-import static ndb.NDBParser.EMPTY_LOGICAL_PLAN_SEQ;
+import static com.vastdata.spark.SparkPlannerUtil.getEmptyAttributeSeq;
+import static ndb.SparkPlannerUtil.EMPTY_LOGICAL_PLAN_SEQ;
 
 public class CreateNDBViewPlan
         extends LogicalPlan
@@ -20,13 +21,20 @@ public class CreateNDBViewPlan
     private final String[] currentNamespace;
     private Seq<LogicalPlan> children;
 
-
-    private CreateNDBViewPlan(final CreateView original, String currentCatalog, String[] currentNamespace) {
+    private CreateNDBViewPlan(final CreateView original, String currentCatalog,
+            String[] currentNamespace)
+    {
         super();
         this.original = original;
         this.currentCatalog = currentCatalog;
         this.currentNamespace = currentNamespace;
         this.children = (Seq<LogicalPlan>) original.children().toSeq();
+    }
+
+    public static CreateNDBViewPlan instance(final CreateView plan,
+            String currentCatalog, String[] currentNamespace)
+    {
+        return new CreateNDBViewPlan(plan, currentCatalog, currentNamespace);
     }
 
     public CreateView getOriginal()
@@ -52,7 +60,9 @@ public class CreateNDBViewPlan
     }
 
     @Override
-    public LogicalPlan withNewChildrenInternal(IndexedSeq<LogicalPlan> newChildren) {
+    public LogicalPlan withNewChildrenInternal(
+            IndexedSeq<LogicalPlan> newChildren)
+    {
         {
             this.children = newChildren;
             return this;
@@ -62,7 +72,7 @@ public class CreateNDBViewPlan
     @Override
     public Seq<Attribute> output()
     {
-        return (Seq<Attribute>) scala.collection.immutable.Seq$.MODULE$.<Attribute>empty();
+        return getEmptyAttributeSeq();
     }
 
     @Override
@@ -75,11 +85,6 @@ public class CreateNDBViewPlan
     public int productArity()
     {
         return 0;
-    }
-
-    public static CreateNDBViewPlan instance(final CreateView plan, String currentCatalog, String[] currentNamespace)
-    {
-        return new CreateNDBViewPlan(plan, currentCatalog, currentNamespace);
     }
 
     public String getCurrentCatalog()

@@ -16,14 +16,16 @@ import java.util.function.Consumer;
 
 public class NDBTransactionsRegistry
 {
-    private static final Logger LOG = LoggerFactory.getLogger(NDBTransactionsRegistry.class);
+    private static final Logger LOG = LoggerFactory.getLogger(
+            NDBTransactionsRegistry.class);
 
-    private final Multimap<Long, VastTransaction> transactionsPerQueryId = Multimaps.synchronizedListMultimap(ArrayListMultimap.create());
+    private final Multimap<Long, VastTransaction> transactionsPerQueryId = Multimaps.synchronizedListMultimap(
+            ArrayListMultimap.create());
     Consumer<VastTransaction> transactionConsumer;
 
     NDBTransactionsRegistry(Consumer<VastTransaction> transactionConsumer)
     {
-        this.transactionConsumer =  transactionConsumer;
+        this.transactionConsumer = transactionConsumer;
     }
 
     public void registerTransaction(long id, VastTransaction transaction)
@@ -34,8 +36,10 @@ public class NDBTransactionsRegistry
 
     public void closeTransactions(long id)
     {
-        Collection<VastTransaction> vastTransactions = transactionsPerQueryId.removeAll(id);
-        LOG.debug("Committing transactions for id: {}: {}", id, vastTransactions);
+        Collection<VastTransaction> vastTransactions = transactionsPerQueryId.removeAll(
+                id);
+        LOG.debug("Committing transactions for id: {}: {}", id,
+                vastTransactions);
         vastTransactions.forEach(transactionConsumer);
     }
 }

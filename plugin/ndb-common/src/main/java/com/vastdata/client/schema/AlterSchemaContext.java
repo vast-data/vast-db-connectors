@@ -12,7 +12,8 @@ public class AlterSchemaContext
     private final Optional<String> newName;
     private final Optional<Map<String, Optional<Object>>> properties;
 
-    public AlterSchemaContext(String newName, Map<String, Optional<Object>> properties)
+    public AlterSchemaContext(String newName,
+            Map<String, Optional<Object>> properties)
     {
         this.newName = Optional.of(newName);
         this.properties = Optional.ofNullable(properties);

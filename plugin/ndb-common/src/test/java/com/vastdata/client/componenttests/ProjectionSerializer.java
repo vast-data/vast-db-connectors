@@ -19,11 +19,13 @@ public class ProjectionSerializer
 {
     private final Collection<Integer> projections;
 
-    public ProjectionSerializer(Schema arrowSchema, EnumeratedSchema enumeratedSchema)
+    public ProjectionSerializer(Schema arrowSchema,
+            EnumeratedSchema enumeratedSchema)
     {
         this.projections = new LinkedHashSet<>();
         for (Field column : arrowSchema.getFields()) {
-            enumeratedSchema.collectProjectionIndices(column.getName(), ImmutableList.of(), projections::add);
+            enumeratedSchema.collectProjectionIndices(column.getName(),
+                    ImmutableList.of(), projections::add);
         }
     }
 

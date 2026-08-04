@@ -14,7 +14,8 @@ public class VastTraceToken
     private final long transactionID;
     private final int queryID;
 
-    public VastTraceToken(Optional<String> userTraceToken, long transactionID, int queryID)
+    public VastTraceToken(Optional<String> userTraceToken, long transactionID,
+            int queryID)
     {
         this.userTraceToken = userTraceToken;
         this.transactionID = transactionID;

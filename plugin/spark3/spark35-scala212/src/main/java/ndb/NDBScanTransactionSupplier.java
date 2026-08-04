@@ -16,30 +16,38 @@ import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 
 public class NDBScanTransactionSupplier
 {
-    private static final Logger LOG = LoggerFactory.getLogger(NDBScanTransactionSupplier.class);
     public static final SparkQueryIDSupplier SPARK_QUERY_ID_SUPPLIER = new SparkQueryIDSupplier();
     public static final VastSparkTransactionsManager transactionsManager;
+    private static final Logger LOG = LoggerFactory.getLogger(
+            NDBScanTransactionSupplier.class);
+
     static {
         try {
-            transactionsManager = VastSparkTransactionsManager.getInstance(NDB.getVastClient(NDB.getConfig()), new VastTransactionFactory());
+            transactionsManager = VastSparkTransactionsManager.getInstance(
+                    NDB.getVastClient(NDB.getConfig()),
+                    new VastTransactionFactory());
         }
         catch (VastUserException e) {
             throw toRuntime("Failed creating a new transaction", e);
         }
     }
 
-    private NDBScanTransactionSupplier() {}
+    private NDBScanTransactionSupplier()
+    {
+    }
 
     public static SimpleVastTransaction supplyTransaction()
     {
         SimpleVastTransaction existing = VastAutocommitTransaction.getExisting();
-        if  (existing != null) {
+        if (existing != null) {
             return existing;
         }
         else {
-            SimpleVastTransaction newTx = transactionsManager.startTransaction(null);
+            SimpleVastTransaction newTx = transactionsManager.startTransaction(
+                    null);
             LOG.info("supplyTransaction() created new transaction: {}", newTx);
-            NDB.getTxRegistry().registerTransaction(SPARK_QUERY_ID_SUPPLIER.getAsLong(), newTx);
+            NDB.getTxRegistry().registerTransaction(
+                    SPARK_QUERY_ID_SUPPLIER.getAsLong(), newTx);
             return newTx;
         }
     }

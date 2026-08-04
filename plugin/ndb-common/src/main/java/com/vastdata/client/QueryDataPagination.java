@@ -1,20 +1,64 @@
-/*
- *  Copyright (C) Vast Data Ltd.
- */
+/*  Copyright (C) Vast Data Ltd. */
+
 package com.vastdata.client;
 
-import com.google.common.base.MoreObjects;
 import com.google.common.collect.Multimap;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.IntStream;
 
+import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.lang.String.format;
 
 public class QueryDataPagination
 {
     private static final long INVALID_ROW_ID = 0xFFFFFFFFFFFFL; // (1 << 48) - 1
+    private final Map<Integer, Long> nextRowIds;
+
+    public QueryDataPagination(int subSplits)
+    {
+        this.nextRowIds = new HashMap<>(subSplits);
+        IntStream.range(0, subSplits).forEach(i -> nextRowIds.put(i, 0L));
+    }
+
+    // Should be called only after QueryData response is successfully parsed
+    public void advance(Update update)
+    {
+        nextRowIds.putAll(update.nextRowIds);
+    }
+
+    public int getNumOfSubSplits()
+    {
+        return nextRowIds.size();
+    }
+
+    public boolean isFinished()
+    {
+        return nextRowIds
+                .values()
+                .stream()
+                .allMatch(nextRowId -> nextRowId == INVALID_ROW_ID);
+    }
+
+    public void updateHeaders(Multimap<String, String> headers)
+    {
+        this.nextRowIds.forEach((subSplit, nextRowId) -> {
+            if (nextRowId == INVALID_ROW_ID) {
+                return; // skip subsplits that are finished
+            }
+            String key = format("tabular-start-row-id-%d", subSplit);
+            String value = format("%d,%s", subSplit,
+                    Long.toUnsignedString(nextRowId));
+            headers.put(key, value);
+        });
+    }
+
+    @Override
+    public String toString()
+    {
+        return toStringHelper(this).add("nextRowIds", nextRowIds).toString();
+    }
 
     // Used to aggregate multiple pagination responses, to be applied only if the whole response was parsed correctly.
     // It is needed to handle disconnections correctly during QueryData - since we want to retry the whole page again.
@@ -35,48 +79,9 @@ public class QueryDataPagination
         @Override
         public String toString()
         {
-            return MoreObjects.toStringHelper(this)
+            return toStringHelper(this)
                     .add("nextRowIds", nextRowIds)
                     .toString();
         }
-    }
-
-    private final Map<Integer, Long> nextRowIds;
-
-    public QueryDataPagination(int subSplits)
-    {
-        this.nextRowIds = new HashMap<>(subSplits);
-        IntStream.range(0, subSplits).forEach(i -> nextRowIds.put(i, 0L));
-    }
-
-    // Should be called only after QueryData response is successfully parsed
-    public void advance(Update update)
-    {
-        nextRowIds.putAll(update.nextRowIds);
-    }
-
-    public boolean isFinished()
-    {
-        return nextRowIds.values().stream().allMatch(nextRowId -> nextRowId == INVALID_ROW_ID);
-    }
-
-    public void updateHeaders(Multimap<String, String> headers)
-    {
-        this.nextRowIds.forEach((subSplit, nextRowId) -> {
-            if (nextRowId == INVALID_ROW_ID) {
-                return; // skip subsplits that are finished
-            }
-            String key = format("tabular-start-row-id-%d", subSplit);
-            String value = format("%d,%s", subSplit, Long.toUnsignedString(nextRowId));
-            headers.put(key, value);
-        });
-    }
-
-    @Override
-    public String toString()
-    {
-        return MoreObjects.toStringHelper(this)
-                .add("nextRowIds", nextRowIds)
-                .toString();
     }
 }

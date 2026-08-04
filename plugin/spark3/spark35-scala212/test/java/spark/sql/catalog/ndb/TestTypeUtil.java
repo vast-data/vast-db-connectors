@@ -5,6 +5,7 @@
 package spark.sql.catalog.ndb;
 
 import com.google.common.collect.Iterables;
+import com.vastdata.spark.CommonSparkTestUtils;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.FieldType;
@@ -15,6 +16,7 @@ import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
+import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
@@ -24,6 +26,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 import static spark.sql.catalog.ndb.TypeUtil.ARRAY_ITEM_COLUMN_NAME;
 
+@Listeners(CommonSparkTestUtils.TestListener.class)
 public class TestTypeUtil
 {
     @Test
@@ -31,10 +34,12 @@ public class TestTypeUtil
     {
         ArrowType arrowType = ArrowType.Struct.INSTANCE;
         String name = "f";
-        FieldType charnType = FieldType.nullable(new ArrowType.FixedSizeBinary(3));
+        FieldType charnType = FieldType.nullable(
+                new ArrowType.FixedSizeBinary(3));
         List<Field> children = new ArrayList<>();
         children.add(new Field("charnfield", charnType, new ArrayList<>()));
-        Field testField = new Field(name, FieldType.nullable(arrowType), children);
+        Field testField = new Field(name, FieldType.nullable(arrowType),
+                children);
         StructField result = TypeUtil.arrowFieldToSparkField(testField);
         DataType dataType = result.dataType();
         assertTrue(dataType instanceof StructType);
@@ -50,10 +55,13 @@ public class TestTypeUtil
     {
         String name = "l";
         ArrayType arrayType = DataTypes.createArrayType(DataTypes.DoubleType);
-        StructField testField = new StructField(name, arrayType, true, Metadata.empty());
+        StructField testField = new StructField(name, arrayType, true,
+                Metadata.empty());
         Field arrowField = TypeUtil.sparkFieldToArrowField(testField);
         assertEquals(arrowField.getName(), name);
-        assertEquals(Iterables.getOnlyElement(arrowField.getChildren()).getName(), ARRAY_ITEM_COLUMN_NAME);
+        assertEquals(
+                Iterables.getOnlyElement(arrowField.getChildren()).getName(),
+                ARRAY_ITEM_COLUMN_NAME);
         StructField structField = TypeUtil.arrowFieldToSparkField(arrowField);
         assertEquals(structField, testField);
     }

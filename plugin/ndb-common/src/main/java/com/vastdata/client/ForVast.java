@@ -18,5 +18,4 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @Target({FIELD, PARAMETER, METHOD})
 @BindingAnnotation
 public @interface ForVast
-{
-}
+{}

@@ -11,10 +11,8 @@ public class VastSdkConfig
 {
     private final VastConfig vastConfig;
 
-    public VastSdkConfig(URI endpoint,
-            String dataEndpoints,
-            String awsAccessKeyId,
-            String awsSecretAccessKey)
+    public VastSdkConfig(URI endpoint, String dataEndpoints,
+            String awsAccessKeyId, String awsSecretAccessKey)
     {
         this.vastConfig = new VastConfig()
                 .setEndpoint(endpoint)

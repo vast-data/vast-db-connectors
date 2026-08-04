@@ -20,12 +20,15 @@ import java.util.StringJoiner;
 public class VastRowLevelOperationBuilder
         implements RowLevelOperationBuilder, RowLevelOperation
 {
-    private static final Logger LOG = LoggerFactory.getLogger(VastRowLevelOperationBuilder.class);
+    private static final Logger LOG = LoggerFactory.getLogger(
+            VastRowLevelOperationBuilder.class);
 
     private final VastTable vastTable;
     private final RowLevelOperationInfo info;
 
-    public VastRowLevelOperationBuilder(VastTable vastTable, RowLevelOperationInfo info) {
+    public VastRowLevelOperationBuilder(VastTable vastTable,
+            RowLevelOperationInfo info)
+    {
         this.vastTable = Objects.requireNonNull(vastTable);
         this.info = Objects.requireNonNull(info);
     }
@@ -44,23 +47,28 @@ public class VastRowLevelOperationBuilder
     }
 
     @Override
-    public ScanBuilder newScanBuilder(CaseInsensitiveStringMap caseInsensitiveStringMap)
+    public ScanBuilder newScanBuilder(
+            CaseInsensitiveStringMap caseInsensitiveStringMap)
     {
-        LOG.info("newScanBuilder(): {}", caseInsensitiveStringMap.asCaseSensitiveMap());
+        LOG.info("newScanBuilder(): {}",
+                caseInsensitiveStringMap.asCaseSensitiveMap());
         return vastTable.newScanBuilder(caseInsensitiveStringMap);
     }
 
     @Override
     public WriteBuilder newWriteBuilder(LogicalWriteInfo logicalWriteInfo)
     {
-        LOG.info("newWriteBuilder(): {}, {}, {}", logicalWriteInfo.queryId(), logicalWriteInfo.schema(), logicalWriteInfo.options().asCaseSensitiveMap());
+        LOG.info("newWriteBuilder(): {}, {}, {}", logicalWriteInfo.queryId(),
+                logicalWriteInfo.schema(),
+                logicalWriteInfo.options().asCaseSensitiveMap());
         return vastTable.newWriteBuilder(logicalWriteInfo);
     }
 
     @Override
     public String toString()
     {
-        return new StringJoiner(", ", VastRowLevelOperationBuilder.class.getSimpleName() + "[", "]")
+        return new StringJoiner(", ",
+                VastRowLevelOperationBuilder.class.getSimpleName() + "[", "]")
                 .add("vastTable=" + vastTable.getTableMD())
                 .add("command=" + info.command())
                 .add("options=" + info.options().asCaseSensitiveMap())

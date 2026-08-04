@@ -6,19 +6,23 @@ package com.vastdata.client;
 
 public enum RequestsHeaders
 {
-    TABULAR_TRANSACTION_ID("tabular-txid"),
-    TABULAR_CASE_SENSITIVE("tabular-case-sensitive"),
-    TABULAR_NEXT_KEY("tabular-next-key"),
-    TABULAR_TRUNCATED("tabular-is-truncated"),
-    TABULAR_MAX_KEYS("tabular-max-keys"),
-    TABULAR_COLUMN_NAME("tabular-column-name"),
-    TABULAR_CONTENT_LENGTH("Content-Length"),
-    TABULAR_CLIENT_TAG("tabular-client-tag"),
-    TABULAR_CLIENT_NAME("tabular-client-name"),
-    TABULAR_API_VERSION_ID("tabular-api-version-id"),
-    TABULAR_EXACT_MATCH("tabular-name-exact-match"),
-    TABULAR_TRACE_TOKEN("tabular-trace-token"),
-    TABULAR_SORTED_TEMPLATE("tabular-sorted-column-%d"),
+    TABULAR_TRANSACTION_ID("tabular-txid"), TABULAR_CASE_SENSITIVE(
+        "tabular-case-sensitive"), TABULAR_NEXT_KEY(
+        "tabular-next-key"), TABULAR_TRUNCATED(
+        "tabular-is-truncated"), TABULAR_MAX_KEYS(
+        "tabular-max-keys"), TABULAR_COLUMN_NAME(
+        "tabular-column-name"), TABULAR_CONTENT_LENGTH(
+        "Content-Length"), TABULAR_CLIENT_TAG(
+        "tabular-client-tag"), TABULAR_CLIENT_NAME(
+        "tabular-client-name"), TABULAR_API_VERSION_ID(
+        "tabular-api-version-id"), TABULAR_EXACT_MATCH(
+        "tabular-name-exact-match"), TABULAR_TRACE_TOKEN(
+        "tabular-trace-token"), TABULAR_SORTED_TEMPLATE(
+        "tabular-sorted-column-%d"), TABULAR_FINISH_ON_EMPTY_BATCH(
+        "tabular-finish-on-empty-batch"), TABULAR_QUERY_SEND_STATISTICS(
+        "tabular-query-send-statistics"), TABULAR_ALLOW_NON_ACID(
+        "tabular-allow-non-acid"),
+    TABULAR_MST_POINTER("tabular-object-mst-pointer"),
 
     END_USER("end-user");
 

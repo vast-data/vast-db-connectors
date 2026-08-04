@@ -7,9 +7,9 @@ package com.vastdata.spark.write;
 import com.vastdata.ListShuffler;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.error.VastUserException;
-import com.vastdata.spark.VastTable;
 import com.vastdata.client.tx.VastAutocommitTransaction;
 import com.vastdata.client.tx.VastTransactionFactory;
+import com.vastdata.spark.VastTable;
 import com.vastdata.spark.tx.VastSparkTransactionsManager;
 import ndb.NDB;
 import org.apache.spark.sql.connector.write.BatchWrite;
@@ -28,14 +28,17 @@ import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 public class VastBatchWriter
         implements BatchWrite
 {
-    private static final Logger LOG = LoggerFactory.getLogger(VastBatchWriter.class);
+    private static final Logger LOG = LoggerFactory.getLogger(
+            VastBatchWriter.class);
     private final VastSparkTransactionsManager transactionsManager;
     private final VastTable table;
     private VastAutocommitTransaction tx;
 
-    public VastBatchWriter(VastClient client, VastTable table) {
+    public VastBatchWriter(VastClient client, VastTable table)
+    {
         this.table = table;
-        this.transactionsManager = VastSparkTransactionsManager.getInstance(client, new VastTransactionFactory());
+        this.transactionsManager = VastSparkTransactionsManager.getInstance(
+                client, new VastTransactionFactory());
 
     }
 
@@ -43,11 +46,18 @@ public class VastBatchWriter
     public DataWriterFactory createBatchWriterFactory(PhysicalWriteInfo info)
     {
         final String endUser = null;
-        LOG.info("createBatchWriterFactory() number of partitions: {}", info.numPartitions());
-        this.tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser);
+        LOG.info("createBatchWriterFactory() number of partitions: {}",
+                info.numPartitions());
+        this.tx = VastAutocommitTransaction.createNewOrReuseFromEnv(
+                transactionsManager,
+                () -> transactionsManager.startTransaction(endUser), endUser);
         try {
-            ListShuffler<URI> listShuffler = new ListShuffler<>(Optional.ofNullable(NDB.getConfig().getSeedForShufflingEndpoints()));
-            return new VastDataWriteFactory(tx.getTransaction(), NDB.getConfig(), table, listShuffler.randomizeList(NDB.getConfig().getDataEndpoints()));
+            ListShuffler<URI> listShuffler = new ListShuffler<>(
+                    Optional.ofNullable(
+                            NDB.getConfig().getSeedForShufflingEndpoints()));
+            return new VastDataWriteFactory(tx.getTransaction(),
+                    NDB.getConfig(), table, listShuffler.randomizeList(
+                    NDB.getConfig().getDataEndpoints()));
         }
         catch (VastUserException e) {
             throw toRuntime(e);

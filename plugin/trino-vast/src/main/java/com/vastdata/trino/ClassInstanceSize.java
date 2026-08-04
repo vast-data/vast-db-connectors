@@ -15,11 +15,13 @@ import static java.lang.Math.toIntExact;
 
 public final class ClassInstanceSize
 {
-    private ClassInstanceSize() {}
+    private ClassInstanceSize()
+    {
+    }
 
-//    Implementation based on io.airlift.slice.instanceSize without requiring implementation
-    static int sizeOf(Class<?> clazz) {
-//        return instanceSize(clazz);
+    //    Implementation based on io.airlift.slice.instanceSize without requiring implementation
+    static int sizeOf(Class<?> clazz)
+    {
         try {
             return toIntExact(ClassLayout.parseClass(clazz).instanceSize());
         }

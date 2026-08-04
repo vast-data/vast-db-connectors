@@ -29,8 +29,9 @@ import java.util.Optional;
 
 public class VastRequestBuilder
 {
+    static final Optional<Map<String, String>> EMPTY_KV_PARAMS = Optional.of(
+            ImmutableMap.of());
     private static final Logger LOG = Logger.get(VastRequestBuilder.class);
-    static final Optional<Map<String, String>> EMPTY_KV_PARAMS = Optional.of(ImmutableMap.of());
     private static final String SERVICE = "s3";
 
     private final DefaultRequest<?> awsRequest;
@@ -39,32 +40,44 @@ public class VastRequestBuilder
     private Optional<Date> date;
     private Optional<byte[]> body;
 
-    public VastRequestBuilder(VastConfig config, HttpMethodName method, String path)
+    public VastRequestBuilder(VastConfig config, HttpMethodName method,
+            String path)
     {
-        this(config.getEndpoint(), config, method, path, EMPTY_KV_PARAMS, Collections.emptyMap());
+        this(config.getEndpoint(), config, method, path, EMPTY_KV_PARAMS,
+                Collections.emptyMap());
     }
 
-    public VastRequestBuilder(VastConfig config, HttpMethodName method, String path, Map<String, String> parameters)
+    public VastRequestBuilder(VastConfig config, HttpMethodName method,
+            String path, Map<String, String> parameters)
     {
-        this(config.getEndpoint(), config, method, path, EMPTY_KV_PARAMS, parameters);
+        this(config.getEndpoint(), config, method, path, EMPTY_KV_PARAMS,
+                parameters);
     }
 
-    public VastRequestBuilder(VastConfig config, HttpMethodName method, String path, Optional<Map<String, String>> keyValueParams, Map<String, String> parameters)
+    public VastRequestBuilder(VastConfig config, HttpMethodName method,
+            String path, Optional<Map<String, String>> keyValueParams,
+            Map<String, String> parameters)
     {
-        this(config.getEndpoint(), config, method, path, keyValueParams, parameters);
+        this(config.getEndpoint(), config, method, path, keyValueParams,
+                parameters);
     }
 
-    public VastRequestBuilder(URI endpoint, VastConfig config, HttpMethodName method, String path, Map<String, String> parameters)
+    public VastRequestBuilder(URI endpoint, VastConfig config,
+            HttpMethodName method, String path, Map<String, String> parameters)
     {
         this(endpoint, config, method, path, EMPTY_KV_PARAMS, parameters);
     }
 
-    public VastRequestBuilder(URI endpoint, VastConfig config, HttpMethodName method, String path, Optional<Map<String, String>> keyValueParams, Map<String, String> parameters)
+    public VastRequestBuilder(URI endpoint, VastConfig config,
+            HttpMethodName method, String path,
+            Optional<Map<String, String>> keyValueParams,
+            Map<String, String> parameters)
     {
         // will be signed
         this.awsRequest = new DefaultRequest<>(SERVICE);
         this.awsRequest.setEndpoint(endpoint);
-        this.awsRequest.addHeader(SignerConstants.X_AMZ_CONTENT_SHA256, "required");
+        this.awsRequest.addHeader(SignerConstants.X_AMZ_CONTENT_SHA256,
+                "required");
         this.awsRequest.setHttpMethod(method);
         this.awsRequest.setResourcePath(path);
         parameters.forEach(this.awsRequest::addParameter);
@@ -73,10 +86,14 @@ public class VastRequestBuilder
         this.body = Optional.empty();
 
         // prepare the actual HttpRequest to be sent
-        this.builder = new Request.Builder().setMethod(awsRequest.getHttpMethod().name());
-        HttpUriBuilder uriBuilder = HttpUriBuilder.uriBuilderFrom(awsRequest.getEndpoint()).appendPath(awsRequest.getResourcePath());
+        this.builder = new Request.Builder().setMethod(
+                awsRequest.getHttpMethod().name());
+        HttpUriBuilder uriBuilder = HttpUriBuilder
+                .uriBuilderFrom(awsRequest.getEndpoint())
+                .appendPath(awsRequest.getResourcePath());
         this.awsRequest.getParameters().forEach((k, v) -> {
-            if (Iterables.isEmpty(v) || Strings.isNullOrEmpty(Iterables.getOnlyElement(v))) {
+            if (Iterables.isEmpty(v) || Strings.isNullOrEmpty(
+                    Iterables.getOnlyElement(v))) {
                 uriBuilder.addParameter(k);
             }
             else {
@@ -120,16 +137,19 @@ public class VastRequestBuilder
     {
         body.ifPresent(value -> {
             awsRequest.setContent(new ByteArrayInputStream(value));
-            builder.setBodyGenerator(StaticBodyGenerator.createStaticBodyGenerator(value));
+            builder.setBodyGenerator(
+                    StaticBodyGenerator.createStaticBodyGenerator(value));
         });
         AWS4Signer signer = new AWS4Signer();
         date.ifPresent(signer::setOverrideDate);
         signer.setServiceName(SERVICE);
         signer.setRegionName(config.getRegion());
-        AWSCredentials credentials = new BasicAWSCredentials(config.getAccessKeyId(), config.getSecretAccessKey());
+        AWSCredentials credentials = new BasicAWSCredentials(
+                config.getAccessKeyId(), config.getSecretAccessKey());
         signer.sign(awsRequest, credentials); // updates `awsRequest` headers
 
-        builder.addHeaders(ImmutableMultimap.copyOf(awsRequest.getHeaders().entrySet()));
+        builder.addHeaders(
+                ImmutableMultimap.copyOf(awsRequest.getHeaders().entrySet()));
 
         Request request = builder.build();
         LOG.debug("request: %s", request);

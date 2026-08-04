@@ -27,7 +27,10 @@ public class TestParsedURL
     public void testBucketURL()
             throws VastUserException
     {
-        for (String testUrl : new String[] {"/bucket/", "bucket", "bucket/", "/bucket"}) {
+        for (String testUrl : new String[] {"/bucket/",
+                "bucket",
+                "bucket/",
+                "/bucket"}) {
             ParsedURL unit = ParsedURL.of(testUrl);
             String failMessage = String.format("Failed for %s", testUrl);
             assertFalse(unit.isBaseUrl(), failMessage);
@@ -41,14 +44,16 @@ public class TestParsedURL
     public void testGetSchemaNameFromURL()
             throws VastUserException
     {
-        for (String testUrl : new String[] {"/bucket/schema", "bucket/schema"}) {
+        for (String testUrl : new String[] {"/bucket/schema",
+                "bucket/schema"}) {
             ParsedURL unit = ParsedURL.of(testUrl);
             String failMessage = String.format("Failed for %s", testUrl);
             assertFalse(unit.isBaseUrl(), failMessage);
             assertFalse(unit.isBucketURL(), failMessage);
             assertTrue(unit.isSchemaURL(), failMessage);
             assertFalse(unit.hasTable(), failMessage);
-            assertEquals(unit.getFullSchemaPath(), "bucket/schema", failMessage);
+            assertEquals(unit.getFullSchemaPath(), "bucket/schema",
+                    failMessage);
         }
     }
 
@@ -56,19 +61,22 @@ public class TestParsedURL
     public void testGetBucketNameFromURL()
             throws VastUserException
     {
-        for (String testUrl : new String[] {"/bucket/schema/table", "bucket/schema/table"}) {
+        for (String testUrl : new String[] {"/bucket/schema/table",
+                "bucket/schema/table"}) {
             ParsedURL unit = ParsedURL.of(testUrl);
             String failMessage = String.format("Failed for %s", testUrl);
             assertFalse(unit.isBaseUrl(), failMessage);
             assertFalse(unit.isBucketURL(), failMessage);
             assertFalse(unit.isSchemaURL(), failMessage);
             assertTrue(unit.hasTable(), failMessage);
-            assertEquals(unit.getFullSchemaPath(), "bucket/schema", failMessage);
+            assertEquals(unit.getFullSchemaPath(), "bucket/schema",
+                    failMessage);
             assertEquals(unit.getTableName(), "table", failMessage);
         }
     }
 
-    @Test(expectedExceptions = VastUserException.class, expectedExceptionsMessageRegExp = ".* abucketname]")
+    @Test(expectedExceptions = VastUserException.class,
+            expectedExceptionsMessageRegExp = ".* abucketname]")
     public void testException()
             throws VastUserException
     {
@@ -81,8 +89,12 @@ public class TestParsedURL
     {
         String[] urlParts = {"abucketname"};
         assertEquals(ParsedURL.compose(urlParts), "abucketname");
-        urlParts = new String[] {"abucketname", "aschema", "nested1", "nested2"};
-        assertEquals(ParsedURL.compose(urlParts), "abucketname/aschema/nested1/nested2");
+        urlParts = new String[] {"abucketname",
+                "aschema",
+                "nested1",
+                "nested2"};
+        assertEquals(ParsedURL.compose(urlParts),
+                "abucketname/aschema/nested1/nested2");
         urlParts = new String[] {};
         assertEquals(ParsedURL.compose(urlParts), "");
     }

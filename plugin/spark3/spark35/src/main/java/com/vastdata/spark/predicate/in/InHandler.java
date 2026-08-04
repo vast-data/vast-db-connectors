@@ -21,7 +21,8 @@ import static java.lang.String.format;
 
 public final class InHandler
 {
-    private static final InValuesProcessor<Integer> exceptionThrower = new InValuesProcessor<Integer>() {
+    private static final InValuesProcessor<Integer> exceptionThrower = new InValuesProcessor<Integer>()
+    {
         @Override
         public int compare(Integer x, Integer y)
         {
@@ -29,17 +30,44 @@ public final class InHandler
         }
 
         @Override
-        public boolean isFullRange(Integer min, Integer max, int nullCount, Expression[] values)
+        public boolean isFullRange(Integer min, Integer max, int nullCount,
+                Expression[] values)
         {
             throw new RuntimeException("Unsupported type");
         }
 
         @Override
-        public ProcessedInValues<LiteralValue<?>> getProcessedInValues(Expression[] values, DataType dataType)
+        public ProcessedInValues<LiteralValue<?>> getProcessedInValues(
+                Expression[] values, DataType dataType)
         {
             return null;
         }
     };
+    private static final Map<DataType, InValuesProcessor<?>> typeExtractors = ImmutableMap.of(
+            DataTypes.DateType, new IntegerValuesProcessor(),
+            DataTypes.IntegerType, new IntegerValuesProcessor(),
+            DataTypes.LongType, new LongValuesProcessor());
+
+    private InHandler()
+    {
+    }
+
+    public static Predicate[] extract(StructField field, Expression[] children,
+            ResultFunction resultFunction)
+            throws VastUserException
+    {
+        NamedReference ref = children[0].references()[0];
+        String refFieldName = ref.fieldNames()[0];
+        String fieldName = field.name();
+        verify(refFieldName.equals(fieldName),
+                format("Field names don't match: ref: %s, field: %s",
+                        refFieldName, fieldName));
+
+        DataType dataType = field.dataType();
+        return typeExtractors
+                .getOrDefault(dataType, exceptionThrower)
+                .processValues(children, dataType, resultFunction);
+    }
 
     private static class IntegerValuesProcessor
             implements InValuesProcessor<Integer>
@@ -48,7 +76,8 @@ public final class InHandler
         public int compare(Integer val1, Integer val2)
         {
             if (val1 == null || val2 == null) {
-                throw new IllegalArgumentException(format("Values must not be null: %s, %s", val1, val2));
+                throw new IllegalArgumentException(
+                        format("Values must not be null: %s, %s", val1, val2));
             }
             else {
                 return Integer.compare(val1, val2);
@@ -56,14 +85,17 @@ public final class InHandler
         }
 
         @Override
-        public boolean isFullRange(Integer min, Integer max, int nullCount, Expression[] values)
+        public boolean isFullRange(Integer min, Integer max, int nullCount,
+                Expression[] values)
         {
             if (max == null || min == null) {
-                throw new IllegalArgumentException(format("Min or max values must not be null: %s, %s", max, min));
+                throw new IllegalArgumentException(
+                        format("Min or max values must not be null: %s, %s",
+                                max, min));
             }
             else {
                 int range = max - min + 1;
-                int nonNullValuesCount = values.length -1 - nullCount;
+                int nonNullValuesCount = values.length - 1 - nullCount;
                 return nonNullValuesCount == range;
             }
         }
@@ -76,7 +108,8 @@ public final class InHandler
         public int compare(Long val1, Long val2)
         {
             if (val1 == null || val2 == null) {
-                throw new IllegalArgumentException(format("Values must not be null: %s, %s", val1, val2));
+                throw new IllegalArgumentException(
+                        format("Values must not be null: %s, %s", val1, val2));
             }
             else {
                 return Long.compare(val1, val2);
@@ -84,10 +117,13 @@ public final class InHandler
         }
 
         @Override
-        public boolean isFullRange(Long min, Long max, int nullCount, Expression[] values)
+        public boolean isFullRange(Long min, Long max, int nullCount,
+                Expression[] values)
         {
             if (max == null || min == null) {
-                throw new IllegalArgumentException(format("Min or max values must not be null: %s, %s", max, min));
+                throw new IllegalArgumentException(
+                        format("Min or max values must not be null: %s, %s",
+                                max, min));
             }
             else {
                 long range = max - min;
@@ -96,31 +132,9 @@ public final class InHandler
                 }
                 else {
                     int nonNullValuesCount = values.length - 1 - nullCount;
-                    return nonNullValuesCount - (int)range == 1;
+                    return nonNullValuesCount - (int) range == 1;
                 }
             }
         }
-    }
-
-    private static final Map<DataType, InValuesProcessor<?>> typeExtractors =
-            ImmutableMap.of(
-                    DataTypes.DateType, new IntegerValuesProcessor(),
-                    DataTypes.IntegerType, new IntegerValuesProcessor(),
-                    DataTypes.LongType, new LongValuesProcessor()
-            );
-
-
-    private InHandler() {}
-
-    public static Predicate[] extract(StructField field, Expression[] children, ResultFunction resultFunction)
-            throws VastUserException
-    {
-        NamedReference ref = children[0].references()[0];
-        String refFieldName = ref.fieldNames()[0];
-        String fieldName = field.name();
-        verify(refFieldName.equals(fieldName), format("Field names don't match: ref: %s, field: %s", refFieldName, fieldName));
-
-        DataType dataType = field.dataType();
-        return typeExtractors.getOrDefault(dataType, exceptionThrower).processValues(children, dataType, resultFunction);
     }
 }

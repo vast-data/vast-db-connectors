@@ -23,53 +23,6 @@ public class TestRecordBatchSplitter
 {
     private static final BufferAllocator allocator = new RootAllocator();
 
-    @Test
-    public void testSingleSplit()
-            throws VastUserException
-    {
-        RecordBatchSplitter splitter = new RecordBatchSplitter(Long.MAX_VALUE, VastPayloadSerializer.getInstanceForRecordBatch());
-        try (VectorSchemaRoot root = createRecordBatch(4096, 10000)) {
-            List<byte[]> parts = splitter.split(root, Integer.MAX_VALUE);
-            assertThat(parts.size()).isEqualTo(1);
-        }
-    }
-
-    @Test
-    public void testMultipleSplits()
-            throws VastUserException
-    {
-        RecordBatchSplitter splitter = new RecordBatchSplitter(1000 * 1000, VastPayloadSerializer.getInstanceForRecordBatch());
-        try (VectorSchemaRoot root = createRecordBatch(4096, 10000)) {
-            List<byte[]> parts = splitter.split(root, Integer.MAX_VALUE);
-            assertThat(parts.size()).isGreaterThan(1);
-        }
-        try (VectorSchemaRoot root = createRecordBatch(4096, 8)) {
-            List<byte[]> parts = splitter.split(root, 1024);
-            assertThat(parts.size()).isEqualTo(4);
-        }
-    }
-
-    @Test(expectedExceptions = VastTooLargePageException.class, expectedExceptionsMessageRegExp = "Failed to serialize too large RecordBatch.*")
-    public void testTooSmallLimit()
-            throws VastUserException
-    {
-        RecordBatchSplitter splitter = new RecordBatchSplitter(0, VastPayloadSerializer.getInstanceForRecordBatch());
-        try (VectorSchemaRoot root = createRecordBatch(4096, 10000)) {
-            splitter.split(root, Integer.MAX_VALUE);
-        }
-    }
-
-    @Test
-    public void testNoSplits()
-            throws VastUserException
-    {
-        RecordBatchSplitter splitter = new RecordBatchSplitter(1000 * 1000, VastPayloadSerializer.getInstanceForRecordBatch());
-        try (VectorSchemaRoot root = createRecordBatch(0, 10000)) {
-            List<byte[]> parts = splitter.split(root, Integer.MAX_VALUE);
-            assertThat(parts.size()).isEqualTo(0);
-        }
-    }
-
     private static VectorSchemaRoot createRecordBatch(int rows, int rowSize)
     {
         VarCharVector vector = new VarCharVector("v", allocator);
@@ -80,5 +33,57 @@ public class TestRecordBatchSplitter
         VectorSchemaRoot root = VectorSchemaRoot.of(vector);
         root.setRowCount(rows);
         return root;
+    }
+
+    @Test
+    public void testSingleSplit()
+            throws VastUserException
+    {
+        RecordBatchSplitter splitter = new RecordBatchSplitter(Long.MAX_VALUE,
+                VastPayloadSerializer.getInstanceForRecordBatch());
+        try (VectorSchemaRoot root = createRecordBatch(4096, 10000)) {
+            List<byte[]> parts = splitter.split(root, Integer.MAX_VALUE);
+            assertThat(parts.size()).isEqualTo(1);
+        }
+    }
+
+    @Test
+    public void testMultipleSplits()
+            throws VastUserException
+    {
+        RecordBatchSplitter splitter = new RecordBatchSplitter(1000 * 1000,
+                VastPayloadSerializer.getInstanceForRecordBatch());
+        try (VectorSchemaRoot root = createRecordBatch(4096, 10000)) {
+            List<byte[]> parts = splitter.split(root, Integer.MAX_VALUE);
+            assertThat(parts.size()).isGreaterThan(1);
+        }
+        try (VectorSchemaRoot root = createRecordBatch(4096, 8)) {
+            List<byte[]> parts = splitter.split(root, 1024);
+            assertThat(parts.size()).isEqualTo(4);
+        }
+    }
+
+    @Test(expectedExceptions = VastTooLargePageException.class,
+            expectedExceptionsMessageRegExp = "Failed to serialize too large RecordBatch.*")
+    public void testTooSmallLimit()
+            throws VastUserException
+    {
+        RecordBatchSplitter splitter = new RecordBatchSplitter(0,
+                VastPayloadSerializer.getInstanceForRecordBatch());
+        try (VectorSchemaRoot root = createRecordBatch(4096, 10000)) {
+            splitter.split(root, Integer.MAX_VALUE);
+        }
+    }
+
+    @Test
+    public void testNoSplits()
+            throws VastUserException
+    {
+        RecordBatchSplitter splitter = new RecordBatchSplitter(1000 * 1000,
+                VastPayloadSerializer.getInstanceForRecordBatch());
+        try (VectorSchemaRoot root = createRecordBatch(0, 10000)) {
+            List<byte[]> parts = splitter.split(root, Integer.MAX_VALUE);
+            assertThat(parts.size()).isEqualTo(0);
+        }
     }
 }

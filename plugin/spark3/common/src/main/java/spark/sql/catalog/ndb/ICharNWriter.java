@@ -16,10 +16,12 @@ public interface ICharNWriter
 {
     int getCount();
 
-    default void setPaddedValue(String rawValue, int typeLength, FixedSizeBinaryVector vector)
+    default void setPaddedValue(String rawValue, int typeLength,
+            FixedSizeBinaryVector vector)
     {
         String padded = rightPadSpaces(rawValue, typeLength);
-        verify(CharMatcher.ascii().matchesAllOf(padded), "CHAR type supports only ASCII charset");
+        verify(CharMatcher.ascii().matchesAllOf(padded),
+                "CHAR type supports only ASCII charset");
         vector.setSafe(getCount(), padded.getBytes(StandardCharsets.UTF_8));
     }
 
@@ -35,7 +37,8 @@ public interface ICharNWriter
             return value;
         }
         else {
-            throw new IllegalArgumentException(format("Value too long for type: CHAR(%s)", length));
+            throw new IllegalArgumentException(
+                    format("Value too long for type: CHAR(%s)", length));
         }
     }
 }

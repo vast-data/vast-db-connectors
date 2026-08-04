@@ -43,11 +43,18 @@ import static java.util.Objects.nonNull;
 
 public class VastConnectorExpressionPushdown
 {
-    private static final Logger LOG = Logger.get(VastConnectorExpressionPushdown.class);
+    private static final Logger LOG = Logger.get(
+            VastConnectorExpressionPushdown.class);
     private static final Map<FunctionName, BinaryOperator<Domain>> ACCUMULATORS = Map.of(
-            AND_FUNCTION_NAME, Domain::intersect,
-            OR_FUNCTION_NAME, Domain::union);
-
+            AND_FUNCTION_NAME, Domain::intersect, OR_FUNCTION_NAME,
+            Domain::union);
+    private static final Map<FunctionName, BiFunction<Type, Object, Range>> rangeBuilders = Map.of(
+            EQUAL_OPERATOR_FUNCTION_NAME, Range::equal,
+            GREATER_THAN_OPERATOR_FUNCTION_NAME, Range::greaterThan,
+            GREATER_THAN_OR_EQUAL_OPERATOR_FUNCTION_NAME,
+            Range::greaterThanOrEqual, LESS_THAN_OPERATOR_FUNCTION_NAME,
+            Range::lessThan, LESS_THAN_OR_EQUAL_OPERATOR_FUNCTION_NAME,
+            Range::lessThanOrEqual);
     private final Map<String, VastColumnHandle> assignments;
 
     public VastConnectorExpressionPushdown(Map<String, ColumnHandle> assignments)
@@ -55,36 +62,60 @@ public class VastConnectorExpressionPushdown
         this.assignments = assignments
                 .entrySet()
                 .stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, entry -> (VastColumnHandle) entry.getValue()));
+                .collect(Collectors.toMap(Map.Entry::getKey,
+                        entry -> (VastColumnHandle) entry.getValue()));
+    }
+
+    // TODO(ORION-107695) currently Debbie supports only `OR(domains)`.
+    private static boolean isSupported(ComplexPredicate predicate)
+    {
+        LOG.debug("checking pushdown support: %s", predicate);
+        if (predicate instanceof LogicalFunction func) {
+            if (!func.name().equals(OR_FUNCTION_NAME.getName())) {
+                LOG.debug("unsupported function: %s", func);
+                return false;
+            }
+            for (ComplexPredicate child : func.children()) {
+                if (!(child instanceof ColumnDomain)) {
+                    LOG.debug("unsupported child: %s", func);
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
     }
 
     public Optional<ComplexPredicate> apply(ConnectorExpression expression)
     {
         Optional<ComplexPredicate> result = parse(expression);
         // TODO(ORION-107695) currently Debbie doesn't supports all OR/AND combinations.
-        boolean supported = result.map(VastConnectorExpressionPushdown::isSupported).orElse(false);
-        LOG.debug("complex predicate %s is%s supported", result, supported ? "" : " not");
+        boolean supported = result
+                .map(VastConnectorExpressionPushdown::isSupported)
+                .orElse(false);
+        LOG.debug("complex predicate %s is%s supported", result,
+                supported ? "" : " not");
         return supported ? result : Optional.empty();
     }
 
-
     private Optional<ComplexPredicate> parse(ConnectorExpression expression)
     {
-        if (expression instanceof Call) {
-            Call call = (Call) expression;
+        if (expression instanceof Call call) {
             Optional<ColumnDomain> range = parseRange(call);
             if (range.isPresent()) {
                 return Optional.of(range.orElseThrow());
             }
             FunctionName name = call.getFunctionName();
-            if (!(name.equals(AND_FUNCTION_NAME) || name.equals(OR_FUNCTION_NAME))) {
+            if (!(name.equals(AND_FUNCTION_NAME) || name.equals(
+                    OR_FUNCTION_NAME))) {
                 return Optional.empty();
             }
             if (call.getArguments().isEmpty()) {
                 return Optional.empty();
             }
 
-            List<ComplexPredicate> predicates = new ArrayList<>(call.getArguments().size());
+            List<ComplexPredicate> predicates = new ArrayList<>(
+                    call.getArguments().size());
             for (ConnectorExpression expr : call.getArguments()) {
                 Optional<ComplexPredicate> result = parse(expr);
                 if (result.isEmpty()) {
@@ -97,9 +128,9 @@ public class VastConnectorExpressionPushdown
             Map<VastColumnHandle, Domain> domains = new HashMap<>();
             List<ComplexPredicate> nonDomains = new ArrayList<>();
             for (ComplexPredicate predicate : predicates) {
-                if (predicate instanceof ColumnDomain) {
-                    ColumnDomain columnDomain = (ColumnDomain) predicate;
-                    domains.merge(columnDomain.getColumn(), columnDomain.getDomain(), accumulator);
+                if (predicate instanceof ColumnDomain columnDomain) {
+                    domains.merge(columnDomain.getColumn(),
+                            columnDomain.getDomain(), accumulator);
                 }
                 else {
                     nonDomains.add(predicate);
@@ -112,20 +143,13 @@ public class VastConnectorExpressionPushdown
             builder.addAll(nonDomains);
             List<ComplexPredicate> children = builder.build();
             if (children.size() == 1) {
-                return Optional.of(children.get(0));
+                return Optional.of(children.getFirst());
             }
-            return Optional.of(new LogicalFunction(name.getName(), builder.build()));
+            return Optional.of(
+                    new LogicalFunction(name.getName(), builder.build()));
         }
         return Optional.empty();
     }
-
-    private static final Map<FunctionName, BiFunction<Type, Object, Range>> rangeBuilders = Map.of(
-            EQUAL_OPERATOR_FUNCTION_NAME, Range::equal,
-            GREATER_THAN_OPERATOR_FUNCTION_NAME, Range::greaterThan,
-            GREATER_THAN_OR_EQUAL_OPERATOR_FUNCTION_NAME, Range::greaterThanOrEqual,
-            LESS_THAN_OPERATOR_FUNCTION_NAME, Range::lessThan,
-            LESS_THAN_OR_EQUAL_OPERATOR_FUNCTION_NAME, Range::lessThanOrEqual
-    );
 
     private Optional<ColumnDomain> parseRange(Call call)
     {
@@ -136,22 +160,23 @@ public class VastConnectorExpressionPushdown
         }
         if (args.size() == 1 && name.equals(NOT_FUNCTION_NAME)) {
             // `x IS NOT NULL` is represented as `$not($is_null(x))`
-            Optional<ComplexPredicate> result = parse(args.get(0));
+            Optional<ComplexPredicate> result = parse(args.getFirst());
             if (result.isPresent() && result.orElseThrow() instanceof ColumnDomain columnDomain) {
-                return Optional.of(new ColumnDomain(columnDomain.getColumn(), columnDomain.getDomain().complement()));
+                return Optional.of(new ColumnDomain(columnDomain.getColumn(),
+                        columnDomain.getDomain().complement()));
             }
             return Optional.empty();
         }
-        if (!(args.get(0) instanceof Variable)) {
+        if (!(args.getFirst() instanceof Variable variable)) {
             return Optional.empty();
         }
-        Variable variable = (Variable) args.get(0);
         Type type = variable.getType();
         VastColumnHandle column = assignments.get(variable.getName());
         if (isNull(column)) {
             return Optional.empty();
         }
-        Function<Range, Optional<ColumnDomain>> fromRange = range -> {
+        Function<Range, Optional<ColumnDomain>> fromRange = range ->
+        {
             Domain domain = Domain.create(ValueSet.ofRanges(range), false);
             return Optional.of(new ColumnDomain(column, domain));
         };
@@ -160,12 +185,14 @@ public class VastConnectorExpressionPushdown
         }
         // We rely on Trino reordering comparison operators to have the variable first and the constant second:
         // https://github.com/trinodb/trino/blob/fe3aea3e94276a5803b8fb9975c46e1d75f3aa7f/presto-main/src/main/java/io/prestosql/sql/planner/iterative/rule/CanonicalizeExpressionRewriter.java#L54-L58
-        if (args.size() == 2 && args.get(1) instanceof Constant) {
-            Constant constant = (Constant) args.get(1);
+        if (args.size() == 2 && args.get(1) instanceof Constant constant) {
             Object value = constant.getValue();
             if (name.equals(NOT_EQUAL_OPERATOR_FUNCTION_NAME)) {
-                ValueSet valueSet = ValueSet.ofRanges(Range.equal(type, value)).complement();
-                return Optional.of(new ColumnDomain(column, Domain.create(valueSet, false)));
+                ValueSet valueSet = ValueSet
+                        .ofRanges(Range.equal(type, value))
+                        .complement();
+                return Optional.of(new ColumnDomain(column,
+                        Domain.create(valueSet, false)));
             }
             BiFunction<Type, Object, Range> builder = rangeBuilders.get(name);
             if (nonNull(builder)) {
@@ -174,26 +201,5 @@ public class VastConnectorExpressionPushdown
             }
         }
         return Optional.empty();
-    }
-
-    // TODO(ORION-107695) currently Debbie supports only `OR(domains)`.
-    private static boolean isSupported(ComplexPredicate predicate)
-    {
-        LOG.debug("checking pushdown support: %s", predicate);
-        if (predicate instanceof LogicalFunction) {
-            LogicalFunction func = (LogicalFunction) predicate;
-            if (!func.getName().equals(OR_FUNCTION_NAME.getName())) {
-                LOG.debug("unsupported function: %s", func);
-                return false;
-            }
-            for (ComplexPredicate child : func.getChildren()) {
-                if (!(child instanceof ColumnDomain)) {
-                    LOG.debug("unsupported child: %s", func);
-                    return false;
-                }
-            }
-            return true;
-        }
-        return false;
     }
 }

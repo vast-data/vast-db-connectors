@@ -58,7 +58,6 @@ import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.sql.types.VarcharType;
 import org.apache.spark.sql.util.ArrowUtils;
-import org.jetbrains.annotations.NotNull;
 import scala.Function1;
 
 import java.util.Arrays;
@@ -77,33 +76,40 @@ public final class TypeUtil
 {
     public static final String NDB_CATALOG_DOES_NOT_SUPPORT_NON_NULL_COLUMNS = "NDB catalog does not support Non null columns";
     public static final String NDB_CATALOG_DOES_NOT_SUPPORT_TYPES = "NDB catalog does not support the following types:";
-
+    public static final String TIMESTAMP_PRECISION = "TIMESTAMP_PRECISION";
+    public static final Function1<DataType, Object> schemaHasCharNType = type -> type instanceof CharType;
     // Arrow-specific column names for representing nested data types
     static final String ARRAY_ITEM_COLUMN_NAME = "item";
 
-    public static final String TIMESTAMP_PRECISION = "TIMESTAMP_PRECISION";
+    private TypeUtil()
+    {
+    }
 
-    private TypeUtil() {}
-
-    public static List<Field> adaptVerifiedSparkSchemaToArrowFieldsList(StructType schema)
+    public static List<Field> adaptVerifiedSparkSchemaToArrowFieldsList(
+            StructType schema)
     {
         List<Field> fieldList = sparkSchemaToArrowFieldsList(schema);
         if (fieldList.stream().anyMatch(field -> !field.isNullable())) {
-            throw new UnsupportedOperationException(NDB_CATALOG_DOES_NOT_SUPPORT_NON_NULL_COLUMNS);
+            throw new UnsupportedOperationException(
+                    NDB_CATALOG_DOES_NOT_SUPPORT_NON_NULL_COLUMNS);
         }
 
-        List<Field> unsupportedFields = fieldList.stream().filter(UNSUPPORTED_TYPE_PREDICATE).collect(Collectors.toList());
+        List<Field> unsupportedFields = fieldList.stream().filter(
+                UNSUPPORTED_TYPE_PREDICATE).collect(Collectors.toList());
         if (!unsupportedFields.isEmpty()) {
-            throw new UnsupportedOperationException(format("%s %s", NDB_CATALOG_DOES_NOT_SUPPORT_TYPES, unsupportedFields));
+            throw new UnsupportedOperationException(
+                    format("%s %s", NDB_CATALOG_DOES_NOT_SUPPORT_TYPES,
+                            unsupportedFields));
         }
         return fieldList;
     }
 
     public static List<Field> sparkSchemaToArrowFieldsList(StructType schema)
     {
-        return Arrays.stream(schema.fields())
-                .map(structField -> sparkFieldToArrowField(structField.name(), structField.dataType(), structField.nullable(), structField.metadata()))
-                .collect(Collectors.toList());
+        return Arrays.stream(schema.fields()).map(
+                structField -> sparkFieldToArrowField(structField.name(),
+                        structField.dataType(), structField.nullable(),
+                        structField.metadata())).collect(Collectors.toList());
     }
 
     public static StructType arrowFieldsListToSparkSchema(List<Field> fieldList)
@@ -121,31 +127,46 @@ public final class TypeUtil
         MetadataBuilder metadataBuilder = new MetadataBuilder();
         DataType dataType;
         try {
-            if (arrowField.getType().getTypeID() == ArrowType.ArrowTypeID.List) {
+            if (arrowField
+                    .getType()
+                    .getTypeID() == ArrowType.ArrowTypeID.List) {
                 Field childField = arrowField.getChildren().get(0);
-                StructField childStructField = arrowFieldToSparkField(childField);
-                dataType = new ArrayType(childStructField.dataType(), childStructField.nullable());
+                StructField childStructField = arrowFieldToSparkField(
+                        childField);
+                dataType = new ArrayType(childStructField.dataType(),
+                        childStructField.nullable());
             }
-            else if (arrowField.getType().getTypeID() == ArrowType.ArrowTypeID.Map) {
+            else if (arrowField
+                    .getType()
+                    .getTypeID() == ArrowType.ArrowTypeID.Map) {
                 Field structSubField = arrowField.getChildren().get(0);
                 List<Field> mapFields = structSubField.getChildren();
                 Field keyField = mapFields.get(0);
                 Field valField = mapFields.get(1);
                 StructField keyStructField = arrowFieldToSparkField(keyField);
                 StructField valStructField = arrowFieldToSparkField(valField);
-                dataType = new MapType(keyStructField.dataType(), valStructField.dataType(), valStructField.nullable());
+                dataType = new MapType(keyStructField.dataType(),
+                        valStructField.dataType(), valStructField.nullable());
             }
-            else if (arrowField.getType().getTypeID() == ArrowType.ArrowTypeID.Struct) {
-                StructField[] children = arrowField.getChildren().stream()
-                        .map(TypeUtil::arrowFieldToSparkField).toArray(StructField[]::new);
+            else if (arrowField
+                    .getType()
+                    .getTypeID() == ArrowType.ArrowTypeID.Struct) {
+                StructField[] children = arrowField.getChildren().stream().map(
+                        TypeUtil::arrowFieldToSparkField).toArray(
+                        StructField[]::new);
                 dataType = new StructType(children);
             }
-            else if (arrowField.getType().getTypeID() == ArrowType.ArrowTypeID.Timestamp) {
+            else if (arrowField
+                    .getType()
+                    .getTypeID() == ArrowType.ArrowTypeID.Timestamp) {
                 ArrowType.Timestamp type = (ArrowType.Timestamp) arrowField.getType();
                 TimeUnit unit = type.getUnit();
                 int timeUnitPrecisionID = getTimeUnitPrecisionID(unit);
-                metadataBuilder.putLong(TIMESTAMP_PRECISION, timeUnitPrecisionID);
-                dataType = type.getTimezone() == null ? TimestampNTZType : TimestampType;
+                metadataBuilder.putLong(TIMESTAMP_PRECISION,
+                        timeUnitPrecisionID);
+                dataType = type.getTimezone() == null ?
+                        TimestampNTZType :
+                        TimestampType;
             }
             else {
                 dataType = ArrowUtils.fromArrowField(arrowField);
@@ -153,13 +174,18 @@ public final class TypeUtil
 
         }
         catch (Exception exception) {
-            if (arrowField.getType().getTypeID() == ArrowType.ArrowTypeID.FixedSizeBinary) {
-                dataType = new CharType(((ArrowType.FixedSizeBinary) arrowField.getType()).getByteWidth());
-            } else {
+            if (arrowField
+                    .getType()
+                    .getTypeID() == ArrowType.ArrowTypeID.FixedSizeBinary) {
+                dataType = new CharType(
+                        ((ArrowType.FixedSizeBinary) arrowField.getType()).getByteWidth());
+            }
+            else {
                 throw exception;
             }
         }
-        return createStructField(arrowField.getName(), dataType, arrowField.isNullable(), metadataBuilder.build());
+        return createStructField(arrowField.getName(), dataType,
+                arrowField.isNullable(), metadataBuilder.build());
     }
 
     private static int getTimeUnitPrecisionID(TimeUnit unit)
@@ -174,82 +200,106 @@ public final class TypeUtil
             case NANOSECOND:
                 return TimestampPrecision.NANOSECONDS.getPrecisionID();
             default:
-                throw new RuntimeException(format("Unexpected TimeUnit: %s", unit));
+                throw new RuntimeException(
+                        format("Unexpected TimeUnit: %s", unit));
         }
     }
 
     public static Field sparkFieldToArrowField(StructField structField)
     {
-        return sparkFieldToArrowField(structField.name(), structField.dataType(), structField.nullable(), structField.metadata());
+        return sparkFieldToArrowField(structField.name(),
+                structField.dataType(), structField.nullable(),
+                structField.metadata());
     }
 
-    public static Field sparkFieldToArrowField(String name, DataType sparkType, boolean nullable, Metadata metadata)
+    public static Field sparkFieldToArrowField(String name, DataType sparkType,
+            boolean nullable, Metadata metadata)
     {
         if (sparkType instanceof MapType) {
             MapType mapType = (MapType) sparkType;
             DataType keyType = mapType.keyType();
             DataType valueType = mapType.valueType();
-            StructType structChildType = new StructType()
-                    .add(MapVector.KEY_NAME, keyType, false)
-                    .add(MapVector.VALUE_NAME, valueType, mapType.valueContainsNull());
-            Field structChildField = sparkFieldToArrowField(MapVector.DATA_VECTOR_NAME, structChildType, false, metadata);
+            StructType structChildType = new StructType().add(
+                    MapVector.KEY_NAME, keyType, false).add(
+                    MapVector.VALUE_NAME, valueType,
+                    mapType.valueContainsNull());
+            Field structChildField = sparkFieldToArrowField(
+                    MapVector.DATA_VECTOR_NAME, structChildType, false,
+                    metadata);
             ArrowType arrowType = new ArrowType.Map(false);
-            return new Field(name,
-                    nullable ? FieldType.nullable(arrowType) : FieldType.notNullable(arrowType),
+            return new Field(name, nullable ?
+                    FieldType.nullable(arrowType) :
+                    FieldType.notNullable(arrowType),
                     ImmutableList.of(structChildField));
         }
         else if (sparkType instanceof ArrayType) {
             ArrayType arrayType = (ArrayType) sparkType;
             DataType childType = arrayType.elementType();
-            Field arrayArrowField = sparkFieldToArrowField(ARRAY_ITEM_COLUMN_NAME, childType, true, metadata);
+            Field arrayArrowField = sparkFieldToArrowField(
+                    ARRAY_ITEM_COLUMN_NAME, childType, true, metadata);
             ArrowType arrowType = ArrowType.List.INSTANCE;
-            return new Field(name,
-                    nullable ? FieldType.nullable(arrowType) : FieldType.notNullable(arrowType),
+            return new Field(name, nullable ?
+                    FieldType.nullable(arrowType) :
+                    FieldType.notNullable(arrowType),
                     ImmutableList.of(arrayArrowField));
         }
         else if (sparkType instanceof StructType) {
             StructType struct = (StructType) sparkType;
-            List<Field> children = IntStream.range(0, struct.size())
-                    .mapToObj(i -> {
+            List<Field> children = IntStream.range(0, struct.size()).mapToObj(
+                    i -> {
                         StructField structField = struct.apply(i);
                         DataType type = structField.dataType();
-                        return sparkFieldToArrowField(structField.name(), type, structField.nullable(), metadata);
-                    })
-                    .collect(Collectors.toList());
+                        return sparkFieldToArrowField(structField.name(), type,
+                                structField.nullable(), metadata);
+                    }).collect(Collectors.toList());
             ArrowType arrowType = ArrowType.Struct.INSTANCE;
-            return new Field(name,
-                    nullable ? FieldType.nullable(arrowType) : FieldType.notNullable(arrowType), children);
+            return new Field(name, nullable ?
+                    FieldType.nullable(arrowType) :
+                    FieldType.notNullable(arrowType), children);
         }
         else {
             try {
-                if (sparkType.equals(DataTypes.TimestampType) || sparkType.equals(DataTypes.TimestampNTZType)) {
+                if (sparkType.equals(
+                        DataTypes.TimestampType) || sparkType.equals(
+                        DataTypes.TimestampNTZType)) {
                     TimestampPrecision timestampPrecision = MICROSECONDS;
                     if (metadata.contains(TIMESTAMP_PRECISION)) {
                         long aLong = metadata.getLong(TIMESTAMP_PRECISION);
-                        timestampPrecision = TimestampPrecision.fromID((int) aLong);
+                        timestampPrecision = TimestampPrecision.fromID(
+                                (int) aLong);
                         if (timestampPrecision == null) {
-                            throw new RuntimeException(format("Unexpected prevision for type: %s, with metadata: %s",
-                                    sparkType, metadata));
+                            throw new RuntimeException(
+                                    format("Unexpected prevision for type: %s, with metadata: %s",
+                                            sparkType, metadata));
                         }
                     }
-                    FieldType fieldType = getTimestampFieldType(sparkType, nullable, timestampPrecision);
+                    FieldType fieldType = getTimestampFieldType(sparkType,
+                            nullable, timestampPrecision);
                     return new Field(name, fieldType, null);
                 }
-                return ArrowUtils.toArrowField(name, sparkType, nullable, null); // TODO - check large var types support
+                return ArrowUtils.toArrowField(name, sparkType, nullable,
+                        null); // TODO - check large var types support
             }
             catch (UnsupportedOperationException exception) {
-                if (sparkType.sameType(new VarcharType(sparkType.defaultSize()))) {
-                    return new Field(name, new FieldType(nullable, ArrowType.Utf8.INSTANCE, null), null);
+                if (sparkType.sameType(
+                        new VarcharType(sparkType.defaultSize()))) {
+                    return new Field(name,
+                            new FieldType(nullable, ArrowType.Utf8.INSTANCE,
+                                    null), null);
                 }
                 if (sparkType.sameType(new CharType(sparkType.defaultSize()))) {
-                    return new Field(name, new FieldType(nullable, new ArrowType.FixedSizeBinary(((CharType) sparkType).length()), null), null);
+                    return new Field(name, new FieldType(nullable,
+                            new ArrowType.FixedSizeBinary(
+                                    ((CharType) sparkType).length()), null),
+                            null);
                 }
                 throw exception;
             }
         }
     }
 
-    private static @NotNull FieldType getTimestampFieldType(DataType sparkType, boolean nullable, TimestampPrecision timestampPrecision)
+    private static FieldType getTimestampFieldType(DataType sparkType,
+            boolean nullable, TimestampPrecision timestampPrecision)
     {
         ArrowType arrowType;
         switch (timestampPrecision) {
@@ -257,27 +307,31 @@ public final class TypeUtil
                 arrowType = new ArrowType.Timestamp(TimeUnit.SECOND, "UTC");
                 break;
             case MILLISECONDS:
-                arrowType = new ArrowType.Timestamp(TimeUnit.MILLISECOND, "UTC");
+                arrowType = new ArrowType.Timestamp(TimeUnit.MILLISECOND,
+                        "UTC");
                 break;
             case MICROSECONDS:
-                arrowType = new ArrowType.Timestamp(TimeUnit.MICROSECOND, "UTC");
+                arrowType = new ArrowType.Timestamp(TimeUnit.MICROSECOND,
+                        "UTC");
                 break;
             case NANOSECONDS:
                 arrowType = new ArrowType.Timestamp(TimeUnit.NANOSECOND, "UTC");
                 break;
             default:
-                throw new RuntimeException(format("Unexpected timestamp type precision: %s for type: %s",
-                        timestampPrecision, sparkType));
+                throw new RuntimeException(
+                        format("Unexpected timestamp type precision: %s for type: %s",
+                                timestampPrecision, sparkType));
         }
         return new FieldType(nullable, arrowType, null);
     }
 
     public static ArrowWriter getArrowSchemaWriter(VectorSchemaRoot root)
     {
-        ArrowFieldWriter[] writers = root.getFieldVectors().stream().map(vector -> {
-            vector.allocateNew();
-            return createWriter(vector);
-        }).toArray(ArrowFieldWriter[]::new);
+        ArrowFieldWriter[] writers = root.getFieldVectors().stream().map(
+                vector -> {
+                    vector.allocateNew();
+                    return createWriter(vector);
+                }).toArray(ArrowFieldWriter[]::new);
         return new ArrowWriter(root, writers);
     }
 
@@ -302,11 +356,13 @@ public final class TypeUtil
                         case 64:
                             return new LongWriter((BigIntVector) vector);
                         default:
-                            throw new UnsupportedOperationException("Unsupported int Arrow type length: " + arrowType);
+                            throw new UnsupportedOperationException(
+                                    "Unsupported int Arrow type length: " + arrowType);
                     }
                 }
                 else {
-                    throw new UnsupportedOperationException("Unsupported unsigned Arrow type: " + arrowType);
+                    throw new UnsupportedOperationException(
+                            "Unsupported unsigned Arrow type: " + arrowType);
                 }
             }
             case FloatingPoint: {
@@ -317,17 +373,20 @@ public final class TypeUtil
                     case DOUBLE:
                         return new DoubleWriter((Float8Vector) vector);
                     default:
-                        throw new UnsupportedOperationException("Unsupported floating-point precision: " + type);
+                        throw new UnsupportedOperationException(
+                                "Unsupported floating-point precision: " + type);
                 }
             }
             case Decimal: {
                 ArrowType.Decimal decType = (ArrowType.Decimal) arrowType;
                 int precision = decType.getPrecision();
                 int scale = decType.getScale();
-                return new DecimalWriter((DecimalVector) vector, precision, scale);
+                return new DecimalWriter((DecimalVector) vector, precision,
+                        scale);
             }
             case FixedSizeBinary: {
-                return new CharNWriter((FixedSizeBinaryVector) vector, ((ArrowType.FixedSizeBinary)arrowType).getByteWidth());
+                return new CharNWriter((FixedSizeBinaryVector) vector,
+                        ((ArrowType.FixedSizeBinary) arrowType).getByteWidth());
             }
             case Utf8: {
                 return new StringWriter((VarCharVector) vector);
@@ -345,43 +404,53 @@ public final class TypeUtil
                     case SECOND:
                     case MILLISECOND:
                     case NANOSECOND:
-                        return new NonMicroTimestampWriter((TimeStampVector) vector);
+                        return new NonMicroTimestampWriter(
+                                (TimeStampVector) vector);
                     case MICROSECOND:
                         if (vector instanceof TimeStampMicroTZVector) {
-                            return new TimestampWriter((TimeStampMicroTZVector) vector);
+                            return new TimestampWriter(
+                                    (TimeStampMicroTZVector) vector);
                         }
                         else if (vector instanceof TimeStampMicroVector) {
-                            return new TimestampNTZWriter((TimeStampMicroVector) vector);
+                            return new TimestampNTZWriter(
+                                    (TimeStampMicroVector) vector);
                         }
                         else {
-                            throw new RuntimeException(format("Unexpected arrow vector class for TimestampMicro type: %s", vector.getClass()));
+                            throw new RuntimeException(
+                                    format("Unexpected arrow vector class for TimestampMicro type: %s",
+                                            vector.getClass()));
                         }
                 }
-                throw new RuntimeException("Unexpected arrow timestamp type: %s");
+                throw new RuntimeException(
+                        "Unexpected arrow timestamp type: %s");
             }
             case Map: {
                 MapVector mapVector = (MapVector) vector;
                 StructVector structVector = (StructVector) mapVector.getDataVector();
-                ArrowFieldWriter keyWriter = createWriter(structVector.getChild(MapVector.KEY_NAME));
-                ArrowFieldWriter valueWriter = createWriter(structVector.getChild(MapVector.VALUE_NAME));
-                return new MapWriter(mapVector, structVector, keyWriter, valueWriter);
+                ArrowFieldWriter keyWriter = createWriter(
+                        structVector.getChild(MapVector.KEY_NAME));
+                ArrowFieldWriter valueWriter = createWriter(
+                        structVector.getChild(MapVector.VALUE_NAME));
+                return new MapWriter(mapVector, structVector, keyWriter,
+                        valueWriter);
             }
             case Struct: {
                 StructVector structVector = (StructVector) vector;
-                ArrowFieldWriter[] childWriters = IntStream.range(0, structVector.size())
-                        .mapToObj(structVector::getChildByOrdinal)
-                        .map(TypeUtil::createWriter)
-                        .toArray(ArrowFieldWriter[]::new);
+                ArrowFieldWriter[] childWriters = IntStream.range(0,
+                        structVector.size()).mapToObj(
+                        structVector::getChildByOrdinal).map(
+                        TypeUtil::createWriter).toArray(
+                        ArrowFieldWriter[]::new);
                 return new StructWriter(structVector, childWriters);
             }
             case List: {
                 ListVector listVector = (ListVector) vector;
-                ArrowFieldWriter childWriter = createWriter(listVector.getDataVector());
+                ArrowFieldWriter childWriter = createWriter(
+                        listVector.getDataVector());
                 return new ArrayWriter(listVector, childWriter);
             }
         }
-        throw new IllegalArgumentException("unsupported Arrow type: " + arrowType);
+        throw new IllegalArgumentException(
+                "unsupported Arrow type: " + arrowType);
     }
-
-    public static final Function1<DataType, Object> schemaHasCharNType = type -> type instanceof CharType;
 }

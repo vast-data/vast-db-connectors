@@ -14,8 +14,9 @@ class SliceApiBlockWrapper
     private final Function<Integer, Slice> sliceFunction;
     private final Function<Integer, Integer> sliceLengthFunction;
 
-
-    SliceApiBlockWrapper(Function<Integer, Slice> sliceFunction, Function<Integer, Integer> sliceLengthFunction) {
+    SliceApiBlockWrapper(Function<Integer, Slice> sliceFunction,
+                         Function<Integer, Integer> sliceLengthFunction)
+    {
         this.sliceFunction = sliceFunction;
         this.sliceLengthFunction = sliceLengthFunction;
     }

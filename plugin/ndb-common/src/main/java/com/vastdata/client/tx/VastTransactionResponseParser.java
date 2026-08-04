@@ -15,26 +15,25 @@ import io.airlift.http.client.HttpStatus;
 import io.airlift.log.Logger;
 
 import java.util.Collection;
-import java.util.function.Function;
 
 import static com.vastdata.client.error.VastExceptionFactory.checkResponseStatus;
 import static java.util.Objects.requireNonNull;
 
-class VastTransactionResponseParser
-        implements Function<VastResponse, ParsedStartTransactionResponse>
+public class VastTransactionResponseParser
 {
-    private static final Logger LOG = Logger.get(VastTransactionResponseParser.class);
-    private static final VastRuntimeException FAILED_STARTING_TRANSACTION_GENERIC_ERROR = VastExceptionFactory.toRuntime(VastExceptionFactory.serverException("Start transaction failed"));
+    private static final Logger LOG = Logger.get(
+            VastTransactionResponseParser.class);
+    private static final VastRuntimeException FAILED_STARTING_TRANSACTION_GENERIC_ERROR = VastExceptionFactory.toRuntime(
+            VastExceptionFactory.serverException("Start transaction failed"));
 
-    @Override
-    public ParsedStartTransactionResponse apply(VastResponse vastResponse)
+    public long parseStartTransactionResponse(VastResponse vastResponse)
+            throws VastRuntimeException
     {
         requireNonNull(vastResponse);
         int status = vastResponse.getStatus();
         if (status == HttpStatus.OK.code()) {
             Multimap<HeaderName, String> headers = vastResponse.getHeaders();
-            long txid = extractTxIdFromHeaders(headers);
-            return new ParsedStartTransactionResponse(txid);
+            return extractTxIdFromHeaders(headers);
         }
         else {
             String errMessage = "Failed starting transaction";
@@ -47,7 +46,8 @@ class VastTransactionResponseParser
 
     protected long extractTxIdFromHeaders(Multimap<HeaderName, String> headers)
     {
-        Collection<String> transIDHeader = headers.get(HeaderName.of(RequestsHeaders.TABULAR_TRANSACTION_ID.getHeaderName()));
+        Collection<String> transIDHeader = headers.get(HeaderName.of(
+                RequestsHeaders.TABULAR_TRANSACTION_ID.getHeaderName()));
         String id = Iterables.getOnlyElement(transIDHeader);
         return Long.parseUnsignedLong(id);
     }

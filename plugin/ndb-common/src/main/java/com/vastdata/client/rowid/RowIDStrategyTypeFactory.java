@@ -7,5 +7,4 @@ import java.util.function.Function;
 
 public interface RowIDStrategyTypeFactory<T>
         extends Function<T, RowIDStrategyType>
-{
-}
+{}

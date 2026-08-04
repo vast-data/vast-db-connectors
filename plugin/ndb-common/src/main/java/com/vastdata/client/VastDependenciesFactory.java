@@ -21,4 +21,6 @@ public interface VastDependenciesFactory
     String getConnectorVersionedStatisticsTag();
 
     StatisticsUrlExtractor<?> getStatisticsUrlHelper();
+
+    String getClientTag();
 }

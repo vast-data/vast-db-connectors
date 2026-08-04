@@ -18,58 +18,50 @@ import java.util.stream.Collectors;
 
 public class TrinoSerializableTableStatistics
 {
-    public static class Entry<T, T1>
-    {
-        private final T key;
-        private final T1 value;
-        @JsonCreator public Entry(@JsonProperty("key") T key, @JsonProperty("value") T1 value) {
-            this.key = key;
-            this.value = value;
-        }
-
-        @JsonProperty
-        public T getKey() {
-            return key;
-        }
-        @JsonProperty
-        public T1 getValue() {
-            return value;
-        }
-    }
     private final Estimate rowCount;
-
     private final List<Entry<ColumnHandle, ColumnStatistics>> pairList;
 
-    public TrinoSerializableTableStatistics(TableStatistics tableStats) {
+    public TrinoSerializableTableStatistics(TableStatistics tableStats)
+    {
         this.rowCount = tableStats.getRowCount();
         List<Entry<ColumnHandle, ColumnStatistics>> statsPair = new LinkedList<>();
-        tableStats.getColumnStatistics().forEach((columnHandle, columnStatistics) -> statsPair.add(new Entry<>(columnHandle, columnStatistics)));
+        tableStats
+                .getColumnStatistics()
+                .forEach((columnHandle, columnStatistics) -> statsPair.add(
+                        new Entry<>(columnHandle, columnStatistics)));
         this.pairList = statsPair;
     }
 
     @JsonCreator
-    public TrinoSerializableTableStatistics(
-            @JsonProperty("rowCount") Estimate rowCount,
-            @JsonProperty("pairList") List<Entry<ColumnHandle,
-                    ColumnStatistics>> pairList) {
+    public TrinoSerializableTableStatistics(@JsonProperty("rowCount") Estimate rowCount,
+                                            @JsonProperty("pairList") List<Entry<ColumnHandle, ColumnStatistics>> pairList)
+    {
         this.rowCount = rowCount;
         this.pairList = pairList;
     }
 
     @JsonProperty
-    public Estimate getRowCount() {
+    public Estimate getRowCount()
+    {
         return this.rowCount;
     }
 
     @JsonProperty
-    public List<Entry<ColumnHandle, ColumnStatistics>> getPairList() {
+    public List<Entry<ColumnHandle, ColumnStatistics>> getPairList()
+    {
         return this.pairList;
     }
 
     @JsonIgnore
-    public TableStatistics getTableStatistics() {
-        Map<ColumnHandle, ColumnStatistics> mapStats = this.pairList.stream()
-                .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
+    public TableStatistics getTableStatistics()
+    {
+        Map<ColumnHandle, ColumnStatistics> mapStats = this.pairList
+                .stream()
+                .collect(Collectors.toMap(Entry::key, Entry::value));
         return new TableStatistics(this.rowCount, mapStats);
     }
+
+    public record Entry<T, T1>(T key,
+            T1 value)
+    {}
 }

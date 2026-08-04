@@ -16,19 +16,21 @@ import java.util.Collection;
 public class VastSchedulingInfo
         implements Serializable
 {
-    private static final HeaderName HEADER_NAME = HeaderName.of("tabular-schedule-id");
+    private static final HeaderName HEADER_NAME = HeaderName.of(
+            "tabular-schedule-id");
     private final String id; // opaque identifier to be passed back to VAST
-
-    public static VastSchedulingInfo create(VastResponse response)
-    {
-        Collection<String> values = response.getHeaders().get(HEADER_NAME);
-        return new VastSchedulingInfo(Iterators.getOnlyElement(values.iterator()));
-    }
 
     @JsonCreator
     public VastSchedulingInfo(@JsonProperty("id") String id)
     {
         this.id = id;
+    }
+
+    public static VastSchedulingInfo create(VastResponse response)
+    {
+        Collection<String> values = response.getHeaders().get(HEADER_NAME);
+        return new VastSchedulingInfo(
+                Iterators.getOnlyElement(values.iterator()));
     }
 
     @JsonProperty

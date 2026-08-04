@@ -21,7 +21,9 @@ public class SubmittedWorkProcessor<T>
     private final LinkedBlockingDeque<WorkExecutor<T>> workQueue;
     private final BooleanSupplier circuitBreaker;
 
-    public SubmittedWorkProcessor(URI endpoint, LinkedBlockingDeque<WorkExecutor<T>> workQueue, BooleanSupplier circuitBreaker)
+    public SubmittedWorkProcessor(URI endpoint,
+            LinkedBlockingDeque<WorkExecutor<T>> workQueue,
+            BooleanSupplier circuitBreaker)
     {
         this.endpoint = endpoint;
         this.workQueue = workQueue;
@@ -34,19 +36,28 @@ public class SubmittedWorkProcessor<T>
         WorkExecutor<T> element;
         int processed = 0;
         try {
-            LOG.debug("Work processing thread for endpoint %s is starting", endpoint);
-            while ((element = workQueue.pollFirst(500, TimeUnit.MILLISECONDS)) != null) {
+            LOG.debug("Work processing thread for endpoint %s is starting",
+                    endpoint);
+            while ((element = workQueue.pollFirst(500,
+                    TimeUnit.MILLISECONDS)) != null) {
                 if (!circuitBreaker.getAsBoolean()) {
-                    LOG.debug("Work processing thread for endpoint %s received signal to finish processing jobs prematurely", endpoint);
+                    LOG.debug(
+                            "Work processing thread for endpoint %s received signal to finish processing jobs prematurely",
+                            endpoint);
                     break;
                 }
                 element.accept(endpoint);
                 processed++;
             }
-            LOG.debug("Work processing thread for endpoint %s is finished. Processed %s work objects", endpoint, processed);
+            LOG.debug(
+                    "Work processing thread for endpoint %s is finished. Processed %s work objects",
+                    endpoint, processed);
         }
         catch (InterruptedException ie) {
-            LOG.error(ie, "Work processing thread for endpoint %s interrupted while polling for next work", endpoint);
+            Thread.currentThread().interrupt();
+            LOG.error(ie,
+                    "Work processing thread for endpoint %s interrupted while polling for next work",
+                    endpoint);
             throw toRuntime(ie);
         }
     }

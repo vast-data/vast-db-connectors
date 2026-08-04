@@ -16,7 +16,6 @@ import java.util.stream.Collectors;
 public class ListBucketsResponseHandler
         extends VastResponseHandler
 {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Override
@@ -30,6 +29,10 @@ public class ListBucketsResponseHandler
     protected Set<String> parseBytes(InputStream inputStream)
             throws Exception
     {
-        return new Unmarshallers.ListBucketsUnmarshaller().unmarshall(inputStream).stream().map(Bucket::getName).collect(Collectors.toSet());
+        return new Unmarshallers.ListBucketsUnmarshaller()
+                .unmarshall(inputStream)
+                .stream()
+                .map(Bucket::getName)
+                .collect(Collectors.toSet());
     }
 }

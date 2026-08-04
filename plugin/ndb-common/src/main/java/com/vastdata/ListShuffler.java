@@ -19,7 +19,7 @@ public class ListShuffler<T>
         this.seed = seed;
     }
 
-    public List<T>  randomizeList(List<T> list)
+    public List<T> randomizeList(List<T> list)
     {
         Random random = new Random();
         seed.ifPresent(random::setSeed);

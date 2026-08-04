@@ -25,7 +25,8 @@ public class ImportDataResponseParser
         implements Consumer<InputStream>
 {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final Logger LOG = Logger.get(ImportDataResponseParser.class);
+    private static final Logger LOG = Logger.get(
+            ImportDataResponseParser.class);
 
     private final Consumer<Map> mapConsumer;
 
@@ -34,15 +35,20 @@ public class ImportDataResponseParser
         this.mapConsumer = mapConsumer;
     }
 
-    private void iterateJsonsFromStream(InputStream is, Consumer<Map> mapConsumer)
+    private void iterateJsonsFromStream(InputStream is,
+            Consumer<Map> mapConsumer)
     {
         JsonFactory jsonFactory = new JsonFactory();
-        try (Reader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
-            OBJECT_MAPPER.readValues(jsonFactory.createParser(reader), Map.class).forEachRemaining(mapConsumer);
+        try (Reader reader = new InputStreamReader(is,
+                StandardCharsets.UTF_8)) {
+            OBJECT_MAPPER
+                    .readValues(jsonFactory.createParser(reader), Map.class)
+                    .forEachRemaining(mapConsumer);
         }
         catch (JsonParseException e) {
             LOG.error(e, "Failed parsing json response");
-            throw toRuntime(serializationException("Failed parsing json response", e));
+            throw toRuntime(
+                    serializationException("Failed parsing json response", e));
         }
         catch (IOException e) {
             LOG.error(e, "Failed parsing json response");

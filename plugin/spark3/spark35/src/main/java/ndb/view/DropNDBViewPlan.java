@@ -16,30 +16,38 @@ import scala.collection.immutable.List;
 import scala.collection.immutable.Seq;
 import scala.collection.mutable.Builder;
 
-import static ndb.NDBParser.EMPTY_LOGICAL_PLAN_SEQ;
+import static com.vastdata.spark.SparkPlannerUtil.getEmptyStringSeq;
+import static ndb.SparkPlannerUtil.EMPTY_LOGICAL_PLAN_SEQ;
 
 public class DropNDBViewPlan
         extends LogicalPlan
 {
     public static final Seq<Attribute> OUTPUT;
+
     static {
         Builder<Attribute, List<Attribute>> b = List.newBuilder();
         Attribute resAttr = new AttributeReference("dropped",
                 DataTypes.BooleanType, true, Metadata.empty(), ExprId.apply(0),
-                (scala.collection.immutable.Seq<String>) scala.collection.immutable.Seq$.MODULE$.<String>empty());
+                getEmptyStringSeq());
         b.addOne(resAttr);
         OUTPUT = b.result();
     }
-    private Seq<LogicalPlan> children;
+
     final boolean ifExists;
     final DropView original;
+    private Seq<LogicalPlan> children;
 
-    private DropNDBViewPlan(final boolean ifExists,
-                            final DropView original) {
+    private DropNDBViewPlan(final boolean ifExists, final DropView original)
+    {
         super();
         this.ifExists = ifExists;
         this.original = original;
         this.children = (Seq<LogicalPlan>) original.children().toSeq();
+    }
+
+    public static DropNDBViewPlan instance(final DropView plan)
+    {
+        return new DropNDBViewPlan(plan.ifExists(), plan);
     }
 
     @Override
@@ -60,7 +68,9 @@ public class DropNDBViewPlan
     }
 
     @Override
-    public LogicalPlan withNewChildrenInternal(IndexedSeq<LogicalPlan> newChildren) {
+    public LogicalPlan withNewChildrenInternal(
+            IndexedSeq<LogicalPlan> newChildren)
+    {
         {
             this.children = newChildren;
             return this;
@@ -83,10 +93,5 @@ public class DropNDBViewPlan
     public int productArity()
     {
         return 0;
-    }
-
-    public static DropNDBViewPlan instance(final DropView plan)
-    {
-        return new DropNDBViewPlan(plan.ifExists(), plan);
     }
 }

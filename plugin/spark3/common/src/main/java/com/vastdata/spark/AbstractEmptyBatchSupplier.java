@@ -17,21 +17,32 @@ import java.util.function.Function;
 
 class AbstractEmptyBatchSupplier<T, V>
 {
-    private static final Logger LOG = LoggerFactory.getLogger(AbstractEmptyBatchSupplier.class);
-
+    private static final Logger LOG = LoggerFactory.getLogger(
+            AbstractEmptyBatchSupplier.class);
+    private static final SparkVectorAdaptorFactory vectorAdaptorFactory = new SparkVectorAdaptorFactory();
     private final String traceStr;
     private final Schema schema;
     private final AtomicBoolean hasNext = new AtomicBoolean(true);
     private final Function<FieldVector, V> vectorFunction;
     private final BiFunction<VectorSchemaRoot, Function<FieldVector, V>, T> resultFunction;
-    private static final SparkVectorAdaptorFactory vectorAdaptorFactory = new SparkVectorAdaptorFactory();
 
-    AbstractEmptyBatchSupplier(String traceStr, Schema schema, Function<FieldVector, V> vectorFunction, BiFunction<VectorSchemaRoot, Function<FieldVector, V>, T> resultFunction)
+    AbstractEmptyBatchSupplier(String traceStr, Schema schema,
+            Function<FieldVector, V> vectorFunction,
+            BiFunction<VectorSchemaRoot, Function<FieldVector, V>, T> resultFunction)
     {
         this.traceStr = traceStr;
         this.schema = schema;
         this.vectorFunction = vectorFunction;
         this.resultFunction = resultFunction;
+    }
+
+    static Function<FieldVector, FieldVector> getVectorAdaptor(
+            RootAllocator allocator)
+    {
+        return vector -> vectorAdaptorFactory
+                .forField(vector.getField())
+                .orElse((v, f, a) -> vector)
+                .adapt(vector, vector.getField(), allocator);
     }
 
     protected boolean hasNext()
@@ -45,14 +56,10 @@ class AbstractEmptyBatchSupplier<T, V>
     {
         RootAllocator allocator = new RootAllocator();
         VectorSchemaRoot root = VectorSchemaRoot.create(schema, allocator);
-        Function<FieldVector, V> mapper = getVectorAdaptor(allocator).andThen(vectorFunction);
+        Function<FieldVector, V> mapper = getVectorAdaptor(allocator).andThen(
+                vectorFunction);
         T result = resultFunction.apply(root, mapper);
         LOG.debug("{} Returning empty page: {}", traceStr, result);
         return result;
-    }
-
-    static Function<FieldVector, FieldVector> getVectorAdaptor(RootAllocator allocator)
-    {
-        return vector -> vectorAdaptorFactory.forField(vector.getField()).orElse((v, f, a) -> vector).adapt(vector, vector.getField(), allocator);
     }
 }

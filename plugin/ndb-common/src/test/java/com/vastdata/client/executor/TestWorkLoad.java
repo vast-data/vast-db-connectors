@@ -6,6 +6,7 @@ package com.vastdata.client.executor;
 
 import com.amazonaws.http.HttpMethodName;
 import com.google.common.collect.ImmutableList;
+import com.vastdata.client.QueryDataExtraParams;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastClientForTests;
 import com.vastdata.client.importdata.EvenSizeWithLimitChunkifier;
@@ -48,22 +49,29 @@ import static org.testng.Assert.fail;
 public class TestWorkLoad
 {
     @Test(dataProvider = "testLimits")
-    public void testExecuteWorkLoadRetries(int numberOfObjects, int numberOfRetries)
+    public void testExecuteWorkLoadRetries(int numberOfObjects,
+                                           int numberOfRetries)
     {
         URI uri1 = URI.create("http://localhost:8080");
         URI uri2 = URI.create("http://127.0.0.1:8080");
 
         AtomicInteger successCtr = new AtomicInteger(0);
-        Predicate<Integer> successConsumer = i -> {
+        Predicate<Integer> successConsumer = i ->
+        {
             successCtr.incrementAndGet();
             return i % 2 != 0;
         };
-        BiConsumer<Throwable, URI> failedConsumer = (o, u) -> {};
+        BiConsumer<Throwable, URI> failedConsumer = (o, u) ->
+        {};
         BooleanSupplier bla = () -> true;
         BiFunction<Integer, URI, Integer> bif = (i, uri) -> i;
 
-        List<Integer> collect = IntStream.range(0, numberOfObjects).boxed().collect(Collectors.toList());
-        Supplier<Function<URI, Integer>> workSupplier = WorkFactory.fromCollection(collect, bif);
+        List<Integer> collect = IntStream
+                .range(0, numberOfObjects)
+                .boxed()
+                .collect(Collectors.toList());
+        Supplier<Function<URI, Integer>> workSupplier = WorkFactory.fromCollection(
+                collect, bif);
         WorkLoad<Integer> unit = new WorkLoad.Builder<Integer>()
                 .setThreadsPrefix("test")
                 .setTraceToken(new VastTraceToken(Optional.empty(), 123L, 1))
@@ -74,22 +82,22 @@ public class TestWorkLoad
                 .setCircuitBreaker(bla)
                 .build();
         unit.executeWorkLoad();
-        assertEquals(successCtr.get(), numberOfObjects + (((numberOfObjects / 2) + (numberOfObjects % 2)) * numberOfRetries));
+        assertEquals(successCtr.get(),
+                numberOfObjects + (((numberOfObjects / 2) + (numberOfObjects % 2)) * numberOfRetries));
     }
 
     private RetryStrategy getRetryStrategy(int numberOfRetries)
     {
-        return RetryStrategyFactory.fixedSleepBetweenRetries(numberOfRetries, 1);
+        return RetryStrategyFactory.fixedSleepBetweenRetries(numberOfRetries,
+                1);
     }
 
     @DataProvider
     public Object[][] testLimits()
     {
-        return new Object[][] {
-                new Object[] {100, 3},
+        return new Object[][] {new Object[] {100, 3},
                 new Object[] {100, 0},
-                new Object[] {0, 5},
-        };
+                new Object[] {0, 5}};
     }
 
     @Test
@@ -101,13 +109,16 @@ public class TestWorkLoad
         String someDest = "buck/schem/tab";
         AtomicInteger ctr = new AtomicInteger(0);
         THREAD_POOL_TERMINATION_TIMEOUT_DEFAULT = 1;
-        importSleep.setHook("/" + someDest, HttpMethodName.POST, he -> {
+        importSleep.setHook("/" + someDest, HttpMethodName.POST, he ->
+        {
             byte[] dummy = "".getBytes(StandardCharsets.UTF_8);
             if (ctr.getAndIncrement() == 0) {
                 try {
-                    Thread.sleep(THREAD_POOL_TERMINATION_TIMEOUT_DEFAULT * 2 * 1000); // more than enough
+                    Thread.sleep(
+                            THREAD_POOL_TERMINATION_TIMEOUT_DEFAULT * 2 * 1000); // more than enough
                 }
                 catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                     throw new RuntimeException(e);
                 }
                 try {
@@ -133,18 +144,27 @@ public class TestWorkLoad
             }
             ctr.getAndDecrement(); // expect to decrease only once before test is complete
         });
-        try (VastMockS3Server vastMockS3Server = new VastMockS3Server(0, importSleep)) {
+        try (VastMockS3Server vastMockS3Server = new VastMockS3Server(0,
+                importSleep)) {
             int port = vastMockS3Server.start();
             URI uri1 = URI.create(format("http://localhost:%s", port));
             URI uri2 = URI.create(format("http://127.0.0.1:%s", port));
-            VastClient client = VastClientForTests.getVastClient(new JettyHttpClient(), port);
-            ImportDataExecutor<VastTransaction> importExecutor = new ImportDataExecutor<>(client);
+            VastClient client = VastClientForTests.getVastClient(
+                    new JettyHttpClient(), port);
+            ImportDataExecutor<VastTransaction> importExecutor = new ImportDataExecutor<>(
+                    client);
 
-            VectorSchemaRoot root = VectorSchemaRoot.create(new Schema(ImmutableList.of()), new RootAllocator());
-            ImportDataFile importFile = new ImportDataFile("srcBucket", "srcFile", root);
-            ImportDataContext ctx = new ImportDataContext(Collections.nCopies(EvenSizeWithLimitChunkifier.CHUNK_SIZE_LIMIT + 1, importFile), someDest); // two chucks
-            VastTraceToken token = new VastTraceToken(Optional.empty(), 123456L, 456789);
-            VastTransaction mockTrans = new VastTransaction() {
+            VectorSchemaRoot root = VectorSchemaRoot.create(
+                    new Schema(ImmutableList.of()), new RootAllocator());
+            ImportDataFile importFile = new ImportDataFile("srcBucket",
+                    "srcFile", root);
+            ImportDataContext ctx = new ImportDataContext(Collections.nCopies(
+                    EvenSizeWithLimitChunkifier.CHUNK_SIZE_LIMIT + 1,
+                    importFile), someDest); // two chucks
+            VastTraceToken token = new VastTraceToken(Optional.empty(), 123456L,
+                    456789);
+            VastTransaction mockTrans = new VastTransaction()
+            {
                 @Override
                 public long getId()
                 {
@@ -159,7 +179,9 @@ public class TestWorkLoad
             };
             int numberOfRetries = 0;
             try {
-                importExecutor.execute(ctx, mockTrans, token, ImmutableList.of(uri1, uri2), () -> getRetryStrategy(numberOfRetries), true, null);
+                importExecutor.execute(ctx, mockTrans, token,
+                        ImmutableList.of(uri1, uri2),
+                        () -> getRetryStrategy(numberOfRetries), true, new QueryDataExtraParams(), null);
                 fail("Expected an exception");
             }
             catch (Throwable any) {

@@ -8,7 +8,9 @@ import com.vastdata.client.error.VastUserException;
 
 public final class SparkExceptionFactory
 {
-    private SparkExceptionFactory() {}
+    private SparkExceptionFactory()
+    {
+    }
 
     public static VastUserException tableOptionNotProvided()
     {

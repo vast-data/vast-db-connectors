@@ -4,12 +4,13 @@
 
 package com.vastdata.client.stats;
 
+@SuppressWarnings("checkstyle:MemberName")
 public class VastStatistics
 {
     private final Long num_rows;
-
     private final Long size_in_bytes;
 
+    @SuppressWarnings("checkstyle:ParameterName")
     public VastStatistics(Long num_rows, Long size_in_bytes)
     {
         this.num_rows = num_rows;
@@ -27,7 +28,9 @@ public class VastStatistics
     }
 
     @Override
-    public String toString() {
-        return String.format("num_rows=%s, size_in_bytes=%s", this.getNumRows(), this.getSizeInBytes());
+    public String toString()
+    {
+        return String.format("num_rows=%s, size_in_bytes=%s", this.getNumRows(),
+                this.getSizeInBytes());
     }
 }

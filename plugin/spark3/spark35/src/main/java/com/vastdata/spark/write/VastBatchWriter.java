@@ -7,17 +7,20 @@ package com.vastdata.spark.write;
 import com.vastdata.ListShuffler;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.error.VastUserException;
-import com.vastdata.spark.VastTable;
 import com.vastdata.client.tx.VastAutocommitTransaction;
 import com.vastdata.client.tx.VastTransactionFactory;
+import com.vastdata.spark.VastTable;
 import com.vastdata.spark.tx.VastSparkTransactionsManager;
 import ndb.NDB;
+import ndb.NDBSparkSessionExtension;
+import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.connector.write.DeltaBatchWrite;
 import org.apache.spark.sql.connector.write.DeltaWriterFactory;
 import org.apache.spark.sql.connector.write.PhysicalWriteInfo;
 import org.apache.spark.sql.connector.write.WriterCommitMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import scala.collection.immutable.Map;
 
 import java.net.URI;
 import java.util.Arrays;
@@ -28,26 +31,46 @@ import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 public class VastBatchWriter
         implements DeltaBatchWrite
 {
-    private static final Logger LOG = LoggerFactory.getLogger(VastBatchWriter.class);
+    private static final Logger LOG = LoggerFactory.getLogger(
+            VastBatchWriter.class);
     private final VastSparkTransactionsManager transactionsManager;
     private final VastTable table;
     private VastAutocommitTransaction tx;
 
-    public VastBatchWriter(VastClient client, VastTable table) {
+    public VastBatchWriter(VastClient client, VastTable table)
+    {
         this.table = table;
-        this.transactionsManager = VastSparkTransactionsManager.getInstance(client, new VastTransactionFactory());
-
+        this.transactionsManager = VastSparkTransactionsManager.getInstance(
+                client, new VastTransactionFactory());
     }
 
     @Override
     public DeltaWriterFactory createBatchWriterFactory(PhysicalWriteInfo info)
     {
-        final String endUser = null;
-        LOG.info("createBatchWriterFactory() number of partitions: {}", info.numPartitions());
-        this.tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser);
+        final String endUser;
+        Map<String, String> sessionConfig = SparkSession
+                .getActiveSession()
+                .get()
+                .conf()
+                .getAll();
         try {
-            ListShuffler<URI> listShuffler = new ListShuffler<>(Optional.ofNullable(NDB.getConfig().getSeedForShufflingEndpoints()));
-            return new VastWriteFactory(tx.getTransaction(), NDB.getConfig(), table, listShuffler.randomizeList(NDB.getConfig().getDataEndpoints()));
+            endUser = NDBSparkSessionExtension.getSessionUser(NDB.getConfig());
+        }
+        catch (VastUserException e) {
+            throw new RuntimeException(e);
+        }
+        LOG.info("createBatchWriterFactory() number of partitions: {}",
+                info.numPartitions());
+        this.tx = VastAutocommitTransaction.createNewOrReuseFromEnv(
+                transactionsManager,
+                () -> transactionsManager.startTransaction(endUser), endUser);
+        try {
+            ListShuffler<URI> listShuffler = new ListShuffler<>(
+                    Optional.ofNullable(
+                            NDB.getConfig().getSeedForShufflingEndpoints()));
+            return new VastWriteFactory(tx.getTransaction(), NDB.getConfig(),
+                    table, listShuffler.randomizeList(
+                    NDB.getConfig().getDataEndpoints()), sessionConfig);
         }
         catch (VastUserException e) {
             throw toRuntime(e);
@@ -88,7 +111,7 @@ public class VastBatchWriter
                 tx.close();
             }
             catch (Exception e) {
-                throw toRuntime(e);
+                LOG.warn("Failed closing transaction", e);
             }
         }
         else {

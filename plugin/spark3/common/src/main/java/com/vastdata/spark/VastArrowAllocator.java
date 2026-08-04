@@ -9,10 +9,13 @@ import org.apache.arrow.memory.RootAllocator;
 
 public final class VastArrowAllocator
 {
-    private VastArrowAllocator() {}
-
     private static final RootAllocator rootAllocator = new RootAllocator();
-    private static final BufferAllocator writeAllocator = rootAllocator.newChildAllocator("NDBWriteAllocator", 0, Long.MAX_VALUE);
+    private static final BufferAllocator writeAllocator = rootAllocator.newChildAllocator(
+            "NDBWriteAllocator", 0, Long.MAX_VALUE);
+
+    private VastArrowAllocator()
+    {
+    }
 
     public static BufferAllocator writeAllocator()
     {

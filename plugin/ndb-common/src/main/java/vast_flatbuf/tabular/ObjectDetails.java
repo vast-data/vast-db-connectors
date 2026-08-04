@@ -34,6 +34,9 @@ public final class ObjectDetails extends Table {
   public long sortingScore() { int o = __offset(18); return o != 0 ? bb.getLong(o + bb_pos) : 0L; }
   public long writeAmplification() { int o = __offset(20); return o != 0 ? bb.getLong(o + bb_pos) : 0L; }
   public long acummulativeRowInseritionCount() { int o = __offset(22); return o != 0 ? bb.getLong(o + bb_pos) : 0L; }
+  public boolean partitioningKeyEnabled() { int o = __offset(24); return o != 0 ? 0!=bb.get(o + bb_pos) : false; }
+  public long mstPointer() { int o = __offset(26); return o != 0 ? bb.getLong(o + bb_pos) : 281474976710655L; }
+  public int clusteringProgress() { int o = __offset(28); return o != 0 ? bb.get(o + bb_pos) & 0xFF : 0; }
 
   public static int createObjectDetails(FlatBufferBuilder builder,
       int nameOffset,
@@ -45,8 +48,12 @@ public final class ObjectDetails extends Table {
       boolean sorting_key_enabled,
       long sorting_score,
       long write_amplification,
-      long acummulative_row_inserition_count) {
-    builder.startTable(10);
+      long acummulative_row_inserition_count,
+      boolean partitioning_key_enabled,
+      long mst_pointer,
+      int clustering_progress) {
+    builder.startTable(13);
+    ObjectDetails.addMstPointer(builder, mst_pointer);
     ObjectDetails.addAcummulativeRowInseritionCount(builder, acummulative_row_inserition_count);
     ObjectDetails.addWriteAmplification(builder, write_amplification);
     ObjectDetails.addSortingScore(builder, sorting_score);
@@ -56,11 +63,13 @@ public final class ObjectDetails extends Table {
     ObjectDetails.addHandle(builder, handleOffset);
     ObjectDetails.addProperties(builder, propertiesOffset);
     ObjectDetails.addName(builder, nameOffset);
+    ObjectDetails.addClusteringProgress(builder, clustering_progress);
+    ObjectDetails.addPartitioningKeyEnabled(builder, partitioning_key_enabled);
     ObjectDetails.addSortingKeyEnabled(builder, sorting_key_enabled);
     return ObjectDetails.endObjectDetails(builder);
   }
 
-  public static void startObjectDetails(FlatBufferBuilder builder) { builder.startTable(10); }
+  public static void startObjectDetails(FlatBufferBuilder builder) { builder.startTable(13); }
   public static void addName(FlatBufferBuilder builder, int nameOffset) { builder.addOffset(0, nameOffset, 0); }
   public static void addProperties(FlatBufferBuilder builder, int propertiesOffset) { builder.addOffset(1, propertiesOffset, 0); }
   public static void addHandle(FlatBufferBuilder builder, int handleOffset) { builder.addOffset(2, handleOffset, 0); }
@@ -71,6 +80,9 @@ public final class ObjectDetails extends Table {
   public static void addSortingScore(FlatBufferBuilder builder, long sortingScore) { builder.addLong(7, sortingScore, 0L); }
   public static void addWriteAmplification(FlatBufferBuilder builder, long writeAmplification) { builder.addLong(8, writeAmplification, 0L); }
   public static void addAcummulativeRowInseritionCount(FlatBufferBuilder builder, long acummulativeRowInseritionCount) { builder.addLong(9, acummulativeRowInseritionCount, 0L); }
+  public static void addPartitioningKeyEnabled(FlatBufferBuilder builder, boolean partitioningKeyEnabled) { builder.addBoolean(10, partitioningKeyEnabled, false); }
+  public static void addMstPointer(FlatBufferBuilder builder, long mstPointer) { builder.addLong(11, mstPointer, 281474976710655L); }
+  public static void addClusteringProgress(FlatBufferBuilder builder, int clusteringProgress) { builder.addByte(12, (byte)clusteringProgress, (byte)0); }
   public static int endObjectDetails(FlatBufferBuilder builder) {
     int o = builder.endTable();
     return o;

@@ -28,16 +28,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.IntStream;
 
-import static spark.sql.catalog.ndb.TypeUtil.SPARK_ROW_ID_FIELD;
+import static spark.sql.catalog.ndb.TypeUtil.SPARK_DEC128_ROW_ID_FIELD;
+import static spark.sql.catalog.ndb.TypeUtil.SPARK_INT64_ROW_ID_FIELD;
 
 public class VastCatalogCreateColumnOverride
         implements CatalogExtension
 {
-    private static final Logger LOG = LoggerFactory.getLogger(VastCatalogCreateColumnOverride.class);
+    private static final Logger LOG = LoggerFactory.getLogger(
+            VastCatalogCreateColumnOverride.class);
 
     private final VastCatalog vastCatalog;
 
@@ -93,25 +96,45 @@ public class VastCatalogCreateColumnOverride
     }
 
     @Override
-    public Table createTable(Identifier ident, StructType schema, Transform[] partitions, Map<String, String> properties)
+    public Table createTable(Identifier ident, StructType schema,
+            Transform[] partitions, Map<String, String> properties)
             throws TableAlreadyExistsException, NoSuchNamespaceException
     {
-        try {
-            schema.apply(SPARK_ROW_ID_FIELD.name());
-            StructField[] fields = IntStream.range(0, schema.size()).mapToObj(schema::apply).filter(f -> !SPARK_ROW_ID_FIELD.name().equals(f.name())).toArray(StructField[]::new);
-            LOG.info("Removed {} column from new table {} schema: {}", SPARK_ROW_ID_FIELD.name(), ident, fields);
-            return vastCatalog.createTable(ident, new StructType(fields), partitions, properties);
+        List<String> namesList = Arrays.asList(schema.names());
+        String rowIdName = namesList.contains(
+                SPARK_DEC128_ROW_ID_FIELD.name()) ?
+                SPARK_DEC128_ROW_ID_FIELD.name() :
+                (namesList.contains(SPARK_INT64_ROW_ID_FIELD.name()) ?
+                        SPARK_INT64_ROW_ID_FIELD.name() :
+                        null);
+        if (rowIdName != null) {
+            StructField[] fields = IntStream
+                    .range(0, schema.size())
+                    .mapToObj(schema::apply)
+                    .filter(f -> !rowIdName.equals(f.name()))
+                    .toArray(StructField[]::new);
+            LOG.info("Removed {} column from new table {} schema: {}",
+                    rowIdName, ident, fields);
+            return vastCatalog.createTable(ident, new StructType(fields),
+                    partitions, properties);
         }
-        catch (IllegalArgumentException ignored) {
-            return vastCatalog.createTable(ident, schema, partitions, properties);
+        else {
+            return vastCatalog.createTable(ident, schema, partitions,
+                    properties);
         }
     }
 
     @Override
-    public Table createTable(Identifier ident, Column[] columns, Transform[] partitions, Map<String, String> properties)
+    public Table createTable(Identifier ident, Column[] columns,
+            Transform[] partitions, Map<String, String> properties)
             throws TableAlreadyExistsException, NoSuchNamespaceException
     {
-        Column[] newColumns = Arrays.stream(columns).filter(f -> !SPARK_ROW_ID_FIELD.name().equals(f.name())).toArray(Column[]::new);
+        Column[] newColumns = Arrays.stream(columns).filter(
+                f -> !SPARK_DEC128_ROW_ID_FIELD
+                        .name()
+                        .equals(f.name()) && !SPARK_INT64_ROW_ID_FIELD
+                        .name()
+                        .equals(f.name())).toArray(Column[]::new);
         StructType schema = CatalogV2Util.v2ColumnsToStructType(newColumns);
         return vastCatalog.createTable(ident, schema, partitions, properties);
     }
@@ -195,7 +218,8 @@ public class VastCatalogCreateColumnOverride
     }
 
     @Override
-    public void createNamespace(String[] namespace, Map<String, String> metadata)
+    public void createNamespace(String[] namespace,
+            Map<String, String> metadata)
             throws NamespaceAlreadyExistsException
     {
         vastCatalog.createNamespace(namespace, metadata);

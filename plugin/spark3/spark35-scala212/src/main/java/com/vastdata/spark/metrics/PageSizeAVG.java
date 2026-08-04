@@ -6,7 +6,8 @@ package com.vastdata.spark.metrics;
 
 import org.apache.spark.sql.connector.metric.CustomAvgMetric;
 
-public class PageSizeAVG extends CustomAvgMetric
+public class PageSizeAVG
+        extends CustomAvgMetric
 {
     @Override
     public String name()

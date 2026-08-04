@@ -8,16 +8,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-public final class RowColumnSecurityResponse {
+public final class RowColumnSecurityResponse
+{
     final List<String> rowFilters;
     final Set<String> allowedColumns;
     final Set<String> deniedColumns;
     final Map<String, String> maskedColumns;
 
     public RowColumnSecurityResponse(final List<String> rowFilters,
-                                     final Set<String> allowedColumns,
-                                     final Set<String> deniedColumns,
-                                     final Map<String, String> maskedColumns)
+            final Set<String> allowedColumns, final Set<String> deniedColumns,
+            final Map<String, String> maskedColumns)
     {
         this.rowFilters = rowFilters;
         this.allowedColumns = allowedColumns;
@@ -46,12 +46,8 @@ public final class RowColumnSecurityResponse {
     }
 
     @Override
-    public String toString() {
-        return "RowColumnSecurityResponse{" +
-                "rowFilters=" + rowFilters +
-                ", allowedColumns=" + allowedColumns +
-                ", deniedColumns=" + deniedColumns +
-                ", maskedColumns=" + maskedColumns +
-                '}';
+    public String toString()
+    {
+        return "RowColumnSecurityResponse{" + "rowFilters=" + rowFilters + ", allowedColumns=" + allowedColumns + ", deniedColumns=" + deniedColumns + ", maskedColumns=" + maskedColumns + '}';
     }
 }

@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
         <groupId>ndb</groupId>
         <artifactId>spark-vast</artifactId>
-        <version>5.4.0</version>
+        <version>5.5.0</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
     <artifactId>spark-vast-spark34</artifactId>
-    <version>5.4.0</version>
+    <version>5.5.0</version>
     <name>spark-34</name>
     <description>Spark - VAST for Spark 3.4</description>
     <packaging>jar</packaging>
@@ -59,6 +59,7 @@
             <groupId>com.google.flatbuffers</groupId>
             <artifactId>flatbuffers-java</artifactId>
             <version>2.0.3</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>com.google.guava</groupId>
@@ -172,8 +173,8 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration combine.self="override">
-                    <source>8</source>
-                    <target>8</target>
+                    <source>11</source>
+                    <target>11</target>
                     <fork>false</fork>
                 </configuration>
             </plugin>
@@ -214,6 +215,7 @@
                         <configuration>
                             <failOnWarning>false</failOnWarning>
                             <ignoredDependencies>
+                                <ignoredDependency>org.apache.spark:spark-VDB-thriftserver_2.13</ignoredDependency>
                                 <ignoredDependency>io.airlift:http-client</ignoredDependency>
                                 <ignoredDependency>com.amazonaws:aws-java-sdk-core</ignoredDependency>
                             </ignoredDependencies>

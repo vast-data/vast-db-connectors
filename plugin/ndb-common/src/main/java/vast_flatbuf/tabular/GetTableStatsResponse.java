@@ -30,6 +30,15 @@ public final class GetTableStatsResponse extends Table {
   public long sortingScore() { int o = __offset(16); return o != 0 ? bb.getLong(o + bb_pos) : 0L; }
   public long writeAmplification() { int o = __offset(18); return o != 0 ? bb.getLong(o + bb_pos) : 0L; }
   public long acummulativeRowInseritionCount() { int o = __offset(20); return o != 0 ? bb.getLong(o + bb_pos) : 0L; }
+  public vast_flatbuf.tabular.VectorIndexMetadata vectorIndexMetadata() { return vectorIndexMetadata(new vast_flatbuf.tabular.VectorIndexMetadata()); }
+  public vast_flatbuf.tabular.VectorIndexMetadata vectorIndexMetadata(vast_flatbuf.tabular.VectorIndexMetadata obj) { int o = __offset(22); return o != 0 ? obj.__assign(__indirect(o + bb_pos), bb) : null; }
+  public boolean partitioningKeyEnabled() { int o = __offset(24); return o != 0 ? 0!=bb.get(o + bb_pos) : false; }
+  public long numPartitions() { int o = __offset(26); return o != 0 ? bb.getLong(o + bb_pos) : 0L; }
+  public vast_flatbuf.tabular.VectorIndexMetadata vectorIndicesMetadata(int j) { return vectorIndicesMetadata(new vast_flatbuf.tabular.VectorIndexMetadata(), j); }
+  public vast_flatbuf.tabular.VectorIndexMetadata vectorIndicesMetadata(vast_flatbuf.tabular.VectorIndexMetadata obj, int j) { int o = __offset(28); return o != 0 ? obj.__assign(__indirect(__vector(o) + j * 4), bb) : null; }
+  public int vectorIndicesMetadataLength() { int o = __offset(28); return o != 0 ? __vector_len(o) : 0; }
+  public vast_flatbuf.tabular.VectorIndexMetadata.Vector vectorIndicesMetadataVector() { return vectorIndicesMetadataVector(new vast_flatbuf.tabular.VectorIndexMetadata.Vector()); }
+  public vast_flatbuf.tabular.VectorIndexMetadata.Vector vectorIndicesMetadataVector(vast_flatbuf.tabular.VectorIndexMetadata.Vector obj) { int o = __offset(28); return o != 0 ? obj.__assign(__vector(o), 4, bb) : null; }
 
   public static int createGetTableStatsResponse(FlatBufferBuilder builder,
       long num_rows,
@@ -40,21 +49,29 @@ public final class GetTableStatsResponse extends Table {
       boolean sorting_key_enabled,
       long sorting_score,
       long write_amplification,
-      long acummulative_row_inserition_count) {
-    builder.startTable(9);
+      long acummulative_row_inserition_count,
+      int vector_index_metadataOffset,
+      boolean partitioning_key_enabled,
+      long num_partitions,
+      int vector_indices_metadataOffset) {
+    builder.startTable(13);
+    GetTableStatsResponse.addNumPartitions(builder, num_partitions);
     GetTableStatsResponse.addAcummulativeRowInseritionCount(builder, acummulative_row_inserition_count);
     GetTableStatsResponse.addWriteAmplification(builder, write_amplification);
     GetTableStatsResponse.addSortingScore(builder, sorting_score);
     GetTableStatsResponse.addSizeInBytes(builder, size_in_bytes);
     GetTableStatsResponse.addNumRows(builder, num_rows);
+    GetTableStatsResponse.addVectorIndicesMetadata(builder, vector_indices_metadataOffset);
+    GetTableStatsResponse.addVectorIndexMetadata(builder, vector_index_metadataOffset);
     GetTableStatsResponse.addVips(builder, vipsOffset);
     GetTableStatsResponse.addAddressType(builder, address_typeOffset);
+    GetTableStatsResponse.addPartitioningKeyEnabled(builder, partitioning_key_enabled);
     GetTableStatsResponse.addSortingKeyEnabled(builder, sorting_key_enabled);
     GetTableStatsResponse.addIsExternalRowidAlloc(builder, is_external_rowid_alloc);
     return GetTableStatsResponse.endGetTableStatsResponse(builder);
   }
 
-  public static void startGetTableStatsResponse(FlatBufferBuilder builder) { builder.startTable(9); }
+  public static void startGetTableStatsResponse(FlatBufferBuilder builder) { builder.startTable(13); }
   public static void addNumRows(FlatBufferBuilder builder, long numRows) { builder.addLong(0, numRows, 0L); }
   public static void addSizeInBytes(FlatBufferBuilder builder, long sizeInBytes) { builder.addLong(1, sizeInBytes, 0L); }
   public static void addIsExternalRowidAlloc(FlatBufferBuilder builder, boolean isExternalRowidAlloc) { builder.addBoolean(2, isExternalRowidAlloc, false); }
@@ -66,6 +83,12 @@ public final class GetTableStatsResponse extends Table {
   public static void addSortingScore(FlatBufferBuilder builder, long sortingScore) { builder.addLong(6, sortingScore, 0L); }
   public static void addWriteAmplification(FlatBufferBuilder builder, long writeAmplification) { builder.addLong(7, writeAmplification, 0L); }
   public static void addAcummulativeRowInseritionCount(FlatBufferBuilder builder, long acummulativeRowInseritionCount) { builder.addLong(8, acummulativeRowInseritionCount, 0L); }
+  public static void addVectorIndexMetadata(FlatBufferBuilder builder, int vectorIndexMetadataOffset) { builder.addOffset(9, vectorIndexMetadataOffset, 0); }
+  public static void addPartitioningKeyEnabled(FlatBufferBuilder builder, boolean partitioningKeyEnabled) { builder.addBoolean(10, partitioningKeyEnabled, false); }
+  public static void addNumPartitions(FlatBufferBuilder builder, long numPartitions) { builder.addLong(11, numPartitions, 0L); }
+  public static void addVectorIndicesMetadata(FlatBufferBuilder builder, int vectorIndicesMetadataOffset) { builder.addOffset(12, vectorIndicesMetadataOffset, 0); }
+  public static int createVectorIndicesMetadataVector(FlatBufferBuilder builder, int[] data) { builder.startVector(4, data.length, 4); for (int i = data.length - 1; i >= 0; i--) builder.addOffset(data[i]); return builder.endVector(); }
+  public static void startVectorIndicesMetadataVector(FlatBufferBuilder builder, int numElems) { builder.startVector(4, numElems, 4); }
   public static int endGetTableStatsResponse(FlatBufferBuilder builder) {
     int o = builder.endTable();
     return o;

@@ -21,18 +21,26 @@ import static spark.sql.catalog.ndb.SparkVectorAdaptorUtil.convertNonMicroTSVect
 public class TimestampVectorAdaptor
         implements VectorAdaptor
 {
-    private static final Logger LOG = LoggerFactory.getLogger(TimestampVectorAdaptor.class);
+    private static final Logger LOG = LoggerFactory.getLogger(
+            TimestampVectorAdaptor.class);
 
     @Override
-    public FieldVector adapt(FieldVector vector, Field field, BufferAllocator allocator)
+    public FieldVector adapt(FieldVector vector, Field field,
+            BufferAllocator allocator)
     {
         LOG.debug("Adapting Timestamp column: {}", field);
         try {
-            Field newField = new Field(field.getName(), new FieldType(field.getFieldType().isNullable(), new ArrowType.Timestamp(TimeUnit.MICROSECOND, null), null), null);
-            TimeStampMicroTZVector newVector = new TimeStampMicroTZVector(newField, allocator);
-            convertNonMicroTSVectorToMicroTSVector((TimeStampVector) vector, newVector);
+            Field newField = new Field(field.getName(),
+                    new FieldType(field.getFieldType().isNullable(),
+                            new ArrowType.Timestamp(TimeUnit.MICROSECOND, null),
+                            null), null);
+            TimeStampMicroTZVector newVector = new TimeStampMicroTZVector(
+                    newField, allocator);
+            convertNonMicroTSVectorToMicroTSVector((TimeStampVector) vector,
+                    newVector);
             return newVector;
-        } finally {
+        }
+        finally {
             vector.close();
         }
     }

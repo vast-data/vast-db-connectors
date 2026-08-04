@@ -59,7 +59,8 @@ import static spark.sql.catalog.ndb.TypeUtil.sparkFieldToArrowField;
 public class SparkPredicateSerializer
         extends VastExpressionSerializer
 {
-    private static final Logger LOG = LoggerFactory.getLogger(SparkPredicateSerializer.class);
+    private static final Logger LOG = LoggerFactory.getLogger(
+            SparkPredicateSerializer.class);
 
     private final String traceToken;
     // List contains AND-ed expressions, MultiMap contains OR-ed expressions
@@ -67,7 +68,9 @@ public class SparkPredicateSerializer
     private final EnumeratedSchema schema;
     private final Map<NamedReference, Integer> columnIndexMap;
 
-    public SparkPredicateSerializer(String traceToken, List<List<VastPredicate>> predicates, EnumeratedSchema enumeratedSchema)
+    public SparkPredicateSerializer(String traceToken,
+            List<List<VastPredicate>> predicates,
+            EnumeratedSchema enumeratedSchema)
     {
         this.traceToken = traceToken;
         this.andOredPredicates = predicates;
@@ -75,12 +78,14 @@ public class SparkPredicateSerializer
         this.schema = enumeratedSchema;
     }
 
-    private static int getColumnPosition(NamedReference column, EnumeratedSchema enumeratedSchema)
+    private static int getColumnPosition(NamedReference column,
+            EnumeratedSchema enumeratedSchema)
     {
         // TODO: only predicates over scalar columns are supported
         if (column.fieldNames().length != 1) {
-            throw new UnsupportedOperationException("unsupported predicate pushdown for nested column: " +
-                    Arrays.toString(column.fieldNames()));
+            throw new UnsupportedOperationException(
+                    "unsupported predicate pushdown for nested column: " + Arrays.toString(
+                            column.fieldNames()));
         }
         String colName = column.fieldNames()[0];
         return enumeratedSchema.getBaseFieldIndexByName(colName);
@@ -93,23 +98,27 @@ public class SparkPredicateSerializer
         try {
             for (List<VastPredicate> oredList : this.andOredPredicates) {
                 if (LOG.isDebugEnabled()) {
-                    oredList.forEach(vp -> LOG.debug("{} Serializing predicate to Arrow flatbuffer: {}\n", traceToken, vp.getPredicate().toString()));
+                    oredList.forEach(vp -> LOG.debug(
+                            "{} Serializing predicate to Arrow flatbuffer: {}\n",
+                            traceToken, vp.getPredicate().toString()));
                 }
-                List<NamedReference> references = oredList.stream().map(VastPredicate::getReference).distinct().collect(Collectors.toList());
+                List<NamedReference> references = oredList.stream().map(
+                        VastPredicate::getReference).distinct().collect(
+                        Collectors.toList());
                 if (references.size() != 1) {
-                    throw new UnsupportedOperationException("Should have gotten a single column reference here, but got: " + references);
+                    throw new UnsupportedOperationException(
+                            "Should have gotten a single column reference here, but got: " + references);
                 }
                 else {
                     NamedReference nrHead = references.get(0);
-                    this.columnIndexMap.put(nrHead, buildColumn(getColumnPosition(nrHead, this.schema)));
+                    this.columnIndexMap.put(nrHead, buildColumn(
+                            getColumnPosition(nrHead, this.schema)));
                 }
             }
             int[] offsets = new int[this.andOredPredicates.size()];
             int i = 0;
             for (List<VastPredicate> oredList : this.andOredPredicates) {
-                offsets[i++] = buildOr(
-                        serializeRanges(oredList)
-                );
+                offsets[i++] = buildOr(serializeRanges(oredList));
             }
             return buildAnd(offsets);
         }
@@ -119,119 +128,139 @@ public class SparkPredicateSerializer
         }
     }
 
-
-    private int[] serializeRanges(List<VastPredicate> parsedOrPreds) {
+    private int[] serializeRanges(List<VastPredicate> parsedOrPreds)
+    {
         int[] offsets = new int[parsedOrPreds.size()];
         int i = 0;
         for (VastPredicate pred : parsedOrPreds) {
-            LOG.debug("{} serializing ranges " + pred.getPredicate(), traceToken);
+            LOG.debug("{} serializing ranges " + pred.getPredicate(),
+                    traceToken);
             offsets[i++] = serializeRange(pred);
         }
         return offsets;
     }
 
-    private int serializeRange(VastPredicate pred) {
+    private int serializeRange(VastPredicate pred)
+    {
         int colIndex = this.columnIndexMap.get(pred.getReference());
-        LOG.debug("{} serializing range {} for column position {}", traceToken, pred.getPredicate(), colIndex);
+        LOG.debug("{} serializing range {} for column position {}", traceToken,
+                pred.getPredicate(), colIndex);
         switch (pred.getPredicate().name()) {
             case ">":
-                return buildGreater(colIndex, serializeLiteral(pred.getField(), ((LiteralValue<?>) pred.getPredicate().children()[1])), false);
+                return buildGreater(colIndex, serializeLiteral(pred.getField(),
+                                ((LiteralValue<?>) pred.getPredicate().children()[1])),
+                        false);
             case ">=":
-                return buildGreater(colIndex, serializeLiteral(pred.getField(), ((LiteralValue<?>) pred.getPredicate().children()[1])), true);
+                return buildGreater(colIndex, serializeLiteral(pred.getField(),
+                                ((LiteralValue<?>) pred.getPredicate().children()[1])),
+                        true);
             case "<":
-                return buildLess(colIndex, serializeLiteral(pred.getField(), ((LiteralValue<?>) pred.getPredicate().children()[1])), false);
+                return buildLess(colIndex, serializeLiteral(pred.getField(),
+                                ((LiteralValue<?>) pred.getPredicate().children()[1])),
+                        false);
             case "<=":
-                return buildLess(colIndex, serializeLiteral(pred.getField(), ((LiteralValue<?>) pred.getPredicate().children()[1])), true);
+                return buildLess(colIndex, serializeLiteral(pred.getField(),
+                                ((LiteralValue<?>) pred.getPredicate().children()[1])),
+                        true);
             case "=":
-                return buildEqual(colIndex, serializeLiteral(pred.getField(), ((LiteralValue<?>) pred.getPredicate().children()[1])));
+                return buildEqual(colIndex, serializeLiteral(pred.getField(),
+                        ((LiteralValue<?>) pred.getPredicate().children()[1])));
             case "IS_NULL":
                 return buildIsNull(colIndex);
             case "IS_NOT_NULL":
                 return buildIsValid(colIndex);
             case "AND":
             case "OR":
-                VastPredicate[] childs = new VastPredicate[pred.getPredicate().children().length];
-                for (int i = 0; i < pred.getPredicate().children().length; i++) {
-                    childs[i] = new VastPredicate((Predicate) pred.getPredicate().children()[i], pred.getReference(), pred.getField());
+                VastPredicate[] childs = new VastPredicate[pred
+                        .getPredicate()
+                        .children().length];
+                for (int i = 0; i < pred
+                        .getPredicate()
+                        .children().length; i++) {
+                    childs[i] = new VastPredicate(
+                            (Predicate) pred.getPredicate().children()[i],
+                            pred.getReference(), pred.getField());
                 }
-                if (Objects.equals(pred.getPredicate().name(), "AND"))
+                if (Objects.equals(pred.getPredicate().name(), "AND")) {
                     return buildAnd(serializeRanges(Arrays.asList(childs)));
-                else
+                }
+                else {
                     return buildOr(serializeRanges(Arrays.asList(childs)));
+                }
         }
-        throw new UnsupportedOperationException("Unimplemented expression serializer " +  pred.getPredicate().name() + " pred:" + pred.toString());
+        throw new UnsupportedOperationException(
+                "Unimplemented expression serializer " + pred
+                        .getPredicate()
+                        .name() + " pred:" + pred.toString());
     }
 
-    private int serializeLiteral(StructField structField, LiteralValue<?> value) {
+    private int serializeLiteral(StructField structField, LiteralValue<?> value)
+    {
         DataType type = structField.dataType();
         if (LOG.isDebugEnabled()) {
-            LOG.debug("{} converting {} {} ({}) to Arrow literal", traceToken, type, value, value.getClass());
+            LOG.debug("{} converting {} {} ({}) to Arrow literal", traceToken,
+                    type, value, value.getClass());
         }
-        Field field = sparkFieldToArrowField(null, type, true, structField.metadata());
+        Field field = sparkFieldToArrowField(null, type, true,
+                structField.metadata());
         int fieldOffset = field.getField(builder);
         // Spark Data types specification:
         // https://spark.apache.org/docs/latest/sql-ref-datatypes.html
         if (type.equals(DataTypes.BooleanType)) {
-            return buildLiteral(
-                    LiteralImpl.BooleanLiteral,
-                    BooleanLiteral.createBooleanLiteral(builder, ((LiteralValue<Boolean>) value).value()),
-                    fieldOffset
-            );
+            return buildLiteral(LiteralImpl.BooleanLiteral,
+                    BooleanLiteral.createBooleanLiteral(builder,
+                            ((LiteralValue<Boolean>) value).value()),
+                    fieldOffset);
         }
         if (type.equals(DataTypes.ByteType)) {
-            return buildLiteral(
-                    LiteralImpl.Int8Literal,
-                    Int8Literal.createInt8Literal(builder, ((LiteralValue<Byte>) value).value()),
-                    fieldOffset
-            );
+            return buildLiteral(LiteralImpl.Int8Literal,
+                    Int8Literal.createInt8Literal(builder,
+                            ((LiteralValue<Byte>) value).value()), fieldOffset);
         }
         if (type.equals(DataTypes.ShortType)) {
-            return buildLiteral(
-                    LiteralImpl.Int16Literal,
-                    Int16Literal.createInt16Literal(builder, ((LiteralValue<Short>) value).value()),
-                    fieldOffset
-            );
+            return buildLiteral(LiteralImpl.Int16Literal,
+                    Int16Literal.createInt16Literal(builder,
+                            ((LiteralValue<Short>) value).value()),
+                    fieldOffset);
         }
         if (type.equals(DataTypes.IntegerType)) {
-            return buildLiteral(
-                    LiteralImpl.Int32Literal,
-                    Int32Literal.createInt32Literal(builder, ((LiteralValue<Integer>) value).value()),
-                    fieldOffset
-            );
+            return buildLiteral(LiteralImpl.Int32Literal,
+                    Int32Literal.createInt32Literal(builder,
+                            ((LiteralValue<Integer>) value).value()),
+                    fieldOffset);
         }
         if (type.equals(DataTypes.LongType)) {
-            return buildLiteral(
-                    LiteralImpl.Int64Literal,
-                    Int64Literal.createInt64Literal(builder, ((LiteralValue<Long>) value).value()),
-                    fieldOffset
-            );
+            return buildLiteral(LiteralImpl.Int64Literal,
+                    Int64Literal.createInt64Literal(builder,
+                            ((LiteralValue<Long>) value).value()), fieldOffset);
         }
         if (type.equals(DataTypes.FloatType)) {
-            return buildLiteral(
-                    LiteralImpl.Float32Literal,
-                    Float32Literal.createFloat32Literal(builder, ((LiteralValue<Float>) value).value()),
-                    fieldOffset
-            );
+            return buildLiteral(LiteralImpl.Float32Literal,
+                    Float32Literal.createFloat32Literal(builder,
+                            ((LiteralValue<Float>) value).value()),
+                    fieldOffset);
         }
         if (type.equals(DataTypes.DoubleType)) {
-            return buildLiteral(
-                    LiteralImpl.Float64Literal,
-                    Float64Literal.createFloat64Literal(builder, ((LiteralValue<Double>) value).value()),
-                    fieldOffset
-            );
+            return buildLiteral(LiteralImpl.Float64Literal,
+                    Float64Literal.createFloat64Literal(builder,
+                            ((LiteralValue<Double>) value).value()),
+                    fieldOffset);
         }
         if (type.equals(DataTypes.DateType)) {
-            return buildLiteral(
-                    LiteralImpl.DateLiteral,
-                    DateLiteral.createDateLiteral(builder, ((LiteralValue<Integer>) value).value().longValue()),
-                    fieldOffset
-            );
+            return buildLiteral(LiteralImpl.DateLiteral,
+                    DateLiteral.createDateLiteral(builder,
+                            ((LiteralValue<Integer>) value)
+                                    .value()
+                                    .longValue()), fieldOffset);
         }
-        if (type.equals(DataTypes.TimestampType) || type.equals(DataTypes.TimestampNTZType)) {
+        if (type.equals(DataTypes.TimestampType) || type.equals(
+                DataTypes.TimestampNTZType)) {
             long longValue = ((LiteralValue<Long>) value).value().longValue();
             if (structField.metadata().contains(TIMESTAMP_PRECISION)) {
-                long precisionID = structField.metadata().getLong(TIMESTAMP_PRECISION);
-                TimestampPrecision timestampPrecision = TimestampPrecision.fromID((int) precisionID);
+                long precisionID = structField.metadata().getLong(
+                        TIMESTAMP_PRECISION);
+                TimestampPrecision timestampPrecision = TimestampPrecision.fromID(
+                        (int) precisionID);
                 if (timestampPrecision != null) {
                     long newLong;
                     switch (timestampPrecision) {
@@ -248,66 +277,70 @@ public class SparkPredicateSerializer
                             newLong = longValue * 1000;
                             break;
                         default:
-                            throw new RuntimeException(format("Unexpected precision enum: %s", timestampPrecision));
+                            throw new RuntimeException(
+                                    format("Unexpected precision enum: %s",
+                                            timestampPrecision));
                     }
-                    return buildLiteral(
-                            LiteralImpl.TimestampLiteral,
-                            TimestampLiteral.createTimestampLiteral(builder, newLong),
-                            fieldOffset
-                    );
+                    return buildLiteral(LiteralImpl.TimestampLiteral,
+                            TimestampLiteral.createTimestampLiteral(builder,
+                                    newLong), fieldOffset);
                 }
                 else {
-                    throw new RuntimeException(format("Unexpected precision id: %s", precisionID));
+                    throw new RuntimeException(
+                            format("Unexpected precision id: %s", precisionID));
                 }
             }
             else {
-                LOG.warn("Timestamp type {} has no metadata, defaulting to Microseconds precision", type);
-                return buildLiteral(
-                        LiteralImpl.TimestampLiteral,
-                        TimestampLiteral.createTimestampLiteral(builder, longValue),
-                        fieldOffset
-                );
+                LOG.warn(
+                        "Timestamp type {} has no metadata, defaulting to Microseconds precision",
+                        type);
+                return buildLiteral(LiteralImpl.TimestampLiteral,
+                        TimestampLiteral.createTimestampLiteral(builder,
+                                longValue), fieldOffset);
             }
         }
         if (type.equals(DataTypes.StringType)) {
-            return buildLiteral(
-                    LiteralImpl.StringLiteral,
+            return buildLiteral(LiteralImpl.StringLiteral,
                     StringLiteral.createStringLiteral(builder,
                             builder.createString(
-                                    ((LiteralValue<UTF8String>) value).value().getByteBuffer())),
-                    fieldOffset
-            );
+                                    ((LiteralValue<UTF8String>) value)
+                                            .value()
+                                            .getByteBuffer())), fieldOffset);
         }
         if (type instanceof CharType) {
-            verify(CharMatcher.ascii().matchesAllOf(((LiteralValue<UTF8String>) value).value().toString()), "CHAR type predicate pushdown is supported only for ASCII charset");
+            verify(CharMatcher
+                            .ascii()
+                            .matchesAllOf(((LiteralValue<UTF8String>) value)
+                                    .value()
+                                    .toString()),
+                    "CHAR type predicate pushdown is supported only for ASCII charset");
             // Works for ASCII translations only.
             // Spark supports padding https://spark.apache.org/docs/latest/sql-ref-datatypes.html as VAST requires
             // TODO: 8/1/23 - Fixed len string is unsupported yet - remove this comment and test once implemented
-            return buildLiteral(
-                    LiteralImpl.FixedSizeBinaryLiteral,
-                    FixedSizeBinaryLiteral.createFixedSizeBinaryLiteral(builder, builder.createString(((LiteralValue<UTF8String>) value).value().toString())),
-                    fieldOffset
-            );
+            return buildLiteral(LiteralImpl.FixedSizeBinaryLiteral,
+                    FixedSizeBinaryLiteral.createFixedSizeBinaryLiteral(builder,
+                            builder.createString(
+                                    ((LiteralValue<UTF8String>) value)
+                                            .value()
+                                            .toString())), fieldOffset);
         }
         if (type.equals(VARBINARY) || type.equals(DataTypes.BinaryType)) {
             return buildLiteral(LiteralImpl.BinaryLiteral,
-                    BinaryLiteral.createBinaryLiteral(builder, builder.createByteVector((byte[]) value.value())),
-                    fieldOffset
-            );
+                    BinaryLiteral.createBinaryLiteral(builder,
+                            builder.createByteVector((byte[]) value.value())),
+                    fieldOffset);
         }
         if (type instanceof DecimalType) {
-            byte[] bytes = decimalToByteArray(((LiteralValue<Decimal>) value).value());
+            byte[] bytes = decimalToByteArray(
+                    ((LiteralValue<Decimal>) value).value());
             int valueOffset = DecimalLiteral.createValueVector(builder, bytes);
             return buildLiteral(LiteralImpl.DecimalLiteral,
-                    DecimalLiteral.createDecimalLiteral(
-                            builder,
-                            valueOffset
-                    ),
-                    fieldOffset
-            );
+                    DecimalLiteral.createDecimalLiteral(builder, valueOffset),
+                    fieldOffset);
         }
-//        TODO: handle DataTypes.CalendarIntervalType
-        throw new UnsupportedOperationException("Unimplemented literal serializer " + type + " " + value.toString());
+        //        TODO: handle DataTypes.CalendarIntervalType
+        throw new UnsupportedOperationException(
+                "Unimplemented literal serializer " + type + " " + value.toString());
     }
 
     protected byte[] decimalToByteArray(Decimal decimal)
@@ -333,10 +366,8 @@ public class SparkPredicateSerializer
 
     private int buildLiteral(Byte literalImpl, int implOffset, int fieldOffset)
     {
-        return Expression.createExpression(builder, ExpressionImpl.Literal, Literal.createLiteral(
-                builder,
-                literalImpl,
-                implOffset,
-                fieldOffset));
+        return Expression.createExpression(builder, ExpressionImpl.Literal,
+                Literal.createLiteral(builder, literalImpl, implOffset,
+                        fieldOffset));
     }
 }

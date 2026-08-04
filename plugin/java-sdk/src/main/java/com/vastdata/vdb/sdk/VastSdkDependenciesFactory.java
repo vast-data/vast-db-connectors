@@ -36,7 +36,8 @@ public class VastSdkDependenciesFactory
     @Override
     public VastRequestHeadersBuilder getHeadersFactory(String userName)
     {
-        return new CommonRequestHeadersBuilder(() -> VAST_SDK_V_1 + vastConfig.getEngineVersion());
+        return new CommonRequestHeadersBuilder(
+                () -> VAST_SDK_V_1 + vastConfig.getEngineVersion());
     }
 
     @Override
@@ -55,5 +56,11 @@ public class VastSdkDependenciesFactory
     public StatisticsUrlExtractor<?> getStatisticsUrlHelper()
     {
         return null;
+    }
+
+    @Override
+    public String getClientTag()
+    {
+        return "";
     }
 }

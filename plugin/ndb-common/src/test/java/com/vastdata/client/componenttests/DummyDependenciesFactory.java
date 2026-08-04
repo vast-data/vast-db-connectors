@@ -19,13 +19,12 @@ public class DummyDependenciesFactory
         implements VastDependenciesFactory
 {
     private final VastConfig vastConfig;
+    private final ValidSchemaNamePredicate schemaNamePredicate = new ValidSchemaNamePredicate();
 
     DummyDependenciesFactory(VastConfig vastConfig)
     {
         this.vastConfig = vastConfig;
     }
-
-    private final ValidSchemaNamePredicate schemaNamePredicate = new ValidSchemaNamePredicate();
 
     @Override
     public Predicate<String> getSchemaNameValidator()
@@ -36,7 +35,8 @@ public class DummyDependenciesFactory
     @Override
     public VastRequestHeadersBuilder getHeadersFactory(final String endUser)
     {
-        return new CommonRequestHeadersBuilder(() -> "DUMMY-" + vastConfig.getEngineVersion() + "-user:" + endUser);
+        return new CommonRequestHeadersBuilder(
+                () -> "DUMMY-" + vastConfig.getEngineVersion() + "-user:" + endUser);
     }
 
     @Override
@@ -55,5 +55,11 @@ public class DummyDependenciesFactory
     public StatisticsUrlExtractor<?> getStatisticsUrlHelper()
     {
         return null;
+    }
+
+    @Override
+    public String getClientTag()
+    {
+        return "";
     }
 }

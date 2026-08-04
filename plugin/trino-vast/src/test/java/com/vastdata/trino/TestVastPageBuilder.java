@@ -22,8 +22,7 @@ public class TestVastPageBuilder
 {
     public static Object[][] buildIsNullProvider()
     {
-        return new Object[][] {
-                {0, 1},
+        return new Object[][] {{0, 1},
                 {1, 1},
                 {4, 1},
                 {8, 1},
@@ -32,17 +31,15 @@ public class TestVastPageBuilder
                 {17, 1},
                 {127, 1},
                 {128, 1},
-                {129, 1}
-        };
+                {129, 1}};
     }
 
     @ParameterizedTest
     @MethodSource("buildIsNullProvider")
     public void testBuildIsNull(int vectorSize, int iterations)
     {
-        try (
-                BufferAllocator allocator = new RootAllocator();
-                IntVector intVector = new IntVector("i", allocator)) {
+        try (BufferAllocator allocator = new RootAllocator(); IntVector intVector = new IntVector(
+                "i", allocator)) {
             boolean[] isNull = new boolean[vectorSize];
             Random random = new Random(0);
             intVector.allocateNew(vectorSize);
@@ -64,9 +61,11 @@ public class TestVastPageBuilder
                 result = VastPageBuilder.buildIsNull(positions, vectors);
             }
             long took = (System.nanoTime() - start);
-            boolean[] actual = result.orElse(new boolean[vectorSize]); //empty = no NULLs
+            boolean[] actual = result.orElse(
+                    new boolean[vectorSize]); //empty = no NULLs
             assertTrue(Arrays.equals(actual, isNull));
-            System.out.printf("buildIsNull took: %.3f ns / position%n", took / ((double) positions * iterations));
+            System.out.printf("buildIsNull took: %.3f ns / position%n",
+                    took / ((double) positions * iterations));
         }
     }
 }

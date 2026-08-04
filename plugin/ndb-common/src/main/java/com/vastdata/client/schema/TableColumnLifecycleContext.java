@@ -14,7 +14,8 @@ public class TableColumnLifecycleContext
     private final String tableName;
     private final String schemaName;
 
-    public TableColumnLifecycleContext(String schemaName, String tableName, Field field)
+    public TableColumnLifecycleContext(String schemaName, String tableName,
+            Field field)
     {
         this.schemaName = schemaName;
         this.tableName = tableName;
@@ -44,7 +45,8 @@ public class TableColumnLifecycleContext
     @Override
     public String toString()
     {
-        return new StringJoiner(", ", TableColumnLifecycleContext.class.getSimpleName() + "[", "]")
+        return new StringJoiner(", ",
+                TableColumnLifecycleContext.class.getSimpleName() + "[", "]")
                 .add("field=" + field)
                 .add("tableName='" + tableName + "'")
                 .add("schemaName='" + schemaName + "'")

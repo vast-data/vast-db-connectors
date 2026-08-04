@@ -19,22 +19,24 @@ import org.apache.spark.unsafe.types.UTF8String;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import scala.Option;
-import scala.collection.JavaConverters;
 import scala.collection.IndexedSeq;
+import scala.collection.JavaConverters;
 import scala.collection.Seq;
 import spark.sql.catalog.ndb.InitializedVastCatalog;
 import spark.sql.catalog.ndb.VastCatalog;
 
 import java.util.Arrays;
 
+import static com.vastdata.spark.SparkPlannerUtil.getEmptySparkPlanSeq;
+
 public class ShowNDBViewsCommand
         extends V2CommandExec
         implements LeafExecNode
 {
-    private static final Logger LOG = LoggerFactory.getLogger(ShowNDBViewsCommand.class);
-
-    private IndexedSeq<SparkPlan> children = null;
+    private static final Logger LOG = LoggerFactory.getLogger(
+            ShowNDBViewsCommand.class);
     final ShowNDBViewsPlan original;
+    private IndexedSeq<SparkPlan> children = null;
 
     private ShowNDBViewsCommand(final ShowNDBViewsPlan original)
     {
@@ -42,17 +44,24 @@ public class ShowNDBViewsCommand
         this.original = original;
     }
 
+    public static ShowNDBViewsCommand instance(ShowNDBViewsPlan plan)
+    {
+        return new ShowNDBViewsCommand(plan);
+    }
+
     private InternalRow identifierToRow(final Identifier identifier)
     {
-        final String namespace = CatalogV2Implicits$.MODULE$.NamespaceHelper(identifier.namespace()).quoted();
+        final String namespace = CatalogV2Implicits$.MODULE$.NamespaceHelper(
+                identifier.namespace()).quoted();
         final String name = identifier.name();
         final boolean isTemp = session().sessionState().catalog().isTempView(
-                TableIdentifier.apply(
-                        identifier.name(),
+                TableIdentifier.apply(identifier.name(),
                         Option.apply(session().catalog().currentDatabase()),
-                        Option.apply(session().sessionState().catalogManager().currentCatalog().name())
-                )
-        );
+                        Option.apply(session()
+                                .sessionState()
+                                .catalogManager()
+                                .currentCatalog()
+                                .name())));
 
         final InternalRow row = new GenericInternalRow(3);
         row.update(0, UTF8String.fromString(namespace));
@@ -66,13 +75,23 @@ public class ShowNDBViewsCommand
     {
         final VastCatalog catalog = InitializedVastCatalog.getVastCatalog();
         try {
-            final String[] prefix = ((UnresolvedNamespace) original.original.child()).multipartIdentifier().drop(1).mkString(".").split("\\.");
+            final String[] prefix = ((UnresolvedNamespace) original.original.child())
+                    .multipartIdentifier()
+                    .drop(1)
+                    .mkString(".")
+                    .split("\\.");
             final Identifier[] views = catalog.listViews(prefix);
-            final Seq<InternalRow> result = JavaConverters.asScalaIteratorConverter(
-                    Arrays.stream(views).map(this::identifierToRow).iterator()).asScala().toSeq();
+            final Seq<InternalRow> result = JavaConverters
+                    .asScalaIteratorConverter(Arrays
+                            .stream(views)
+                            .map(this::identifierToRow)
+                            .iterator())
+                    .asScala()
+                    .toSeq();
             LOG.debug("Returning result: {}", result);
             return result;
-        } catch (final NoSuchNamespaceException error) {
+        }
+        catch (final NoSuchNamespaceException error) {
             throw new RuntimeException(error);
         }
     }
@@ -87,7 +106,7 @@ public class ShowNDBViewsCommand
     public Seq<SparkPlan> children()
     {
         if (this.children == null) {
-            return (Seq<SparkPlan>) scala.collection.immutable.Seq$.MODULE$.<SparkPlan>empty();
+            return getEmptySparkPlanSeq();
         }
         else {
             return children.toSeq();
@@ -117,10 +136,5 @@ public class ShowNDBViewsCommand
     public int productArity()
     {
         return 0;
-    }
-
-    public static ShowNDBViewsCommand instance(ShowNDBViewsPlan plan)
-    {
-        return new ShowNDBViewsCommand(plan);
     }
 }

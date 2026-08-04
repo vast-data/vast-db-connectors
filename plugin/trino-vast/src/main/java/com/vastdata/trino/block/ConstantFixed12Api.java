@@ -4,12 +4,14 @@
 
 package com.vastdata.trino.block;
 
-class ConstantFixed12Api implements Fixed12BlockApi
+class ConstantFixed12Api
+        implements Fixed12BlockApi
 {
     private final long first;
     private final int second;
 
-    ConstantFixed12Api(long first, int second) {
+    ConstantFixed12Api(long first, int second)
+    {
         this.second = second;
         this.first = first;
     }

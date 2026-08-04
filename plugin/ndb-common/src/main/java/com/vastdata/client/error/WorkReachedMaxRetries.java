@@ -11,7 +11,8 @@ public class WorkReachedMaxRetries
 {
     WorkReachedMaxRetries(int currentRetryCount)
     {
-        super(format("Number of attempts exceeded configuration: %s", currentRetryCount));
+        super(format("Number of attempts exceeded configuration: %s",
+                currentRetryCount));
     }
 
     @Override

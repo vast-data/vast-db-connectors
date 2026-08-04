@@ -23,10 +23,49 @@ import static org.testng.Assert.assertTrue;
 
 public class TestEvenSizeWithLimitChunkifier
 {
-    @Mock ImportDataFile mockImportDataFile;
     private static final URI ENDPOINT = URI.create("http://localhost");
-
+    @Mock ImportDataFile mockImportDataFile;
     private AutoCloseable autoCloseable;
+
+    @DataProvider
+    public static Object[][] testCases()
+    {
+        return new Object[][] {{1, 1, 1, 1, CHUNK_SIZE_LIMIT},
+                {CHUNK_SIZE_LIMIT, 1, 1, CHUNK_SIZE_LIMIT, CHUNK_SIZE_LIMIT},
+                {CHUNK_SIZE_LIMIT - 1,
+                        1,
+                        1,
+                        CHUNK_SIZE_LIMIT - 1,
+                        CHUNK_SIZE_LIMIT},
+                {CHUNK_SIZE_LIMIT * 2 + 1,
+                        1,
+                        3,
+                        CHUNK_SIZE_LIMIT,
+                        CHUNK_SIZE_LIMIT},
+                {CHUNK_SIZE_LIMIT,
+                        2,
+                        2,
+                        CHUNK_SIZE_LIMIT / 2,
+                        CHUNK_SIZE_LIMIT},
+                {CHUNK_SIZE_LIMIT + 1,
+                        2,
+                        2,
+                        CHUNK_SIZE_LIMIT / 2 + 1,
+                        CHUNK_SIZE_LIMIT},
+                {CHUNK_SIZE_LIMIT * 2,
+                        2,
+                        2,
+                        CHUNK_SIZE_LIMIT,
+                        CHUNK_SIZE_LIMIT},
+                // 2 saturated chunks
+                {CHUNK_SIZE_LIMIT * 8 * 2 + 1,
+                        8,
+                        8 * 2 + 1,
+                        CHUNK_SIZE_LIMIT,
+                        CHUNK_SIZE_LIMIT},
+                //2 * 8 saturated chunks + 1 smaller chunk
+        };
+    }
 
     @BeforeTest
     public void setup()
@@ -41,35 +80,29 @@ public class TestEvenSizeWithLimitChunkifier
         autoCloseable.close();
     }
 
-    @DataProvider
-    public static Object[][] testCases()
-    {
-        return new Object[][] {
-                {1, 1, 1, 1, CHUNK_SIZE_LIMIT},
-                {CHUNK_SIZE_LIMIT, 1, 1, CHUNK_SIZE_LIMIT, CHUNK_SIZE_LIMIT},
-                {CHUNK_SIZE_LIMIT - 1, 1, 1, CHUNK_SIZE_LIMIT - 1, CHUNK_SIZE_LIMIT},
-                {CHUNK_SIZE_LIMIT * 2 + 1, 1, 3, CHUNK_SIZE_LIMIT, CHUNK_SIZE_LIMIT},
-                {CHUNK_SIZE_LIMIT, 2, 2, CHUNK_SIZE_LIMIT / 2, CHUNK_SIZE_LIMIT},
-                {CHUNK_SIZE_LIMIT + 1, 2, 2, CHUNK_SIZE_LIMIT / 2 + 1, CHUNK_SIZE_LIMIT},
-                {CHUNK_SIZE_LIMIT * 2, 2, 2, CHUNK_SIZE_LIMIT, CHUNK_SIZE_LIMIT}, // 2 saturated chunks
-                {CHUNK_SIZE_LIMIT * 8 * 2 + 1, 8, 8 * 2 + 1, CHUNK_SIZE_LIMIT, CHUNK_SIZE_LIMIT}, //2 * 8 saturated chunks + 1 smaller chunk
-        };
-    }
-
     @Test(dataProvider = "testCases")
-    public void testApply(int numOfFiles, int numOfEndpoints, int expectedChunksNumber, int expectedMaxChunkSize, int chunkLimit)
+    public void testApply(int numOfFiles, int numOfEndpoints,
+            int expectedChunksNumber, int expectedMaxChunkSize, int chunkLimit)
     {
-        ImportDataContext ctx = new ImportDataContext(Collections.nCopies(numOfFiles, mockImportDataFile), "dest")
-                .withChunkLimit(chunkLimit);
+        ImportDataContext ctx = new ImportDataContext(
+                Collections.nCopies(numOfFiles, mockImportDataFile),
+                "dest").withChunkLimit(chunkLimit);
         List<URI> endpoints = Collections.nCopies(numOfEndpoints, ENDPOINT);
         EvenSizeWithLimitChunkifier unit = new EvenSizeWithLimitChunkifier();
         List<ImportDataContext> chunksList = unit.apply(ctx, endpoints);
-        verifyChunkedResult(chunksList, expectedChunksNumber, expectedMaxChunkSize);
+        verifyChunkedResult(chunksList, expectedChunksNumber,
+                expectedMaxChunkSize);
     }
 
-    private void verifyChunkedResult(List<ImportDataContext> chunksList, int expectedChunksNumber, int expectedMaxChunkSize)
+    private void verifyChunkedResult(List<ImportDataContext> chunksList,
+            int expectedChunksNumber, int expectedMaxChunkSize)
     {
-        assertEquals(chunksList.size(), expectedChunksNumber, String.format("%s", chunksList));
-        assertTrue(chunksList.stream().allMatch(chunkedContext -> chunkedContext.getSourceFiles().size() <= expectedMaxChunkSize));
+        assertEquals(chunksList.size(), expectedChunksNumber,
+                String.format("%s", chunksList));
+        assertTrue(chunksList
+                .stream()
+                .allMatch(chunkedContext -> chunkedContext
+                        .getSourceFiles()
+                        .size() <= expectedMaxChunkSize));
     }
 }

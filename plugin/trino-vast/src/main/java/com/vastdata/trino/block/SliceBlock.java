@@ -9,5 +9,6 @@ import io.airlift.slice.Slice;
 public interface SliceBlock
 {
     Slice getSlice(int position);
+
     int getSliceLength(int position);
 }

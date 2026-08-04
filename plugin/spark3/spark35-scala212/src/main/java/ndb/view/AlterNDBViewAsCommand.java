@@ -5,11 +5,11 @@
 package ndb.view;
 
 import com.vastdata.client.VastClient;
+import com.vastdata.client.tx.VastAutocommitTransaction;
 import com.vastdata.client.tx.VastTransaction;
+import com.vastdata.client.tx.VastTransactionFactory;
 import com.vastdata.spark.SparkViewMetadata;
 import com.vastdata.spark.VastView;
-import com.vastdata.client.tx.VastAutocommitTransaction;
-import com.vastdata.client.tx.VastTransactionFactory;
 import com.vastdata.spark.tx.VastSparkTransactionsManager;
 import ndb.NDB;
 import org.apache.spark.sql.SparkSession;
@@ -24,17 +24,18 @@ import org.apache.spark.sql.execution.SparkPlan;
 import org.apache.spark.sql.execution.datasources.v2.V2CommandExec;
 import org.apache.spark.sql.types.StructType;
 import scala.Option;
-import scala.Tuple2;
 import scala.collection.IndexedSeq;
-import scala.collection.Map$;
 import scala.collection.Map;
 import scala.collection.Seq;
-import scala.collection.Seq$;
-import scala.collection.mutable.Builder;
 import spark.sql.catalog.ndb.InitializedVastCatalog;
 import spark.sql.catalog.ndb.VastCatalog;
 
 import java.util.Optional;
+
+import static com.vastdata.spark.SparkPlannerUtil.getEmptyAttributeSeq;
+import static com.vastdata.spark.SparkPlannerUtil.getEmptyInternalRowSeq;
+import static com.vastdata.spark.SparkPlannerUtil.getEmptySparkPlanSeq;
+import static com.vastdata.spark.SparkPlannerUtil.getViewPropertiesMap;
 
 public class AlterNDBViewAsCommand
         extends V2CommandExec
@@ -44,9 +45,10 @@ public class AlterNDBViewAsCommand
     private final String originalText;
     private final LogicalPlan query;
     private final ResolvedPersistentView resolvedView;
-    private Seq<SparkPlan> children = (Seq<SparkPlan>) Seq$.MODULE$.<SparkPlan>empty();
+    private Seq<SparkPlan> children = getEmptySparkPlanSeq();
 
-    private AlterNDBViewAsCommand(SparkSession session, String originalText, LogicalPlan query, ResolvedPersistentView resolvedView)
+    private AlterNDBViewAsCommand(SparkSession session, String originalText,
+            LogicalPlan query, ResolvedPersistentView resolvedView)
     {
         super();
         this.session = session;
@@ -55,6 +57,13 @@ public class AlterNDBViewAsCommand
         this.resolvedView = resolvedView;
     }
 
+    public static AlterNDBViewAsCommand instance(final AlterNDBViewAsPlan plan,
+            SparkSession session)
+    {
+        return new AlterNDBViewAsCommand(session, plan.getOriginalText(),
+                plan.children().apply(1),
+                (ResolvedPersistentView) plan.children().apply(0));
+    }
 
     @Override
     public Seq<InternalRow> run()
@@ -64,36 +73,41 @@ public class AlterNDBViewAsCommand
         Identifier viewIdentifier = resolvedView.identifier();
         try {
             VastClient vastClient = NDB.getVastClient(NDB.getConfig());
-            VastSparkTransactionsManager transactionsManager = VastSparkTransactionsManager.getInstance(vastClient, new VastTransactionFactory());
-            try (final VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
+            VastSparkTransactionsManager transactionsManager = VastSparkTransactionsManager.getInstance(
+                    vastClient, new VastTransactionFactory());
+            try (final VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(
+                    transactionsManager,
+                    () -> transactionsManager.startTransaction(endUser),
+                    endUser)) {
                 try {
                     Optional<VastTransaction> txToUse = Optional.of(tx);
-                    VastView vastView = catalog.loadView(viewIdentifier, txToUse);
+                    VastView vastView = catalog.loadView(viewIdentifier,
+                            txToUse);
 
                     String comment = vastView.properties().get("comment");
                     String[] columnAliases = vastView.columnAliases();
                     String[] columnComments = vastView.columnComments();
-                    Builder<Tuple2<String, String>, Seq<Tuple2<String, String>>> mapBuilder = Seq$.MODULE$.newBuilder();
-                    java.util.Map<String, String> currentProperties = vastView.properties();
-                    currentProperties.entrySet().stream()
-                            .filter(e -> !e.getKey().equals("comment"))
-                            .map(e -> Tuple2.apply(e.getKey(), e.getValue()))
-                            .forEach(mapBuilder::$plus$eq);
-                    Map<String, String> propsScalaMap = (Map<String, String>) Map$.MODULE$.apply(mapBuilder.result());
+                    Map<String, String> propsScalaMap = getViewPropertiesMap(
+                            vastView);
                     String currentCatalog = vastView.currentCatalog();
                     String[] currentNamespace = vastView.currentNamespace();
 
                     StructType newSchema = this.query.schema();
                     // schema changes, but spark doesn't allow setting new aliases and comments, so it has to be reset, otherwise view resolution errors might happen
-                    StructType oldSchema = session.sql(vastView.query()).logicalPlan().schema();
+                    StructType oldSchema = session
+                            .sql(vastView.query())
+                            .logicalPlan()
+                            .schema();
                     if (!newSchema.equals(oldSchema)) {
                         columnAliases = new String[0];
                         columnComments = new String[0];
                     }
 
-                    SparkViewMetadata ctx = new SparkViewMetadata(viewIdentifier, false, false,
-                            Option.apply(comment), propsScalaMap, originalText, newSchema,
-                            currentCatalog, currentNamespace, columnComments, columnAliases);
+                    SparkViewMetadata ctx = new SparkViewMetadata(
+                            viewIdentifier, false, false, Option.apply(comment),
+                            propsScalaMap, originalText, newSchema,
+                            currentCatalog, currentNamespace, columnComments,
+                            columnAliases);
 
                     catalog.dropView(viewIdentifier, txToUse);
                     catalog.createView(ctx, false, txToUse);
@@ -110,20 +124,20 @@ public class AlterNDBViewAsCommand
         catch (Exception any) {
             throw new RuntimeException("Failed altering view", any);
         }
-        return (Seq<InternalRow>) Seq$.MODULE$.empty();
+        return getEmptyInternalRowSeq();
     }
 
     @Override
     public Seq<Attribute> output()
     {
-        return (Seq<Attribute>) Seq$.MODULE$.<Attribute>empty();
+        return getEmptyAttributeSeq();
     }
 
     @Override
     public Seq<SparkPlan> children()
     {
         if (this.children == null) {
-            return (Seq<SparkPlan>) Seq$.MODULE$.<SparkPlan>empty();
+            return getEmptySparkPlanSeq();
         }
         else {
             return children.toSeq();
@@ -153,11 +167,5 @@ public class AlterNDBViewAsCommand
     public int productArity()
     {
         return 0;
-    }
-
-    public static AlterNDBViewAsCommand instance(final AlterNDBViewAsPlan plan, SparkSession session)
-    {
-        return new AlterNDBViewAsCommand(session, plan.getOriginalText(),
-                plan.children().apply(1), (ResolvedPersistentView) plan.children().apply(0));
     }
 }

@@ -31,37 +31,51 @@ import static java.util.Objects.requireNonNull;
 public class WorkLoad<T>
 {
     private static final Logger LOG = Logger.get(WorkLoad.class);
-    protected static long THREAD_POOL_TERMINATION_TIMEOUT_DEFAULT = 10;
+    @SuppressWarnings(
+            "checkstyle:StaticVariableName") protected static long THREAD_POOL_TERMINATION_TIMEOUT_DEFAULT = 10;
     private final List<URI> endpoints;
     private final ExecutorService executorService;
     private final Consumer<URI> endPointWorkingThreadSubmitter;
     private final Supplier<Future<?>> workSubmitterThreadStarter;
     private final VastTraceToken traceToken;
     private final BooleanSupplier circuitBreaker;
-    private final long threadPoolTerminationTimeout = THREAD_POOL_TERMINATION_TIMEOUT_DEFAULT;
 
-    private WorkLoad(Supplier<Function<URI, T>> workSupplier, BooleanSupplier circuitBreaker,
-            Predicate<T> successfulWorkConsumer, BiConsumer<Throwable, URI> workExecutionExceptionsHandler,
-            Supplier<RetryStrategy> retryStrategySupplier, List<URI> endpoints, String workLoadThreadsPrefix, VastTraceToken traceToken)
+    private WorkLoad(Supplier<Function<URI, T>> workSupplier,
+            BooleanSupplier circuitBreaker, Predicate<T> successfulWorkConsumer,
+            BiConsumer<Throwable, URI> workExecutionExceptionsHandler,
+            Supplier<RetryStrategy> retryStrategySupplier, List<URI> endpoints,
+            String workLoadThreadsPrefix, VastTraceToken traceToken)
     {
         this.traceToken = traceToken;
         this.circuitBreaker = circuitBreaker;
         LinkedBlockingDeque<WorkExecutor<T>> workQueue = new LinkedBlockingDeque<>();
         this.endpoints = endpoints;
-        String nameFormat = getThreadNameFormat(workLoadThreadsPrefix, traceToken);
-        this.executorService = Executors.newFixedThreadPool(endpoints.size() + 1, new ThreadFactoryBuilder().setNameFormat(nameFormat).build());
+        String nameFormat = getThreadNameFormat(workLoadThreadsPrefix,
+                traceToken);
+        this.executorService = Executors.newFixedThreadPool(
+                endpoints.size() + 1,
+                new ThreadFactoryBuilder().setNameFormat(nameFormat).build());
         // failed work objects - sleep and enqueue as first
-        Consumer<WorkExecutor<T>> workRetryConsumer = new FailedWorkRetryConsumer<>(workQueue::addFirst, workExecutionExceptionsHandler);
+        Consumer<WorkExecutor<T>> workRetryConsumer = new FailedWorkRetryConsumer<>(
+                workQueue::addFirst, workExecutionExceptionsHandler);
         // single thread to poll from work supplier and add WorkExecutor objects to queue
-        workSubmitterThreadStarter = () -> executorService.submit(new WorkSubmitter<>(workSupplier, successfulWorkConsumer,
-                workExecutionExceptionsHandler, workRetryConsumer, retryStrategySupplier, circuitBreaker, workQueue));
+        workSubmitterThreadStarter = () -> executorService.submit(
+                new WorkSubmitter<>(workSupplier, successfulWorkConsumer,
+                        workExecutionExceptionsHandler, workRetryConsumer,
+                        retryStrategySupplier, circuitBreaker, workQueue));
         // thread per endpoint - poll WorkExecutor objects and execute them on thread's endpoint
-        endPointWorkingThreadSubmitter = endpoint -> executorService.submit(new SubmittedWorkProcessor<>(endpoint, workQueue, circuitBreaker));
+        endPointWorkingThreadSubmitter = endpoint -> executorService.submit(
+                new SubmittedWorkProcessor<>(endpoint, workQueue,
+                        circuitBreaker));
     }
 
-    private String getThreadNameFormat(String workLoadThreadsPrefix, VastTraceToken traceToken)
+    private String getThreadNameFormat(String workLoadThreadsPrefix,
+            VastTraceToken traceToken)
     {
-        String prefixWithTraceToken = format(Strings.isNullOrEmpty(workLoadThreadsPrefix) ? "work-load-thread-%s" : workLoadThreadsPrefix + "-thread-%s", traceToken);
+        String prefixWithTraceToken = format(
+                Strings.isNullOrEmpty(workLoadThreadsPrefix) ?
+                        "work-load-thread-%s" :
+                        workLoadThreadsPrefix + "-thread-%s", traceToken);
         return prefixWithTraceToken + "-%s";
     }
 
@@ -74,6 +88,7 @@ public class WorkLoad<T>
             workSubmitter.get();
         }
         catch (InterruptedException | ExecutionException e) {
+            Thread.currentThread().interrupt();
             executorService.shutdownNow();
             throw toRuntime(e);
         }
@@ -83,13 +98,20 @@ public class WorkLoad<T>
         while (!done) {
             LOG.debug("(%s) Waiting for all work to complete", traceToken);
             if (!circuitBreaker.getAsBoolean()) {
-                LOG.warn("(%s) Received signal to end work load execution prematurely", traceToken);
-                LOG.warn("(%s) Attempted to stop all running tasks. %s tasks have not been started", traceToken, executorService.shutdownNow().size());
+                LOG.warn(
+                        "(%s) Received signal to end work load execution prematurely",
+                        traceToken);
+                LOG.warn(
+                        "(%s) Attempted to stop all running tasks. %s tasks have not been started",
+                        traceToken, executorService.shutdownNow().size());
             }
             try {
-                done = executorService.awaitTermination(threadPoolTerminationTimeout, TimeUnit.SECONDS);
+                done = executorService.awaitTermination(
+                        THREAD_POOL_TERMINATION_TIMEOUT_DEFAULT,
+                        TimeUnit.SECONDS);
             }
             catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
                 executorService.shutdownNow();
                 throw toRuntime(e);
             }
@@ -116,7 +138,9 @@ public class WorkLoad<T>
             requireNonNull(endpoints, "Endpoint list is null");
             requireNonNull(circuitBreaker, "Circuit breaker is null");
             requireNonNull(traceToken, "Trace token is null");
-            return new WorkLoad<>(workSupplier, circuitBreaker, successConsumer, exceptionsHandler, retryStrategy, endpoints, threadsPrefix, traceToken);
+            return new WorkLoad<>(workSupplier, circuitBreaker, successConsumer,
+                    exceptionsHandler, retryStrategy, endpoints, threadsPrefix,
+                    traceToken);
         }
 
         public Builder<T> setEndpoints(List<URI> endpoints)
@@ -137,19 +161,22 @@ public class WorkLoad<T>
             return this;
         }
 
-        public Builder<T> setWorkSupplier(Supplier<Function<URI, T>> workSupplier)
+        public Builder<T> setWorkSupplier(
+                Supplier<Function<URI, T>> workSupplier)
         {
             this.workSupplier = workSupplier;
             return this;
         }
 
-        public Builder<T> setRetryStrategy(Supplier<RetryStrategy> retryStrategy)
+        public Builder<T> setRetryStrategy(
+                Supplier<RetryStrategy> retryStrategy)
         {
             this.retryStrategy = retryStrategy;
             return this;
         }
 
-        public Builder<T> setWorkConsumers(Predicate<T> successConsumer, BiConsumer<Throwable, URI> exceptionsHandler)
+        public Builder<T> setWorkConsumers(Predicate<T> successConsumer,
+                BiConsumer<Throwable, URI> exceptionsHandler)
         {
             this.successConsumer = successConsumer;
             this.exceptionsHandler = exceptionsHandler;

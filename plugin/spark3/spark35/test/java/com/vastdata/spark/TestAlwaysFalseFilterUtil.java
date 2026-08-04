@@ -4,12 +4,14 @@
 
 package com.vastdata.spark;
 
+import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
 
 import static com.vastdata.spark.AlwaysFalseFilterUtil.getAlwaysFalsePredicates;
 import static com.vastdata.spark.AlwaysFalseFilterUtil.isAlwaysFalsePredicate;
 import static org.testng.Assert.assertTrue;
 
+@Listeners(CommonSparkTestUtils.TestListener.class)
 public class TestAlwaysFalseFilterUtil
 {
     @Test

@@ -12,7 +12,8 @@ public abstract class RowIDFieldFactory<T>
 {
     private final RowIDStrategyTypeFactory<T> rowIDStrategyTypeFactory;
 
-    public RowIDFieldFactory(RowIDStrategyTypeFactory<T> rowIDStrategyTypeFactory)
+    public RowIDFieldFactory(
+            RowIDStrategyTypeFactory<T> rowIDStrategyTypeFactory)
     {
         this.rowIDStrategyTypeFactory = rowIDStrategyTypeFactory;
     }

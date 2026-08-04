@@ -13,7 +13,24 @@ import java.util.function.Supplier;
 
 public final class WorkFactory
 {
-    private WorkFactory() {}
+    private WorkFactory()
+    {
+    }
+
+    public static <T, R> Supplier<Function<URI, R>> fromCollection(
+            Collection<T> collection, BiFunction<T, URI, R> action)
+    {
+        final Iterator<T> iterator = collection.iterator();
+        return () -> {
+            if (iterator.hasNext()) {
+                T next = iterator.next();
+                return new Work<>(next, action);
+            }
+            else {
+                return null;
+            }
+        };
+    }
 
     static class Work<T, R>
             implements Function<URI, R>
@@ -32,19 +49,5 @@ public final class WorkFactory
         {
             return action.apply(subject, uri);
         }
-    }
-
-    public static <T, R> Supplier<Function<URI, R>> fromCollection(Collection<T> collection, BiFunction<T, URI, R> action)
-    {
-        final Iterator<T> iterator = collection.iterator();
-        return () -> {
-            if (iterator.hasNext()) {
-                T next = iterator.next();
-                return new Work<>(next, action);
-            }
-            else {
-                return null;
-            }
-        };
     }
 }

@@ -33,19 +33,15 @@ public final class VastColumnHandle
     private static final ObjectMapper mapper = new ObjectMapper();
     private static final ObjectWriter writer = mapper.writerFor(Field.class);
     private static final ObjectReader reader = mapper.readerFor(Field.class);
-
-    private String serializedField;
-
-    private Field deserializedBaseField;
-    private Field deserializedProjectedField;
-
     // The list of field indices to the projected part of the top-level column, see ConnectorMetadata#applyProjection for more details.
     // For now, we only support row dereference pushdown,  i.e. `SELECT a.x WHERE b.y = 0` should only read `a.x` and `b.y`.
     // It works by replacing the dereferenced subcolumns by synthetic column handles, to be used by the planner (for predicate pushdown) and our page source.
     private final ImmutableList<Integer> projectionPath;
-
     // Computed over this column if set (TODO: allow multi-column expressions, e.g. 'x > y')
     private final VastExpression expression;
+    private String serializedField;
+    private Field deserializedBaseField;
+    private Field deserializedProjectedField;
 
     public VastColumnHandle(Field field)
     {
@@ -54,41 +50,41 @@ public final class VastColumnHandle
         this.expression = null;
     }
 
-    public static VastColumnHandle fromField(Field field)
-    {
-        try {
-            return new VastColumnHandle(writer.writeValueAsString(field), List.of(), null);
-        }
-        catch (JsonProcessingException e) {
-            throw new IllegalArgumentException("Failed to serialize " + field, e);
-        }
-    }
-
     @JsonCreator
-    public VastColumnHandle(
-            @JsonProperty("serializedField") String serializedField,
-            @JsonProperty("projectionPath") List<Integer> projectionPath,
-            @JsonProperty("expression") VastExpression expression)
+    public VastColumnHandle(@JsonProperty("serializedField") String serializedField,
+                            @JsonProperty("projectionPath") List<Integer> projectionPath,
+                            @JsonProperty("expression") VastExpression expression)
     {
         this.serializedField = serializedField;
         this.projectionPath = ImmutableList.copyOf(projectionPath);
         this.expression = expression;
     }
 
+    public static VastColumnHandle fromField(Field field)
+    {
+        try {
+            return new VastColumnHandle(writer.writeValueAsString(field),
+                    List.of(), null);
+        }
+        catch (JsonProcessingException e) {
+            throw new IllegalArgumentException("Failed to serialize " + field,
+                    e);
+        }
+    }
+
     public VastColumnHandle withProjectionPath(List<Integer> projectionPath)
     {
-        return new VastColumnHandle(
-                this.serializedField,
-                ImmutableList.<Integer>builder().addAll(this.projectionPath).addAll(projectionPath).build(),
-                this.expression);
+        return new VastColumnHandle(this.serializedField, ImmutableList
+                .<Integer>builder()
+                .addAll(this.projectionPath)
+                .addAll(projectionPath)
+                .build(), this.expression);
     }
 
     public VastColumnHandle withProjectionExpression(VastExpression expression)
     {
         requireNonNull(expression.getFunction());
-        return new VastColumnHandle(
-                this.serializedField,
-                this.projectionPath,
+        return new VastColumnHandle(this.serializedField, this.projectionPath,
                 expression);
     }
 
@@ -97,10 +93,12 @@ public final class VastColumnHandle
     {
         if (serializedField == null) {
             try {
-                serializedField = writer.writeValueAsString(deserializedBaseField);
+                serializedField = writer.writeValueAsString(
+                        deserializedBaseField);
             }
             catch (JsonProcessingException e) {
-                throw new IllegalArgumentException("Failed to serialize " + deserializedBaseField, e);
+                throw new IllegalArgumentException(
+                        "Failed to serialize " + deserializedBaseField, e);
             }
         }
         return serializedField;
@@ -126,7 +124,8 @@ public final class VastColumnHandle
                 deserializedBaseField = reader.readValue(serializedField);
             }
             catch (JsonProcessingException e) {
-                throw new IllegalArgumentException("Failed to deserialize " + serializedField, e);
+                throw new IllegalArgumentException(
+                        "Failed to deserialize " + serializedField, e);
             }
         }
         return deserializedBaseField;
@@ -148,11 +147,32 @@ public final class VastColumnHandle
     @JsonIgnore
     public ColumnMetadata getColumnMetadata()
     {
-        return ColumnMetadata.builder()
+        return ColumnMetadata
+                .builder()
                 .setName(getField().getName())
                 .setType(getType())
                 .setHidden(false)
                 .build();
+    }
+
+    @JsonIgnore
+    public boolean isPartitionKey()
+    {
+        String sortType = getField()
+                .getFieldType()
+                .getMetadata()
+                .get("VAST:sort_type");
+        return Objects.equals(sortType, "Unsorted");
+    }
+
+    @JsonIgnore
+    public boolean isSortKey()
+    {
+        String sortType = getField()
+                .getFieldType()
+                .getMetadata()
+                .get("VAST:sort_type");
+        return Objects.equals(sortType, "Sorted");
     }
 
     @JsonIgnore
@@ -170,14 +190,18 @@ public final class VastColumnHandle
     {
         Field field = this.getField();
         FieldType originalFieldType = field.getFieldType();
-        FieldType fieldType = new FieldType(originalFieldType.isNullable(), originalFieldType.getType(), originalFieldType.getDictionary());
-        return new VastColumnHandle(new Field(field.getName(), fieldType, field.getChildren()));
+        FieldType fieldType = new FieldType(originalFieldType.isNullable(),
+                originalFieldType.getType(), originalFieldType.getDictionary());
+        Field newField = new Field(field.getName(), fieldType,
+                field.getChildren());
+        return new VastColumnHandle(newField);
     }
 
     @Override
     public int hashCode()
     {
-        return Objects.hash(getBaseField(), getProjectionPath(), getExpression());
+        return Objects.hash(getBaseField(), getProjectionPath(),
+                getExpression());
     }
 
     @Override
@@ -191,9 +215,10 @@ public final class VastColumnHandle
         }
 
         VastColumnHandle other = (VastColumnHandle) obj;
-        return getBaseField().equals(other.getBaseField())
-                && getProjectionPath().equals(other.getProjectionPath())
-                && Objects.equals(getExpression(), other.getExpression());
+        return getBaseField().equals(
+                other.getBaseField()) && getProjectionPath().equals(
+                other.getProjectionPath()) && Objects.equals(getExpression(),
+                other.getExpression());
     }
 
     @Override

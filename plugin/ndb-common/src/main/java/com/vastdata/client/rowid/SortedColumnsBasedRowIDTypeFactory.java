@@ -7,9 +7,12 @@ import java.util.List;
 
 public final class SortedColumnsBasedRowIDTypeFactory
 {
-    private SortedColumnsBasedRowIDTypeFactory() {}
+    private SortedColumnsBasedRowIDTypeFactory()
+    {
+    }
 
-    public static <T> RowIDStrategyType get(VastSortedColumnsFunction<T> sortedColumnsExtractor, T obj)
+    public static <T> RowIDStrategyType get(
+            VastSortedColumnsFunction<T> sortedColumnsExtractor, T obj)
     {
         List<String> sortedColumns = sortedColumnsExtractor.apply(obj);
         if (sortedColumns == null || sortedColumns.isEmpty()) {

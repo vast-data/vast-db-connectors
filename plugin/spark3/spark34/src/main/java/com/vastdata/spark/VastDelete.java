@@ -11,6 +11,7 @@ import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.flatbuffers.FlatBufferBuilder;
 import com.vastdata.ListShuffler;
+import com.vastdata.client.QueryDataExtraParams;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.error.VastException;
 import com.vastdata.client.error.VastRuntimeException;
@@ -42,12 +43,12 @@ import org.apache.spark.sql.connector.read.Batch;
 import org.apache.spark.sql.types.StructType;
 import org.apache.spark.sql.vectorized.ArrowColumnVector;
 import org.apache.spark.sql.vectorized.ColumnarBatch;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import scala.collection.immutable.Seq;
 import scala.collection.immutable.Seq$;
 import spark.sql.catalog.ndb.TypeUtil;
+import spark.sql.catalog.ndb.VastCatalogUtils;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -70,15 +71,13 @@ import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_UINT64_FIELD;
 import static com.vastdata.client.schema.RowIDVectorCopy.copyVectorBuffers;
 import static java.lang.String.format;
+import static ndb.NDBSparkSessionExtension.getSessionUser;
 
 public class VastDelete
         implements SupportsDeleteV2
 {
-
-    private static final Logger LOG = LoggerFactory.getLogger(VastDelete.class);
-
     protected static final String DELETE_UNSUPPORTED_ERROR = "Row level delete is not supported for required filters";
-    public static final Function<Object, RuntimeException> DELETE_ERROR_SUPPLIER  = filters -> {
+    public static final Function<Object, RuntimeException> DELETE_ERROR_SUPPLIER = filters -> {
         String s;
         if (filters.getClass().isArray()) {
             s = Arrays.toString((Object[]) filters);
@@ -86,71 +85,104 @@ public class VastDelete
         else {
             s = filters.toString();
         }
-        return new IllegalArgumentException(format("%s: %s", DELETE_UNSUPPORTED_ERROR, s));
+        return new IllegalArgumentException(
+                format("%s: %s", DELETE_UNSUPPORTED_ERROR, s));
     };
-    private static final java.util.function.BiPredicate<VastPredicatePushdown, EnumeratedSchema> isAllPushed = (res, schema) -> res.getPostFilter().isEmpty() && serializePushedPredicatesSuccessful(res.getPushedDown(), schema);
+    private static final Logger LOG = LoggerFactory.getLogger(VastDelete.class);
+    private static final java.util.function.BiPredicate<VastPredicatePushdown, EnumeratedSchema> isAllPushed = (res, schema) -> res
+            .getPostFilter()
+            .isEmpty() && serializePushedPredicatesSuccessful(
+            res.getPushedDown(), schema);
+    private final Function<Predicate[], VastPredicatePushdown> parsePredicates;
+    private final Supplier<VastClient> clientSupplier;
+    private final VastTable table;
+    private final VastSparkTransactionsManager transactionsManager;
+    private final VastCatalogUtils vastCatalogUtils;
     private EnumeratedSchema enumeratedSchema;
 
-    private static boolean serializePushedPredicatesSuccessful(List<List<VastPredicate>> pushedDown, EnumeratedSchema schema)
+    public VastDelete(VastTable table, VastCatalogUtils vastCatalogUtils,
+            Supplier<VastClient> clientSupplier)
+    {
+        this.clientSupplier = clientSupplier;
+        this.table = table;
+        this.parsePredicates = predicates -> VastPredicatePushdown.parse(
+                predicates, table.schema());
+        this.transactionsManager = VastSparkTransactionsManager.getInstance(
+                clientSupplier.get(), new VastTransactionFactory());
+        this.vastCatalogUtils = vastCatalogUtils;
+    }
+
+    private static boolean serializePushedPredicatesSuccessful(
+            List<List<VastPredicate>> pushedDown, EnumeratedSchema schema)
     {
         FlatBufferBuilder builder = new FlatBufferBuilder(128);
         try {
-            int serialize = new SparkPredicateSerializer("VastDelete", pushedDown, schema).serialize(builder);
-            LOG.debug("Serialization of pushed-down predicates passed: {} = {}", pushedDown, serialize);
+            int serialize = new SparkPredicateSerializer("VastDelete",
+                    pushedDown, schema).serialize(builder);
+            LOG.debug("Serialization of pushed-down predicates passed: {} = {}",
+                    pushedDown, serialize);
             return serialize > 0;
         }
         catch (Throwable t) {
-            LOG.warn(format("Serialization of pushed-down predicates fails: %s", pushedDown), t);
+            LOG.warn(format("Serialization of pushed-down predicates fails: %s",
+                    pushedDown), t);
             builder.clear();
             return false;
         }
     }
 
-    private final Function<Predicate[], VastPredicatePushdown> parsePredicates;
-    private final Supplier<VastClient> clientSupplier;
-    private final VastTable table;
-
-    public VastDelete(VastTable table, Supplier<VastClient> clientSupplier)
-    {
-        this.clientSupplier = clientSupplier;
-        this.table = table;
-        this.parsePredicates = predicates -> VastPredicatePushdown.parse(predicates, table.schema());
-    }
-
     private static boolean isAlwaysTrue(Predicate[] filters)
     {
-        if (filters.length != 1)
+        if (filters.length != 1) {
             return false;
+        }
         return filters[0].equals(new AlwaysTrue());
     }
 
     private static boolean isAlwaysFalse(Predicate[] filters)
     {
-        if (filters.length != 1)
+        if (filters.length != 1) {
             return false;
+        }
         return filters[0].equals(new AlwaysFalse());
+    }
+
+    private static FieldVector transformColumnarBatchToNewUnsignedRowIDVector(
+            VastColumnarBatchReader reader, ColumnarBatch columnarBatch)
+    {
+        return copyVectorBuffers(
+                (FieldVector) ((ArrowColumnVector) columnarBatch.column(
+                        0)).getValueVector(),
+                ROW_ID_UINT64_FIELD.createVector(reader.getAllocator()));
     }
 
     @Override
     public boolean canDeleteWhere(Predicate[] filters)
     {
         if (isAlwaysTrue(filters) || isAlwaysFalse(filters)) {
-            LOG.info("canDeleteWhere({}.{}) {} handling Always filters", this.table.getTableMD().schemaName, this.table.getTableMD().tableName, Arrays.toString(filters));
+            LOG.info("canDeleteWhere({}.{}) {} handling Always filters",
+                    this.table.getTableMD().schemaName,
+                    this.table.getTableMD().tableName,
+                    Arrays.toString(filters));
             return true;
         }
-        boolean canDelete = isAllPushed.test(this.parsePredicates.apply(filters), extractSchema());
-        LOG.info("canDeleteWhere({}.{}) {} --> {}", this.table.getTableMD().schemaName, this.table.getTableMD().tableName, Arrays.toString(filters), canDelete);
+        boolean canDelete = isAllPushed.test(
+                this.parsePredicates.apply(filters), extractSchema());
+        LOG.info("canDeleteWhere({}.{}) {} --> {}",
+                this.table.getTableMD().schemaName,
+                this.table.getTableMD().tableName, Arrays.toString(filters),
+                canDelete);
         if (!canDelete) {
             throw DELETE_ERROR_SUPPLIER.apply(filters);
         }
         return true;
     }
 
-    @NotNull
     private EnumeratedSchema extractSchema()
     {
         if (enumeratedSchema == null) {
-            enumeratedSchema = new EnumeratedSchema(TypeUtil.sparkSchemaToArrowFieldsList(table.schema()));
+            enumeratedSchema = new EnumeratedSchema(
+                    TypeUtil.sparkSchemaToArrowFieldsList(table.schema()));
         }
         return enumeratedSchema;
     }
@@ -158,7 +190,8 @@ public class VastDelete
     @Override
     public void deleteWhere(Predicate[] filters)
     {
-        LOG.info("deleteWhere({}.{}) {}", this.table.getTableMD().schemaName, this.table.getTableMD().tableName, Arrays.toString(filters));
+        LOG.info("deleteWhere({}.{}) {}", this.table.getTableMD().schemaName,
+                this.table.getTableMD().tableName, Arrays.toString(filters));
         if (isAlwaysFalse(filters)) {
             // Nothing to do
             return;
@@ -176,7 +209,8 @@ public class VastDelete
             }
             return;
         }
-        VastPredicatePushdown predicatePushdown = this.parsePredicates.apply(filters);
+        VastPredicatePushdown predicatePushdown = this.parsePredicates.apply(
+                filters);
         if (isAllPushed.test(predicatePushdown, extractSchema())) {
             try {
                 delete(filters);
@@ -193,13 +227,16 @@ public class VastDelete
         }
     }
 
-    private void setErrorIfNotSet(AtomicReference<Throwable> errorHolder, Throwable throwable) {
+    private void setErrorIfNotSet(AtomicReference<Throwable> errorHolder,
+            Throwable throwable)
+    {
         if (errorHolder.get() == null) {
             setErr(errorHolder, throwable);
         }
     }
 
-    private synchronized void setErr(AtomicReference<Throwable> errorHolder, Throwable throwable)
+    private synchronized void setErr(AtomicReference<Throwable> errorHolder,
+            Throwable throwable)
     {
         if (errorHolder.get() == null) {
             errorHolder.set(throwable);
@@ -210,78 +247,103 @@ public class VastDelete
             throws Throwable
     {
         VastClient client = clientSupplier.get();
-        SparkListenerInterface sparkListenerInterface = NDBJobsListener.instance(clientSupplier, NDB.getConfig());
+        SparkListenerInterface sparkListenerInterface = NDBJobsListener.instance(
+                clientSupplier, NDB.getConfig());
         Supplier<URI> endpointsSupplier = getClientsSupplier();
         ForkJoinPool forkJoinPool = new ForkJoinPool(16);
         Set<VastColumnarBatchReader> readersForVerifyAllocation = new HashSet<>();
-        LinkedBlockingQueue<FieldVector> pages = new LinkedBlockingQueue<>(1000);
+        LinkedBlockingQueue<FieldVector> pages = new LinkedBlockingQueue<>(
+                1000);
 
         Optional<VastTraceToken> tokenHolder = Optional.empty();
-        VastSparkTransactionsManager transactionsManager = VastSparkTransactionsManager.getInstance(client, new VastTransactionFactory());
+
         AtomicReference<Throwable> errorRef = new AtomicReference<>();
-        try (VastAutocommitTransaction tx = getTransaction(client, transactionsManager)) {
-            SparkListenerJobStart jobStart = new SparkListenerJobStart(-1, System.currentTimeMillis(), (Seq<StageInfo>) Seq$.MODULE$.empty(), null);
+        try (VastAutocommitTransaction tx = getTransaction(
+                transactionsManager)) {
+            SparkListenerJobStart jobStart = new SparkListenerJobStart(-1,
+                    System.currentTimeMillis(),
+                    (Seq<StageInfo>) Seq$.MODULE$.empty(), null);
             sparkListenerInterface.onJobStart(jobStart);
             VastTraceToken token = tx.generateTraceToken(Optional.empty());
             tokenHolder = Optional.of(token);
             VastBatch batch = (VastBatch) getBatch(filters);
             VastInputPartition[] inputPartitions = (VastInputPartition[]) batch.planInputPartitions();
-            VastPartitionReaderFactory readerFactory = (VastPartitionReaderFactory) batch.createReaderFactory(new SimpleVastTransaction(tx.getId()));
+            VastPartitionReaderFactory readerFactory = (VastPartitionReaderFactory) batch.createReaderFactory(
+                    new SimpleVastTransaction(tx.getId()));
             readerFactory.setForAlter();
 
-            ListeningExecutorService collectPagesExecutorService = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(16));
+            ListeningExecutorService collectPagesExecutorService = MoreExecutors.listeningDecorator(
+                    Executors.newFixedThreadPool(16));
             List<ListenableFuture<Boolean>> collectFutures = new ArrayList<>();
             for (VastInputPartition inputPartition : inputPartitions) {
                 collectFutures.add(collectPagesExecutorService.submit(() -> {
-                    try (VastColumnarBatchReader reader = (VastColumnarBatchReader) readerFactory.createColumnarReader(inputPartition)) {
+                    try (VastColumnarBatchReader reader = (VastColumnarBatchReader) readerFactory.createColumnarReader(
+                            inputPartition)) {
                         int splitId = inputPartition.getSplitId();
                         readersForVerifyAllocation.add(reader);
-                        Thread.currentThread().setName(format("VastDelete-%s-%s", token, splitId));
-                        return iterateReader(pages, token, () -> errorRef.get() != null, reader, splitId);
+                        Thread.currentThread().setName(
+                                format("VastDelete-%s-%s", token, splitId));
+                        return iterateReader(pages, token,
+                                () -> errorRef.get() != null, reader, splitId);
                     }
                     catch (InterruptedException | RuntimeException re) {
-                        LOG.error(format("%s VastDelete query page processor %s caught exception", token, inputPartition.getSplitId()), re);
+                        LOG.error(
+                                format("%s VastDelete query page processor %s caught exception",
+                                        token, inputPartition.getSplitId()),
+                                re);
                         setErrorIfNotSet(errorRef, re);
                         tx.setCommit(false);
-                        throw re instanceof RuntimeException ? (RuntimeException) re : toRuntime(re);
+                        throw re instanceof RuntimeException ?
+                                (RuntimeException) re :
+                                toRuntime(re);
                     }
                 }));
             }
 
-            ListeningExecutorService executorService = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(4));
+            ListeningExecutorService executorService = MoreExecutors.listeningDecorator(
+                    Executors.newFixedThreadPool(4));
             final int deleters = 4;
             List<ListenableFuture<Throwable>> deleteFutures = new ArrayList<>();
             for (int i = 0; i < deleters; i++) {
-                deleteFutures.add(executorService.submit(() -> deleteSelectedPages(client, endpointsSupplier, tx, pages, token)));
+                deleteFutures.add(executorService.submit(
+                        () -> deleteSelectedPages(client, endpointsSupplier, tx,
+                                pages, token)));
             }
-            ListenableFuture<List<Boolean>> allCollectDone = Futures.allAsList(collectFutures);
+            ListenableFuture<List<Boolean>> allCollectDone = Futures.allAsList(
+                    collectFutures);
             allCollectDone.get();
             LOG.debug("{} All page collectors done", token);
-            ListenableFuture<List<Throwable>> allDeleteDone = Futures.allAsList(deleteFutures);
+            ListenableFuture<List<Throwable>> allDeleteDone = Futures.allAsList(
+                    deleteFutures);
             List<Throwable> results = allDeleteDone.get();
 
             Throwable executionFailure = anyFailed(results);
             executorService.shutdownNow();
             if (executionFailure != null) {
-                LOG.error("{} Process failed with exception", token, executionFailure);
+                LOG.error("{} Process failed with exception", token,
+                        executionFailure);
                 throw executionFailure;
             }
-            SparkListenerJobEnd jobEnd = new SparkListenerJobEnd(-1, System.currentTimeMillis(), null);
+            SparkListenerJobEnd jobEnd = new SparkListenerJobEnd(-1,
+                    System.currentTimeMillis(), null);
             sparkListenerInterface.onJobEnd(jobEnd);
         }
         catch (Exception e) {
             setErrorIfNotSet(errorRef, e);
             JobResult res = new JobFailed(e);
-            SparkListenerJobEnd jobEnd = new SparkListenerJobEnd(-1, System.currentTimeMillis(), res);
+            SparkListenerJobEnd jobEnd = new SparkListenerJobEnd(-1,
+                    System.currentTimeMillis(), res);
             sparkListenerInterface.onJobEnd(jobEnd);
             throw e;
         }
         finally {
             forkJoinPool.shutdownNow();
             pages.forEach(FieldVector::close);
-            String forAllocationValidation = tokenHolder.map(VastTraceToken::toString).orElse("null");
+            String forAllocationValidation = tokenHolder.map(
+                    VastTraceToken::toString).orElse("null");
             readersForVerifyAllocation.forEach(r -> {
-                IllegalStateException illegalStateException = CommonVastColumnarBatchReader.verifyBufferAllocation(forAllocationValidation, r.getAllocator());
+                IllegalStateException illegalStateException = CommonVastColumnarBatchReader.verifyBufferAllocation(
+                        forAllocationValidation, r.getAllocator());
                 if (illegalStateException != null) {
                     Throwable throwable = errorRef.get();
                     if (throwable != null) {
@@ -293,23 +355,31 @@ public class VastDelete
         }
     }
 
-    private boolean iterateReader(LinkedBlockingQueue<FieldVector> pages, VastTraceToken token, BooleanSupplier error, VastColumnarBatchReader reader, int splitId)
+    private boolean iterateReader(LinkedBlockingQueue<FieldVector> pages,
+            VastTraceToken token, BooleanSupplier error,
+            VastColumnarBatchReader reader, int splitId)
             throws InterruptedException
     {
         while (!error.getAsBoolean() && reader.next()) {
             LOG.debug("Split {}:{} Fetching next page", token, splitId);
             ColumnarBatch columnarBatch = reader.get();
             LOG.debug("Split {}:{} Fetched next page of {} rows and {} columns",
-                    token, splitId, columnarBatch.numRows(), columnarBatch.numCols());
+                    token, splitId, columnarBatch.numRows(),
+                    columnarBatch.numCols());
             if (columnarBatch.numRows() > 0) {
-                FieldVector newVector = transformColumnarBatchToNewUnsignedRowIDVector(reader, columnarBatch);
-                LOG.debug("Split {}:{} Trying to put page to Q: {}", token, splitId, newVector);
+                FieldVector newVector = transformColumnarBatchToNewUnsignedRowIDVector(
+                        reader, columnarBatch);
+                LOG.debug("Split {}:{} Trying to put page to Q: {}", token,
+                        splitId, newVector);
                 pages.put(newVector);
-                LOG.debug("Split {}:{} Successfully put page to Q: {}", token, splitId, newVector);
+                LOG.debug("Split {}:{} Successfully put page to Q: {}", token,
+                        splitId, newVector);
             }
         }
         if (error.getAsBoolean()) {
-            LOG.warn("Split {}:{} is exiting because of an error in another split", token, splitId);
+            LOG.warn(
+                    "Split {}:{} is exiting because of an error in another split",
+                    token, splitId);
             return false;
         }
         else {
@@ -320,38 +390,50 @@ public class VastDelete
 
     private Batch getBatch(Predicate[] filters)
     {
-        VastScanBuilder vastScanBuilder = new VastScanBuilder(this.table);
-        Predicate[] notPushedPredicates = vastScanBuilder.pushPredicates(filters);
-        if (notPushedPredicates.length > 0)
-            throw new IllegalArgumentException(format("Could not push all predicates: %s", Arrays.toString(filters)));
+        VastScanBuilder vastScanBuilder = new VastScanBuilder(this.table,
+                vastCatalogUtils);
+        Predicate[] notPushedPredicates = vastScanBuilder.pushPredicates(
+                filters);
+        if (notPushedPredicates.length > 0) {
+            throw new IllegalArgumentException(
+                    format("Could not push all predicates: %s",
+                            Arrays.toString(filters)));
+        }
         return vastScanBuilder.build().toBatch();
     }
 
-    @NotNull
-    private static VastAutocommitTransaction getTransaction(VastClient client, VastSparkTransactionsManager transactionsManager)
+    private VastAutocommitTransaction getTransaction(
+            VastSparkTransactionsManager transactionsManager)
     {
-        final String endUser = null;
-        return VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser);
+        final String endUser = getSessionUser(vastCatalogUtils.getConfig());
+        return VastAutocommitTransaction.createNewOrReuseFromEnv(
+                transactionsManager,
+                () -> transactionsManager.startTransaction(endUser), endUser);
     }
 
-    @NotNull
-    private static FieldVector transformColumnarBatchToNewUnsignedRowIDVector(VastColumnarBatchReader reader, ColumnarBatch columnarBatch)
+    private Throwable deleteSelectedPages(VastClient client,
+            Supplier<URI> endpointsSupplier, VastAutocommitTransaction tx,
+            LinkedBlockingQueue<FieldVector> pages, VastTraceToken token)
     {
-        return copyVectorBuffers((FieldVector) ((ArrowColumnVector) columnarBatch.column(0)).getValueVector(),
-                ROW_ID_UINT64_FIELD.createVector(reader.getAllocator()));
-    }
-
-    private Throwable deleteSelectedPages(VastClient client, Supplier<URI> endpointsSupplier, VastAutocommitTransaction tx, LinkedBlockingQueue<FieldVector> pages, VastTraceToken token)
-    {
-        final String endUser = null;
+        final String endUser = getSessionUser(vastCatalogUtils.getConfig());
         FieldVector fieldVector = null;
         try {
             while ((fieldVector = pages.poll(1, TimeUnit.SECONDS)) != null) {
-                LOG.debug("{} Polled next page of {} rows to delete: {}, field: {}", token, fieldVector.getValueCount(), fieldVector.getField(), fieldVector);
+                LOG.debug(
+                        "{} Polled next page of {} rows to delete: {}, field: {}",
+                        token, fieldVector.getValueCount(),
+                        fieldVector.getField(), fieldVector);
 
-                try (VectorSchemaRoot root = new VectorSchemaRoot(ImmutableList.of(ROW_ID_UINT64_FIELD), ImmutableList.of(fieldVector))) {
-                    LOG.debug("{} Deleting next page of {} rows to delete: {}, fields: {}", token, root.getRowCount(), root.getSchema(), root.getFieldVectors());
-                    client.deleteRows(tx, table.getTableMD().schemaName, table.getTableMD().tableName, root, endpointsSupplier.get(), Optional.empty(), endUser);
+                try (VectorSchemaRoot root = new VectorSchemaRoot(
+                        ImmutableList.of(ROW_ID_UINT64_FIELD),
+                        ImmutableList.of(fieldVector))) {
+                    LOG.debug(
+                            "{} Deleting next page of {} rows to delete: {}, fields: {}",
+                            token, root.getRowCount(), root.getSchema(),
+                            root.getFieldVectors());
+                    client.deleteRows(tx, table.getTableMD().schemaName,
+                            table.getTableMD().tableName, root,
+                            endpointsSupplier.get(), Optional.empty(), new QueryDataExtraParams(), endUser);
                 }
                 fieldVector.close();
             }
@@ -370,17 +452,24 @@ public class VastDelete
 
     private Throwable anyFailed(List<Throwable> results)
     {
-        Optional<Throwable> anyError = results.stream().filter(e -> e != null).findFirst();
+        Optional<Throwable> anyError = results
+                .stream()
+                .filter(e -> e != null)
+                .findFirst();
         return anyError.orElse(null);
     }
 
     private Supplier<URI> getClientsSupplier()
     {
         try {
-            ListShuffler<URI> listShuffler = new ListShuffler<>(Optional.ofNullable(NDB.getConfig().getSeedForShufflingEndpoints()));
-            List<URI> dataEndpoints = listShuffler.randomizeList(NDB.getConfig().getDataEndpoints());
+            ListShuffler<URI> listShuffler = new ListShuffler<>(
+                    Optional.ofNullable(
+                            NDB.getConfig().getSeedForShufflingEndpoints()));
+            List<URI> dataEndpoints = listShuffler.randomizeList(
+                    NDB.getConfig().getDataEndpoints());
             AtomicInteger serialIndex = new AtomicInteger(0);
-            return () -> dataEndpoints.get(serialIndex.getAndIncrement() % dataEndpoints.size());
+            return () -> dataEndpoints.get(
+                    serialIndex.getAndIncrement() % dataEndpoints.size());
         }
         catch (VastUserException e) {
             throw toRuntime(e);

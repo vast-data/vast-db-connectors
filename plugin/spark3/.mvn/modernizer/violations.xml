@@ -43,11 +43,11 @@
         <comment>Prefer Math.toIntExact(long)</comment>
     </violation>
 
-<!--    <violation>-->
-<!--        <name>com/google/common/collect/ImmutableMap$Builder.build:()Lcom/google/common/collect/ImmutableMap;</name>-->
-<!--        <version>1.8</version>-->
-<!--        <comment>Use buildOrThrow() instead, as it makes it clear that it will throw on duplicated values</comment>-->
-<!--    </violation>-->
+    <!--    <violation>-->
+    <!--        <name>com/google/common/collect/ImmutableMap$Builder.build:()Lcom/google/common/collect/ImmutableMap;</name>-->
+    <!--        <version>1.8</version>-->
+    <!--        <comment>Use buildOrThrow() instead, as it makes it clear that it will throw on duplicated values</comment>-->
+    <!--    </violation>-->
 
     <violation>
         <name>com/google/common/collect/ImmutableBiMap$Builder."&lt;init&gt;":()V</name>
@@ -95,21 +95,21 @@
         <comment>Use builder() static factory method instead</comment>
     </violation>
 
-<!--    <violation>-->
-<!--        <name>com/google/common/cache/CacheBuilder.build:()Lcom/google/common/cache/Cache;</name>-->
-<!--        <version>1.8</version>-->
-<!--        <comment>Guava Cache has concurrency issues around invalidation and ongoing loads. Use EvictableCacheBuilder or SafeCaches to build caches.-->
-<!--            See https://github.com/trinodb/trino/issues/10512 for more information and see https://github.com/trinodb/trino/issues/10512#issuecomment-1016221168-->
-<!--            for why Caffeine does not solve the problem.</comment>-->
-<!--    </violation>-->
+    <!--    <violation>-->
+    <!--        <name>com/google/common/cache/CacheBuilder.build:()Lcom/google/common/cache/Cache;</name>-->
+    <!--        <version>1.8</version>-->
+    <!--        <comment>Guava Cache has concurrency issues around invalidation and ongoing loads. Use EvictableCacheBuilder or SafeCaches to build caches.-->
+    <!--            See https://github.com/trinodb/trino/issues/10512 for more information and see https://github.com/trinodb/trino/issues/10512#issuecomment-1016221168-->
+    <!--            for why Caffeine does not solve the problem.</comment>-->
+    <!--    </violation>-->
 
-<!--    <violation>-->
-<!--        <name>com/google/common/cache/CacheBuilder.build:(Lcom/google/common/cache/CacheLoader;)Lcom/google/common/cache/LoadingCache;</name>-->
-<!--        <version>1.8</version>-->
-<!--        <comment>Guava LoadingCache has concurrency issues around invalidation and ongoing loads. Use EvictableCacheBuilder or SafeCaches to build caches.-->
-<!--            See https://github.com/trinodb/trino/issues/10512 for more information and see https://github.com/trinodb/trino/issues/10512#issuecomment-1016221168-->
-<!--            for why Caffeine does not solve the problem.</comment>-->
-<!--    </violation>-->
+    <!--    <violation>-->
+    <!--        <name>com/google/common/cache/CacheBuilder.build:(Lcom/google/common/cache/CacheLoader;)Lcom/google/common/cache/LoadingCache;</name>-->
+    <!--        <version>1.8</version>-->
+    <!--        <comment>Guava LoadingCache has concurrency issues around invalidation and ongoing loads. Use EvictableCacheBuilder or SafeCaches to build caches.-->
+    <!--            See https://github.com/trinodb/trino/issues/10512 for more information and see https://github.com/trinodb/trino/issues/10512#issuecomment-1016221168-->
+    <!--            for why Caffeine does not solve the problem.</comment>-->
+    <!--    </violation>-->
 
     <violation>
         <name>org/testng/Assert.assertEquals:(Ljava/lang/Iterable;Ljava/lang/Iterable;)V</name>
@@ -126,13 +126,15 @@
     <violation>
         <name>org/testng/Assert.assertThrows:(Lorg/testng/Assert$ThrowingRunnable;)V</name>
         <version>1.8</version>
-        <comment>Use AssertJ's assertThatThrownBy, see https://github.com/trinodb/trino/issues/5320 for rationale</comment>
+        <comment>Use AssertJ's assertThatThrownBy, see https://github.com/trinodb/trino/issues/5320 for rationale
+        </comment>
     </violation>
 
     <violation>
         <name>org/testng/Assert.assertThrows:(Ljava/lang/Class;Lorg/testng/Assert$ThrowingRunnable;)V</name>
         <version>1.8</version>
-        <comment>Use AssertJ's assertThatThrownBy, see https://github.com/trinodb/trino/issues/5320 for rationale</comment>
+        <comment>Use AssertJ's assertThatThrownBy, see https://github.com/trinodb/trino/issues/5320 for rationale
+        </comment>
     </violation>
 
     <violation>
@@ -144,13 +146,17 @@
     <violation>
         <name>java/util/TimeZone.getTimeZone:(Ljava/lang/String;)Ljava/util/TimeZone;</name>
         <version>1.8</version>
-        <comment>Avoid TimeZone.getTimeZone as it returns GMT for a zone not supported by the JVM. Use TimeZone.getTimeZone(ZoneId.of(..)) instead, or TimeZone.getTimeZone(..., false).</comment>
+        <comment>Avoid TimeZone.getTimeZone as it returns GMT for a zone not supported by the JVM. Use
+            TimeZone.getTimeZone(ZoneId.of(..)) instead, or TimeZone.getTimeZone(..., false).
+        </comment>
     </violation>
 
     <violation>
         <name>org/joda/time/DateTimeZone.toTimeZone:()Ljava/util/TimeZone;</name>
         <version>1.8</version>
-        <comment>Avoid DateTimeZone.toTimeZone as it returns GMT for a zone not supported by the JVM. Use TimeZone.getTimeZone(ZoneId.of(dtz.getId())) instead.</comment>
+        <comment>Avoid DateTimeZone.toTimeZone as it returns GMT for a zone not supported by the JVM. Use
+            TimeZone.getTimeZone(ZoneId.of(dtz.getId())) instead.
+        </comment>
     </violation>
 
     <violation>
@@ -172,9 +178,13 @@
     </violation>
 
     <violation>
-        <name>io/airlift/units/DataSize.succinctDataSize:(DLio/airlift/units/DataSize$Unit;)Lio/airlift/units/DataSize;</name>
+        <name>
+            io/airlift/units/DataSize.succinctDataSize:(DLio/airlift/units/DataSize$Unit;)Lio/airlift/units/DataSize;
+        </name>
         <version>1.8</version>
-        <comment>Use io.airlift.units.DataSize.of(long, DataSize.Unit).succinct() -- Note that succinct conversion only affects toString() results</comment>
+        <comment>Use io.airlift.units.DataSize.of(long, DataSize.Unit).succinct() -- Note that succinct conversion only
+            affects toString() results
+        </comment>
     </violation>
 
     <violation>

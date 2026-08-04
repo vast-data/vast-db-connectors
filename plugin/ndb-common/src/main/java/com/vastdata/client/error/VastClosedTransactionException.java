@@ -11,6 +11,7 @@ public class VastClosedTransactionException
 {
     VastClosedTransactionException(VastTransaction transactionHandle)
     {
-        super(String.format("Transaction %s is closed", transactionHandle), ErrorType.CLIENT);
+        super(String.format("Transaction %s is closed", transactionHandle),
+                ErrorType.CLIENT);
     }
 }

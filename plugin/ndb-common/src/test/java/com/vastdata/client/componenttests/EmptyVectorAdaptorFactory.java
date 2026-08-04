@@ -13,7 +13,9 @@ import java.util.Optional;
 public final class EmptyVectorAdaptorFactory
         implements VectorAdaptorFactory
 {
-    public EmptyVectorAdaptorFactory() {}
+    public EmptyVectorAdaptorFactory()
+    {
+    }
 
     public Optional<VectorAdaptor> forField(Field field)
     {

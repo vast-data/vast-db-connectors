@@ -17,9 +17,8 @@ public class SimpleVastTransaction
         implements VastTransaction, Serializable
 {
     public static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private final long id;
-
     private static final AtomicInteger operationCount = new AtomicInteger(0);
+    private final long id;
 
     public SimpleVastTransaction(long id)
     {
@@ -31,12 +30,23 @@ public class SimpleVastTransaction
         this.id = 0;
     }
 
+    public static SimpleVastTransaction fromString(String serialized)
+            throws VastIOException
+    {
+        try {
+            return OBJECT_MAPPER.readValue(serialized,
+                    SimpleVastTransaction.class);
+        }
+        catch (JsonProcessingException e) {
+            throw new VastIOException(e);
+        }
+    }
+
     @Override
     public long getId()
     {
         return id;
     }
-
 
     @Override
     public boolean equals(Object o)
@@ -68,20 +78,10 @@ public class SimpleVastTransaction
         }
     }
 
-    public static SimpleVastTransaction fromString(String serialized)
-            throws VastIOException
-    {
-        try {
-            return OBJECT_MAPPER.readValue(serialized, SimpleVastTransaction.class);
-        }
-        catch (JsonProcessingException e) {
-            throw new VastIOException(e);
-        }
-    }
-
     @Override
     public VastTraceToken generateTraceToken(Optional<String> userTraceToken)
     {
-        return new VastTraceToken(userTraceToken, this.id, operationCount.getAndIncrement());
+        return new VastTraceToken(userTraceToken, this.id,
+                operationCount.getAndIncrement());
     }
 }

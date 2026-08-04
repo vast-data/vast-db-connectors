@@ -30,7 +30,12 @@ public class VastResponseHandler
     private static final Logger LOG = Logger.get(VastResponseHandler.class);
     private static final VastResponseHandler VAST_RESPONSE_HANDLER = new VastResponseHandler();
 
-    public static VastResponseHandler createVastResponseHandlerForCustomInputStreamConsumption(Consumer<InputStream> inputStreamConsumer)
+    protected VastResponseHandler()
+    {
+    }
+
+    public static VastResponseHandler createVastResponseHandlerForCustomInputStreamConsumption(
+            Consumer<InputStream> inputStreamConsumer)
     {
         return new InputStreamConsumingResponseHandler(inputStreamConsumer);
     }
@@ -45,34 +50,51 @@ public class VastResponseHandler
         return VAST_RESPONSE_HANDLER;
     }
 
-    protected VastResponseHandler()
-    {
-    }
-
-    @Override
-    public VastResponse handleException(Request request, Exception exception)
+    public static VastResponse internalHandleException(Request request,
+            Exception exception)
     {
         if (exception instanceof TimeoutException) {
             String message = getRequestExceptionTitle(request);
             LOG.error(exception, message);
             // Add request information to exception message in case of a timeout (following ORION-110163)
-            String timeOutErrMessage = getRequestExceptionTitle(request, "Request failed due to timeout: %s");
+            String timeOutErrMessage = getRequestExceptionTitle(request,
+                    "Request failed due to timeout: %s");
             LOG.error(exception, timeOutErrMessage);
-            throw new UncheckedIOException(timeOutErrMessage, new IOException(exception));
+            throw new UncheckedIOException(timeOutErrMessage,
+                    new IOException(exception));
         }
         String message = getRequestExceptionTitle(request);
         LOG.error(exception, message);
         throw ResponseHandlerUtils.propagate(request, exception);
     }
 
-    protected String getRequestExceptionTitle(Request request)
+    public static String getRequestExceptionTitle(Request request)
     {
         return getRequestExceptionTitle(request, "Request failed: %s");
     }
 
-    protected String getRequestExceptionTitle(Request request, String format)
+    public static String getRequestExceptionTitle(Request request,
+            String format)
     {
         return format(format, request);
+    }
+
+    public static byte[] readResponseBytes(Response response)
+            throws Exception
+    {
+        List<String> headers = response.getHeaders("Content-Length");
+        int readSize = (headers != null && !headers.isEmpty()) ?
+                Integer.parseInt(Iterables.getOnlyElement(headers)) :
+                Integer.MAX_VALUE;
+        InputStream inputStream = response.getInputStream();
+        return new InputStreamToByteArrayReader().readNBytes(inputStream,
+                readSize);
+    }
+
+    @Override
+    public VastResponse handleException(Request request, Exception exception)
+    {
+        return internalHandleException(request, exception);
     }
 
     @Override
@@ -83,9 +105,12 @@ public class VastResponseHandler
         // we MUST read all contents before this method exits, otherwise the connection will be closed
         byte[] data = getRequestPayloadBytes(request, response);
         if (LOG.isDebugEnabled()) {
-            LOG.debug("read %d bytes: %s", data.length, Hex.encodeHexString(data));
+            LOG.debug("read %d bytes: %s", data.length, data.length < 1000 ?
+                    Hex.encodeHexString(data) :
+                    "[data too large to log]");
         }
-        return new VastResponse(response.getStatusCode(), response.getHeaders(), data, requestUri);
+        return new VastResponse(response.getStatusCode(), response.getHeaders(),
+                data, requestUri);
     }
 
     protected byte[] getRequestPayloadBytes(Request request, Response response)
@@ -95,7 +120,8 @@ public class VastResponseHandler
             data = getBytes(response);
         }
         catch (Exception e) {
-            throw toRuntime(ioException("Failed handling request: " + request, e));
+            throw toRuntime(
+                    ioException("Failed handling request: " + request, e));
         }
         return data;
     }
@@ -103,9 +129,6 @@ public class VastResponseHandler
     protected byte[] getBytes(Response response)
             throws Exception
     {
-        List<String> headers = response.getHeaders("Content-Length");
-        int readSize = (headers != null && !headers.isEmpty()) ? Integer.parseInt(Iterables.getOnlyElement(headers)) : Integer.MAX_VALUE;
-        InputStream inputStream = response.getInputStream();
-        return new InputStreamToByteArrayReader().readNBytes(inputStream, readSize);
+        return readResponseBytes(response);
     }
 }

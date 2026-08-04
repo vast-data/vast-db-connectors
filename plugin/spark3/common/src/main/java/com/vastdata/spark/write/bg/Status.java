@@ -15,7 +15,8 @@ public final class Status
         this.throwable = throwable;
     }
 
-    public boolean isSuccess() {
+    public boolean isSuccess()
+    {
         return this.success;
     }
 

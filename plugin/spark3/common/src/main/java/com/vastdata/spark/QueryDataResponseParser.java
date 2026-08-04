@@ -4,6 +4,7 @@
 
 package com.vastdata.spark;
 
+import com.vastdata.ShapingLoggerFactory;
 import com.vastdata.client.ArrowQueryDataSchemaHelper;
 import com.vastdata.client.BaseQueryDataResponseParser;
 import com.vastdata.client.QueryDataPageBuilder;
@@ -25,44 +26,51 @@ import static com.google.common.base.Verify.verify;
 import static com.vastdata.spark.SparkArrowVectorUtil.VAST_ROW_ID_TO_SPARK_ROW_ID_VECTOR_ADAPTOR;
 
 public class QueryDataResponseParser
-        extends BaseQueryDataResponseParser<VectorSchemaRoot>
+        extends BaseQueryDataResponseParser<VectorSchemaRoot, Void>
 {
-    private static final Logger LOG = LoggerFactory.getLogger(QueryDataResponseParser.class);
+    private static final Logger LOG = LoggerFactory.getLogger(
+            QueryDataResponseParser.class);
 
     private final BufferAllocator allocator;
     private final ArrowQueryDataSchemaHelper schemaHelper;
 
-    public QueryDataResponseParser(
+    public QueryDataResponseParser(ShapingLoggerFactory shapingLoggerFactory,
             VastTraceToken traceToken, ArrowQueryDataSchemaHelper schemaHelper,
-            VastDebugConfig debugConfig, QueryDataPagination pagination, Optional<Long> limitTotalRows, BufferAllocator allocator)
+            VastDebugConfig debugConfig, QueryDataPagination pagination,
+            Optional<Long> limitTotalRows, BufferAllocator allocator)
     {
-        super(traceToken, schemaHelper.getFields(), pagination, limitTotalRows, debugConfig);
+        super(shapingLoggerFactory, traceToken, schemaHelper.getFields(),
+              pagination, limitTotalRows, debugConfig, Optional.empty());
         this.schemaHelper = schemaHelper;
         this.allocator = allocator;
     }
 
     @Override
-    protected QueryDataPageBuilder<VectorSchemaRoot> createPageBuilder(Schema requestedSchema)
+    protected QueryDataPageBuilder<VectorSchemaRoot, Void> createPageBuilder(
+            Schema requestedSchema)
     {
         return new VastPageBuilder(requestedSchema, allocator);
     }
 
     @Override
-    protected VectorSchemaRoot joinPages(List<VectorSchemaRoot> pages)
+    protected VectorSchemaRoot joinPages(List<VectorSchemaRoot> pages,
+            QueryDataPageBuilder<VectorSchemaRoot, Void> pageBuilder)
     {
         verify(!pages.isEmpty());
         int rowCount = pages.get(0).getRowCount();
-        List<FieldVector> vectors = pages
-                .stream()
-                .flatMap(page -> page.getFieldVectors().stream())
-                .map(VAST_ROW_ID_TO_SPARK_ROW_ID_VECTOR_ADAPTOR)
-                .collect(Collectors.toList());
+        List<FieldVector> vectors = pages.stream().flatMap(
+                page -> page.getFieldVectors().stream()).map(
+                VAST_ROW_ID_TO_SPARK_ROW_ID_VECTOR_ADAPTOR).collect(
+                Collectors.toList());
 
-        VectorSchemaRoot result = schemaHelper.construct(vectors, rowCount, allocator);
+        VectorSchemaRoot result = schemaHelper.construct(vectors, rowCount,
+                allocator);
         pages.forEach(VectorSchemaRoot::close);
         vectors.forEach(FieldVector::close);
-        totalPositions.addAndGet(rowCount);
-        LOG.debug("{} joined page: rowCount={}, totalPositions={}, result: {}", traceStr, result.getRowCount(), totalPositions.get(), result.getSchema());
+        metrics.addTotalPositions(rowCount);
+        LOG.debug("{} joined page: rowCount={}, totalPositions={}, result: {}",
+                traceStr, result.getRowCount(), metrics.getTotalPositions(),
+                result.getSchema());
         return result;
     }
 

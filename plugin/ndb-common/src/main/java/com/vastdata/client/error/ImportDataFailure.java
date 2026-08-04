@@ -24,13 +24,16 @@ public class ImportDataFailure
 
     private ImportDataFailure(ImportDataResult result)
     {
-        super(format(FILES_IMPORT_ERROR_MESSAGE_FORMAT, result.getErrorDetails().orElse(""), result.getSuccessCount(), result.getFailCount()));
+        super(format(FILES_IMPORT_ERROR_MESSAGE_FORMAT,
+                result.getErrorDetails().orElse(""), result.getSuccessCount(),
+                result.getFailCount()));
         this.errorType = ErrorType.SERVER;
     }
 
     private ImportDataFailure(int status, ErrorType errorType, URI requestUri)
     {
-        super(format(REQUEST_EXECUTION_ERROR_MESSAGE_FORMAT, status, requestUri));
+        super(format(REQUEST_EXECUTION_ERROR_MESSAGE_FORMAT, status,
+                requestUri));
         this.errorType = errorType;
     }
 
@@ -40,37 +43,49 @@ public class ImportDataFailure
         this.errorType = errorType;
     }
 
-    public static ImportDataFailure fromSuccessfulRequest(ImportDataResult result)
+    public static ImportDataFailure fromSuccessfulRequest(
+            ImportDataResult result)
     {
         return new ImportDataFailure(result);
     }
 
     public static ImportDataFailure fromFailedRequest(VastResponse response)
     {
-        return fromFailedRequest(response.getStatus(), response.getRequestUri(), response.getErrorMessage());
+        return fromFailedRequest(response.getStatus(), response.getRequestUri(),
+                response.getErrorMessage());
     }
 
-    private static ImportDataFailure fromFailedRequest(int status, URI requestUri, Optional<String> errorMessage)
+    private static ImportDataFailure fromFailedRequest(int status,
+            URI requestUri, Optional<String> errorMessage)
     {
         switch (status) {
             case 404:
-                return new ImportDataFailure(getImportDataFailureMessage(REQUEST_EXECUTION_ERROR_NOT_FOUND, errorMessage), ErrorType.USER, requestUri);
+                return new ImportDataFailure(getImportDataFailureMessage(
+                        REQUEST_EXECUTION_ERROR_NOT_FOUND, errorMessage),
+                        ErrorType.USER, requestUri);
             case 403:
-                return new ImportDataFailure(getImportDataFailureMessage(REQUEST_EXECUTION_ERROR_PERMISSIONS, errorMessage), ErrorType.USER, requestUri);
+                return new ImportDataFailure(getImportDataFailureMessage(
+                        REQUEST_EXECUTION_ERROR_PERMISSIONS, errorMessage),
+                        ErrorType.USER, requestUri);
             case 400:
-                return new ImportDataFailure(getImportDataFailureMessage(REQUEST_EXECUTION_ERROR_BAD_REQUEST, errorMessage), ErrorType.USER, requestUri);
+                return new ImportDataFailure(getImportDataFailureMessage(
+                        REQUEST_EXECUTION_ERROR_BAD_REQUEST, errorMessage),
+                        ErrorType.USER, requestUri);
             default:
-                return new ImportDataFailure(status, ErrorType.SERVER, requestUri);
+                return new ImportDataFailure(status, ErrorType.SERVER,
+                        requestUri);
         }
     }
 
-    private static String getImportDataFailureMessage(String errorTypeMessage, Optional<String> extraMessageFromException)
+    private static String getImportDataFailureMessage(String errorTypeMessage,
+            Optional<String> extraMessageFromException)
     {
         if (!extraMessageFromException.isPresent()) {
             return errorTypeMessage;
         }
         else {
-            return format("%s, Server Error Message: %s", errorTypeMessage, extraMessageFromException);
+            return format("%s, Server Error Message: %s", errorTypeMessage,
+                    extraMessageFromException);
         }
     }
 

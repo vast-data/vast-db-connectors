@@ -21,9 +21,8 @@ public class VastMergeTableHandle
     private final List<VastColumnHandle> columns;
 
     @JsonCreator
-    public VastMergeTableHandle(
-            @JsonProperty("table") VastTableHandle table,
-            @JsonProperty("columns") List<VastColumnHandle> columns)
+    public VastMergeTableHandle(@JsonProperty("table") VastTableHandle table,
+                                @JsonProperty("columns") List<VastColumnHandle> columns)
     {
         this.table = table;
         this.columns = columns;
@@ -44,9 +43,7 @@ public class VastMergeTableHandle
     @Override
     public String toString()
     {
-        return toStringHelper(this)
-                .add("table", table)
-                .toString();
+        return toStringHelper(this).add("table", table).toString();
     }
 
     @Override

@@ -4,7 +4,8 @@
 
 package spark.sql.catalog.ndb;
 
-public abstract class AbstractNDBCreateTransactionFunction extends AbstractNDBFunction
+public abstract class AbstractNDBCreateTransactionFunction
+        extends AbstractNDBFunction
 {
     @Override
     String getDescription()

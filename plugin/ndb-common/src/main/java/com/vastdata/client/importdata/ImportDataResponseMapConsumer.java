@@ -20,8 +20,9 @@ import static java.util.Objects.nonNull;
 public class ImportDataResponseMapConsumer
         implements Consumer<Map>
 {
+    private static final Logger LOG = Logger.get(
+            ImportDataResponseMapConsumer.class);
     private final VastPayloadSerializer<Map> mapToString = VastPayloadSerializer.getInstanceForMap();
-    private static final Logger LOG = Logger.get(ImportDataResponseMapConsumer.class);
     private final AtomicInteger failedCtr = new AtomicInteger(0);
     private final AtomicInteger successCtr = new AtomicInteger(0);
     private final AtomicReference<String> firstErrorDetails = new AtomicReference<>();
@@ -38,32 +39,39 @@ public class ImportDataResponseMapConsumer
             if (res.equals("Success")) {
                 if (responseMapBytes.isPresent()) {
                     byte[] r = responseMapBytes.get();
-                    LOG.info("Import data is successful for file: %s", new String(r, StandardCharsets.UTF_8));
+                    LOG.info("Import data is successful for file: %s",
+                            new String(r, StandardCharsets.UTF_8));
                 }
                 else {
-                    LOG.info("Import data is successful for file name: %s", v.get("object_name"));
+                    LOG.info("Import data is successful for file name: %s",
+                            v.get("object_name"));
                 }
                 successCtr.incrementAndGet();
             }
             else if (res.equals("TabularInProgress")) {
                 if (responseMapBytes.isPresent()) {
                     byte[] r = responseMapBytes.get();
-                    LOG.info("Import data is processing file: %s", new String(r, StandardCharsets.UTF_8));
+                    LOG.info("Import data is processing file: %s",
+                            new String(r, StandardCharsets.UTF_8));
                 }
                 else {
-                    LOG.info("Import data is processing file name: %s", v.get("object_name"));
+                    LOG.info("Import data is processing file name: %s",
+                            v.get("object_name"));
                 }
             }
             else {
                 if (responseMapBytes.isPresent()) {
                     byte[] r = responseMapBytes.get();
-                    LOG.info("Import data failed for file: %s", new String(r, StandardCharsets.UTF_8));
+                    LOG.info("Import data failed for file: %s",
+                            new String(r, StandardCharsets.UTF_8));
                 }
                 else {
-                    LOG.info("Import data failed for file name: %s", v.get("object_name"));
+                    LOG.info("Import data failed for file name: %s",
+                            v.get("object_name"));
                 }
                 failedCtr.incrementAndGet();
-                firstErrorDetails.getAndUpdate(prev -> nonNull(prev) ? prev : v.toString());
+                firstErrorDetails.getAndUpdate(
+                        prev -> nonNull(prev) ? prev : v.toString());
             }
         };
         mapConsumer.accept(map);
@@ -71,6 +79,7 @@ public class ImportDataResponseMapConsumer
 
     public ImportDataResult getResult()
     {
-        return new ImportDataResult(successCtr.get(), failedCtr.get(), Optional.ofNullable(firstErrorDetails.get()));
+        return new ImportDataResult(successCtr.get(), failedCtr.get(),
+                Optional.ofNullable(firstErrorDetails.get()));
     }
 }

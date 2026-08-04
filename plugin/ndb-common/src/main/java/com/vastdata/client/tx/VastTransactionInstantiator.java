@@ -7,6 +7,5 @@ package com.vastdata.client.tx;
 import java.util.function.Function;
 
 public interface VastTransactionInstantiator<T>
-        extends Function<ParsedStartTransactionResponse, T>
-{
-}
+        extends Function<VastTransaction, T>
+{}

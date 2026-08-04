@@ -6,7 +6,8 @@ package com.vastdata.trino.block;
 
 import java.util.function.Function;
 
-class ShortApiBlockWrapper implements ShortBlockApi
+class ShortApiBlockWrapper
+        implements ShortBlockApi
 {
     private final Function<Integer, Short> shortFunction;
 

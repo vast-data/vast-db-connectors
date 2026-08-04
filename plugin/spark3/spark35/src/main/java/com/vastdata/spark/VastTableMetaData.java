@@ -14,7 +14,9 @@ public class VastTableMetaData
     public final StructType schema;
     private boolean forUpdate = false;
     private boolean forDelete = false;
-    public VastTableMetaData(String schemaName, String tableName, String handleID, StructType schema, boolean forImportData)
+
+    public VastTableMetaData(String schemaName, String tableName,
+            String handleID, StructType schema, boolean forImportData)
     {
         super(schemaName, tableName, handleID, forImportData);
         this.schema = schema;
@@ -45,7 +47,8 @@ public class VastTableMetaData
     {
         if (super.equals(o)) {
             VastTableMetaData that = (VastTableMetaData) o;
-            return Objects.equals(schema, that.schema) && Objects.equals(schemaName, that.schemaName);
+            return Objects.equals(schema, that.schema) && Objects.equals(
+                    schemaName, that.schemaName);
         }
         else {
             return false;

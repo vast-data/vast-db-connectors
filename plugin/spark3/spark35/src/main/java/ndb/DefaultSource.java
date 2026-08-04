@@ -21,7 +21,8 @@ import java.util.Map;
 public class DefaultSource
         implements SupportsCatalogOptions, DataSourceRegister
 {
-    private static final Logger LOG = LoggerFactory.getLogger(DefaultSource.class);
+    private static final Logger LOG = LoggerFactory.getLogger(
+            DefaultSource.class);
 
     private static final VastTableProvider vastTableProvider = new VastTableProvider(); //TODO - implement all here or all there
 
@@ -47,7 +48,8 @@ public class DefaultSource
     }
 
     @Override
-    public Table getTable(StructType schema, Transform[] partitioning, Map<String, String> properties)
+    public Table getTable(StructType schema, Transform[] partitioning,
+            Map<String, String> properties)
     {
         LOG.debug("getTable");
         return vastTableProvider.getTable(schema, partitioning, properties);

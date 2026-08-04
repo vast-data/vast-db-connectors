@@ -10,17 +10,23 @@ import org.apache.spark.sql.catalyst.plans.logical.ShowViews;
 import scala.collection.immutable.IndexedSeq;
 import scala.collection.immutable.Seq;
 
-
-public class ShowNDBViewsPlan extends LogicalPlan
+public class ShowNDBViewsPlan
+        extends LogicalPlan
 {
-    private IndexedSeq<LogicalPlan> children = null;
     final ShowViews original;
     final Seq<Attribute> cachedOutput;
+    private IndexedSeq<LogicalPlan> children = null;
 
-    private ShowNDBViewsPlan(final ShowViews original) {
+    private ShowNDBViewsPlan(final ShowViews original)
+    {
         super();
         this.original = original;
         cachedOutput = ShowViews.getOutputAttrs();
+    }
+
+    public static ShowNDBViewsPlan instance(ShowViews plan)
+    {
+        return new ShowNDBViewsPlan(plan);
     }
 
     @Override
@@ -42,7 +48,9 @@ public class ShowNDBViewsPlan extends LogicalPlan
 
     // TODO: these `withX` methods should return a modified *copy*
     @Override
-    public LogicalPlan withNewChildrenInternal(IndexedSeq<LogicalPlan> newChildren) {
+    public LogicalPlan withNewChildrenInternal(
+            IndexedSeq<LogicalPlan> newChildren)
+    {
         {
             this.children = newChildren;
             return this;
@@ -65,10 +73,5 @@ public class ShowNDBViewsPlan extends LogicalPlan
     public int productArity()
     {
         return 0;
-    }
-
-    public static ShowNDBViewsPlan instance(ShowViews plan)
-    {
-        return new ShowNDBViewsPlan(plan);
     }
 }

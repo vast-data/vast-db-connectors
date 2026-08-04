@@ -19,21 +19,21 @@ public class ProjectionSerializer
 {
     private final Collection<Integer> projections;
 
-    public ProjectionSerializer(Schema arrowSchema, EnumeratedSchema enumeratedSchema)
+    public ProjectionSerializer(Schema arrowSchema,
+            EnumeratedSchema enumeratedSchema)
     {
         this.projections = new LinkedHashSet<>();
         for (Field column : arrowSchema.getFields()) {
-            enumeratedSchema.collectProjectionIndices(column.getName(), ImmutableList.of(), projections::add);
+            enumeratedSchema.collectProjectionIndices(column.getName(),
+                    ImmutableList.of(), projections::add);
         }
     }
 
     @Override
     protected int serialize()
     {
-        int[] expressionsOffsets = projections
-                .stream()
-                .mapToInt(this::buildColumn)
-                .toArray();
+        int[] expressionsOffsets = projections.stream().mapToInt(
+                this::buildColumn).toArray();
         return Project.createExpressionsVector(builder, expressionsOffsets);
     }
 }

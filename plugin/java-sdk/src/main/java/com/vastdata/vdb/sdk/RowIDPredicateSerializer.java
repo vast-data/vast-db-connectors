@@ -17,9 +17,11 @@ import org.slf4j.LoggerFactory;
 public class RowIDPredicateSerializer
         extends VastExpressionSerializer
 {
-    private static final Logger LOG = LoggerFactory.getLogger(RowIDPredicateSerializer.class);
+    private static final Logger LOG = LoggerFactory.getLogger(
+            RowIDPredicateSerializer.class);
 
-    private final Field field = Field.notNullable(null, new ArrowType.Int(64, true));
+    private final Field field = Field.notNullable(null,
+            new ArrowType.Int(64, true));
 
     private final long rowid;
 
@@ -31,13 +33,14 @@ public class RowIDPredicateSerializer
     @Override
     public int serialize()
     {
-        final int literalValueOffset = Expression.createExpression(builder, ExpressionImpl.Literal, Literal.createLiteral(
-                builder,
-                LiteralImpl.Int64Literal,
-                Int64Literal.createInt64Literal(builder, this.rowid),
-                field.getField(builder)));
+        final int literalValueOffset = Expression.createExpression(builder,
+                ExpressionImpl.Literal,
+                Literal.createLiteral(builder, LiteralImpl.Int64Literal,
+                        Int64Literal.createInt64Literal(builder, this.rowid),
+                        field.getField(builder)));
         final int columnOffset = buildColumn(0);
-        final int equalRowidOffset = buildEqual(columnOffset, literalValueOffset);
+        final int equalRowidOffset = buildEqual(columnOffset,
+                literalValueOffset);
 
         return buildAnd(buildOr(equalRowidOffset));
     }

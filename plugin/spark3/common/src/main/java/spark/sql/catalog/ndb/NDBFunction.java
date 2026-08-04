@@ -10,7 +10,8 @@ public enum NDBFunction
 
     private final String funcName;
 
-    NDBFunction(String funcName) {
+    NDBFunction(String funcName)
+    {
         this.funcName = funcName;
     }
 

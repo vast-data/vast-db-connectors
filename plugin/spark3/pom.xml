@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
         <groupId>ndb</groupId>
         <artifactId>ndb-root</artifactId>
-        <version>5.4.0</version>
+        <version>5.5.0</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
     <artifactId>spark-vast</artifactId>
-    <version>5.4.0</version>
+    <version>5.5.0</version>
     <description>Spark - VAST Connector</description>
     <packaging>pom</packaging>
 
@@ -32,14 +32,32 @@
     <modules>
         <module>common</module>
         <module>spark34</module>
-        <module>spark35-scala212</module>
         <module>spark35</module>
+        <module>spark35-scala212</module>
         <module>spark-agent</module>
     </modules>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.gaul</groupId>
+                <artifactId>modernizer-maven-plugin</artifactId>
+                <version>2.2.0</version>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
     <dependencies>
         <dependency>
             <groupId>org.apache.arrow</groupId>
             <artifactId>arrow-memory-core</artifactId>
+            <version>${dep.arrow.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>arrow-memory-netty</artifactId>
             <version>${dep.arrow.version}</version>
             <scope>provided</scope>
         </dependency>
@@ -50,41 +68,59 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>arrow-format</artifactId>
+            <version>${dep.arrow.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>arrow-compression</artifactId>
+            <version>${dep.arrow.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.google.flatbuffers</groupId>
+            <artifactId>flatbuffers-java</artifactId>
+            <version>2.0.3</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
             <groupId>org.apache.parquet</groupId>
             <artifactId>parquet-common</artifactId>
             <version>1.12.2</version>
             <scope>provided</scope>
         </dependency>
-<!--        <dependency>-->
-<!--            <groupId>org.apache.spark</groupId>-->
-<!--            <artifactId>spark-catalyst_2.13</artifactId>-->
-<!--            <version>${spark.version}</version>-->
-<!--            <scope>provided</scope>-->
-<!--        </dependency>-->
-<!--        <dependency>-->
-<!--            <groupId>org.apache.spark</groupId>-->
-<!--            <artifactId>spark-core_2.13</artifactId>-->
-<!--            <version>${spark.version}</version>-->
-<!--            <scope>provided</scope>-->
-<!--        </dependency>-->
-<!--        <dependency>-->
-<!--            <groupId>org.apache.spark</groupId>-->
-<!--            <artifactId>spark-network-common_2.13</artifactId>-->
-<!--            <version>${spark.version}</version>-->
-<!--            <scope>provided</scope>-->
-<!--        </dependency>-->
-<!--        <dependency>-->
-<!--            <groupId>org.apache.spark</groupId>-->
-<!--            <artifactId>spark-sql_2.13</artifactId>-->
-<!--            <version>${spark.version}</version>-->
-<!--            <scope>provided</scope>-->
-<!--        </dependency>-->
-<!--        <dependency>-->
-<!--            <groupId>org.apache.spark</groupId>-->
-<!--            <artifactId>spark-unsafe_2.13</artifactId>-->
-<!--            <version>${spark.version}</version>-->
-<!--            <scope>provided</scope>-->
-<!--        </dependency>-->
+        <!--        <dependency>-->
+        <!--            <groupId>org.apache.spark</groupId>-->
+        <!--            <artifactId>spark-catalyst_2.13</artifactId>-->
+        <!--            <version>${spark.version}</version>-->
+        <!--            <scope>provided</scope>-->
+        <!--        </dependency>-->
+        <!--        <dependency>-->
+        <!--            <groupId>org.apache.spark</groupId>-->
+        <!--            <artifactId>spark-core_2.13</artifactId>-->
+        <!--            <version>${spark.version}</version>-->
+        <!--            <scope>provided</scope>-->
+        <!--        </dependency>-->
+        <!--        <dependency>-->
+        <!--            <groupId>org.apache.spark</groupId>-->
+        <!--            <artifactId>spark-network-common_2.13</artifactId>-->
+        <!--            <version>${spark.version}</version>-->
+        <!--            <scope>provided</scope>-->
+        <!--        </dependency>-->
+        <!--        <dependency>-->
+        <!--            <groupId>org.apache.spark</groupId>-->
+        <!--            <artifactId>spark-sql_2.13</artifactId>-->
+        <!--            <version>${spark.version}</version>-->
+        <!--            <scope>provided</scope>-->
+        <!--        </dependency>-->
+        <!--        <dependency>-->
+        <!--            <groupId>org.apache.spark</groupId>-->
+        <!--            <artifactId>spark-unsafe_2.13</artifactId>-->
+        <!--            <version>${spark.version}</version>-->
+        <!--            <scope>provided</scope>-->
+        <!--        </dependency>-->
         <dependency>
             <groupId>org.javassist</groupId>
             <artifactId>javassist</artifactId>
@@ -92,9 +128,9 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>org.jetbrains</groupId>
-            <artifactId>annotations</artifactId>
-            <version>19.0.0</version>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-library</artifactId>
+            <version>2.13.10</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -110,26 +146,26 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-<!--    <profiles>-->
-<!--        <profile>-->
-<!--            <id>spark-3.3</id>-->
-<!--            <properties>-->
-<!--                <spark.version>${spark33.version}</spark.version>-->
-<!--            </properties>-->
-<!--            <modules>-->
-<!--                <module>common</module>-->
-<!--                <module>spark33</module>-->
-<!--            </modules>-->
-<!--        </profile>-->
-<!--        <profile>-->
-<!--            <id>spark-3.4</id>-->
-<!--            <properties>-->
-<!--                <spark.version>${spark34.version}</spark.version>-->
-<!--            </properties>-->
-<!--            <modules>-->
-<!--                <module>common</module>-->
-<!--                <module>spark34</module>-->
-<!--            </modules>-->
-<!--        </profile>-->
-<!--    </profiles>-->
+    <!--    <profiles>-->
+    <!--        <profile>-->
+    <!--            <id>spark-3.3</id>-->
+    <!--            <properties>-->
+    <!--                <spark.version>${spark33.version}</spark.version>-->
+    <!--            </properties>-->
+    <!--            <modules>-->
+    <!--                <module>common</module>-->
+    <!--                <module>spark33</module>-->
+    <!--            </modules>-->
+    <!--        </profile>-->
+    <!--        <profile>-->
+    <!--            <id>spark-3.4</id>-->
+    <!--            <properties>-->
+    <!--                <spark.version>${spark34.version}</spark.version>-->
+    <!--            </properties>-->
+    <!--            <modules>-->
+    <!--                <module>common</module>-->
+    <!--                <module>spark34</module>-->
+    <!--            </modules>-->
+    <!--        </profile>-->
+    <!--    </profiles>-->
 </project>

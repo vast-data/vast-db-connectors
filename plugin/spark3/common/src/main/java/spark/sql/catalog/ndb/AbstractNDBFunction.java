@@ -8,5 +8,6 @@ public abstract class AbstractNDBFunction
 {
 
     abstract String getDescription();
+
     abstract String getName();
 }

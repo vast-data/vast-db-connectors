@@ -10,11 +10,15 @@ import java.util.function.IntFunction;
 
 public final class ValueEntryFunctionFactory
 {
-    private ValueEntryFunctionFactory() {}
-
-    public static <T> ValueEntrySetter<T> newSetter(BiConsumer<Integer, T> valueConsumer, IntConsumer nullConsumer)
+    private ValueEntryFunctionFactory()
     {
-        return new ValueEntrySetter<T>() {
+    }
+
+    public static <T> ValueEntrySetter<T> newSetter(
+            BiConsumer<Integer, T> valueConsumer, IntConsumer nullConsumer)
+    {
+        return new ValueEntrySetter<T>()
+        {
             @Override
             public void setNull(int i)
             {
@@ -29,9 +33,12 @@ public final class ValueEntryFunctionFactory
         };
     }
 
-    public static <T> ValueEntryGetter<T> newGetter(IntFunction<T> valueSupplier, IntFunction<Boolean> nullSupplier, IntFunction<Boolean> parentNullSupplier)
+    public static <T> ValueEntryGetter<T> newGetter(
+            IntFunction<T> valueSupplier, IntFunction<Boolean> nullSupplier,
+            IntFunction<Boolean> parentNullSupplier)
     {
-        return new ValueEntryGetter<T>() {
+        return new ValueEntryGetter<T>()
+        {
             @Override
             public boolean isNull(int i)
             {

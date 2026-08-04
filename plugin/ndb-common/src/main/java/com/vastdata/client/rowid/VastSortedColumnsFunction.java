@@ -8,5 +8,4 @@ import java.util.function.Function;
 
 public interface VastSortedColumnsFunction<T>
         extends Function<T, List<String>>
-{
-}
+{}

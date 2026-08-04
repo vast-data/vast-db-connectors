@@ -22,7 +22,8 @@ public class MockUtils
     public void createBucket(int port, String bucketName)
             throws IOException
     {
-        URL url = new URL(String.format("http://localhost:%d/" + bucketName, port));
+        URL url = new URL(
+                String.format("http://localhost:%d/" + bucketName, port));
         HttpURLConnection con = null;
         try {
             con = (HttpURLConnection) url.openConnection();
@@ -42,7 +43,8 @@ public class MockUtils
     public ListSchemasResponse getBucketSchemas(int port, String bucketName)
             throws IOException
     {
-        URL url = new URL(String.format("http://localhost:%d/" + bucketName, port));
+        URL url = new URL(
+                String.format("http://localhost:%d/" + bucketName, port));
         HttpURLConnection con = null;
         try {
             con = (HttpURLConnection) url.openConnection();
@@ -51,7 +53,8 @@ public class MockUtils
             con.setReadTimeout(10000);
             ByteBuffer bb;
             try (InputStream inputStream = con.getInputStream()) {
-                byte[] bytes = inputStreamToByteArrayReader.readAllBytes(inputStream);
+                byte[] bytes = inputStreamToByteArrayReader.readAllBytes(
+                        inputStream);
                 bb = ByteBuffer.wrap(bytes);
             }
             catch (Exception any) {

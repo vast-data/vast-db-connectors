@@ -8,9 +8,9 @@ import com.amazonaws.http.HttpMethodName;
 import com.google.common.collect.Sets;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
-import com.vastdata.mockserver.handle.PostHandler;
 import com.vastdata.mockserver.handle.DeleteHandler;
 import com.vastdata.mockserver.handle.GetHandler;
+import com.vastdata.mockserver.handle.PostHandler;
 import com.vastdata.mockserver.handle.PutHandler;
 import io.airlift.log.Logger;
 
@@ -36,11 +36,12 @@ public class VastRootHandler
     public static final Consumer<HttpExchange> THROWER = h -> {
         throw new RuntimeException("Request handler not implemented");
     };
-    private static final Logger LOG = Logger.get(VastRootHandler.class);
     public static final String HANDLING = "Handling ";
+    private static final Logger LOG = Logger.get(VastRootHandler.class);
     private final Map<String, Set<MockMapSchema>> schema = new HashMap<>();
 
-    private final EnumMap<HttpMethodName, Consumer<HttpExchange>> handlersMap = new EnumMap<>(HttpMethodName.class);
+    private final EnumMap<HttpMethodName, Consumer<HttpExchange>> handlersMap = new EnumMap<>(
+            HttpMethodName.class);
 
     private final Map<HookKey, Optional<Consumer<HttpExchange>>> hooks = new HashMap<>();
 
@@ -62,7 +63,8 @@ public class VastRootHandler
         LOG.info(HANDLING + requestURI);
         HttpMethodName method = HttpMethodName.fromValue(he.getRequestMethod());
         HookKey requestHookKey = new HookKey(requestURI.getPath(), method);
-        Optional<Consumer<HttpExchange>> optionalHook = hooks.getOrDefault(requestHookKey, Optional.empty());
+        Optional<Consumer<HttpExchange>> optionalHook = hooks.getOrDefault(
+                requestHookKey, Optional.empty());
         if (optionalHook.isPresent()) {
             Consumer<HttpExchange> hook = optionalHook.get();
             LOG.info("Found hook for request: %s", requestHookKey);
@@ -85,7 +87,8 @@ public class VastRootHandler
         this.hooks.clear();
     }
 
-    public void setHook(String path, HttpMethodName method, Consumer<HttpExchange> action)
+    public void setHook(String path, HttpMethodName method,
+            Consumer<HttpExchange> action)
     {
         this.hooks.put(new HookKey(path, method), Optional.of(action));
     }

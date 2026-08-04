@@ -4,6 +4,8 @@
 
 package com.vastdata.spark;
 
+import ndb.ComplexRowIDPredicate;
+import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.spark.sql.connector.expressions.FieldReference;
 import org.apache.spark.sql.connector.expressions.NamedReference;
 import org.apache.spark.sql.connector.read.ScanBuilder;
@@ -17,28 +19,37 @@ import scala.collection.immutable.List;
 import scala.collection.immutable.List$;
 import scala.collection.mutable.Builder;
 
-import static com.vastdata.spark.SparkArrowVectorUtil.VASTDB_SPARK_ROW_ID_NONNULL;
+import static com.vastdata.spark.SparkArrowVectorUtil.VASTDB_SPARK_DEC128_ROW_ID_NONNULL;
+import static com.vastdata.spark.SparkArrowVectorUtil.VASTDB_SPARK_INT64_ROW_ID_NONNULL;
 
 public abstract class VastDeltaOperation
         implements SupportsDelta
 {
-    private static final Logger LOG = LoggerFactory.getLogger(VastDeltaOperation.class);
-    private static final NamedReference[] ROW_ID_REF;
-    static {
-        Builder<String, List<String>> objectSeqBuilder = List$.MODULE$.newBuilder();
-        objectSeqBuilder.$plus$eq(VASTDB_SPARK_ROW_ID_NONNULL.getName());
-        List<String> seq = objectSeqBuilder.result();
-        ROW_ID_REF = new FieldReference[]{new FieldReference(seq)};
-    }
-
+    private static final Logger LOG = LoggerFactory.getLogger(
+            VastDeltaOperation.class);
+    private static final NamedReference[] ROW_ID_REF = fieldToRef(
+            VASTDB_SPARK_INT64_ROW_ID_NONNULL);
+    private static final NamedReference[] ROW_ID_REF_EXTENDED = fieldToRef(
+            VASTDB_SPARK_DEC128_ROW_ID_NONNULL);
+    private static final ComplexRowIDPredicate rowIDPredicate = new ComplexRowIDPredicate();
     private final VastTable vastTable;
+
     public VastDeltaOperation(VastTable vastTable)
     {
         this.vastTable = vastTable;
     }
 
+    private static NamedReference[] fieldToRef(Field f)
+    {
+        Builder<String, List<String>> objectSeqBuilder = List$.MODULE$.newBuilder();
+        objectSeqBuilder.$plus$eq(f.getName());
+        List<String> seq = objectSeqBuilder.result();
+        return new FieldReference[] {new FieldReference(seq)};
+    }
+
     @Override
-    public ScanBuilder newScanBuilder(CaseInsensitiveStringMap caseInsensitiveStringMap)
+    public ScanBuilder newScanBuilder(
+            CaseInsensitiveStringMap caseInsensitiveStringMap)
     {
         LOG.debug("newScanBuilder: {}", caseInsensitiveStringMap);
         return vastTable.newScanBuilder(caseInsensitiveStringMap);
@@ -54,6 +65,9 @@ public abstract class VastDeltaOperation
     @Override
     public NamedReference[] rowId()
     {
+        if (rowIDPredicate.test(vastTable)) {
+            return ROW_ID_REF_EXTENDED;
+        }
         return ROW_ID_REF;
     }
 }

@@ -19,8 +19,7 @@ public class VastSplitContext
     private final int rowGroupsPerSubSplit;
 
     @JsonCreator
-    public VastSplitContext(
-            @JsonProperty("currentSplit") long currentSplit,
+    public VastSplitContext(@JsonProperty("currentSplit") long currentSplit,
             @JsonProperty("numOfSplits") int numOfSplits,
             @JsonProperty("numOfSubSplits") int numOfSubSplits,
             @JsonProperty("rowGroupsPerSubSplit") int rowGroupsPerSubSplit)
@@ -71,7 +70,8 @@ public class VastSplitContext
     @Override
     public int hashCode()
     {
-        return Objects.hash(currentSplit, numOfSplits, numOfSubSplits, rowGroupsPerSubSplit);
+        return Objects.hash(currentSplit, numOfSplits, numOfSubSplits,
+                rowGroupsPerSubSplit);
     }
 
     @Override

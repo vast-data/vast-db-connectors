@@ -17,8 +17,7 @@ public class TestValidSchemaNamePredicate
     @DataProvider
     Object[][] schemaNames()
     {
-        return new Object[][] {
-                {"/buck/schema/nested/", true},
+        return new Object[][] {{"/buck/schema/nested/", true},
                 {"/Buck/Schema/Nested/nested1", true},
                 {"buck/schema", true},
                 {"buck/schema/", true},
@@ -30,13 +29,14 @@ public class TestValidSchemaNamePredicate
                 {"", false},
                 {"/", false},
                 {"////buck/schema", false},
-                {"///buck1A", false},
-        };
+                {"///buck1A", false}};
     }
 
     @Test(dataProvider = "schemaNames")
-    public void testValidSchemaName(final String schemaName, final boolean isValid)
+    public void testValidSchemaName(final String schemaName,
+            final boolean isValid)
     {
-        assertEquals(unit.test(schemaName), isValid, format("Schema name %s was tested negative", schemaName));
+        assertEquals(unit.test(schemaName), isValid,
+                format("Schema name %s was tested negative", schemaName));
     }
 }

@@ -10,20 +10,24 @@ import com.vastdata.client.stats.StatisticsUrlExtractor;
 
 import static java.lang.String.format;
 
-public class TrinoStatisticsUrlExtractor extends StatisticsUrlExtractor<VastTableHandle>
+public class TrinoStatisticsUrlExtractor
+        extends StatisticsUrlExtractor<VastTableHandle>
 {
     private static final TrinoStatisticsUrlExtractor instance = new TrinoStatisticsUrlExtractor();
 
     private TrinoStatisticsUrlExtractor()
     {
-        super(t -> {
+        super(t ->
+        {
             try {
                 return ParsedURL.of(t.getSchemaName()).getBucket();
             }
             catch (VastUserException e) {
-                throw new RuntimeException(format("Failed extracting bucket from table: %s", t.getTableName()), e);
+                throw new RuntimeException(
+                        format("Failed extracting bucket from table: %s",
+                                t.getTableName()), e);
             }
-        }, VastTableHandle::getHandleID);
+        }, t -> t.getHandleID().getHandle());
     }
 
     public static synchronized StatisticsUrlExtractor<VastTableHandle> instance()

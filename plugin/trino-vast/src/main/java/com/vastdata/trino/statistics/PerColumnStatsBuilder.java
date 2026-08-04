@@ -4,18 +4,13 @@
 
 package com.vastdata.trino.statistics;
 
-import io.airlift.log.Logger;
 import io.trino.spi.statistics.ColumnStatisticType;
 import io.trino.spi.statistics.ColumnStatistics;
 import io.trino.spi.statistics.DoubleRange;
 import io.trino.spi.statistics.Estimate;
 
-import java.util.function.BiConsumer;
-
 class PerColumnStatsBuilder
-        implements BiConsumer<ColumnStatisticType, Double>
 {
-    private static final Logger LOG = Logger.get(PerColumnStatsBuilder.class);
     private final ColumnStatistics.Builder builder = new ColumnStatistics.Builder();
     private final long rowCount;
     private Double max;
@@ -40,7 +35,6 @@ class PerColumnStatsBuilder
         return this.builder.build();
     }
 
-    @Override
     public void accept(ColumnStatisticType statisticType, Double value)
     {
         switch (statisticType) {
@@ -61,12 +55,16 @@ class PerColumnStatsBuilder
                 builder.setDataSize(Estimate.of(value));
                 break;
             default:
-                throw new IllegalArgumentException(String.format("Unsupported column statistic type %s", statisticType));
+                throw new IllegalArgumentException(
+                        String.format("Unsupported column statistic type %s",
+                                statisticType));
         }
     }
 
     protected double getNullFraction(Double value)
     {
-        return (rowCount == 0L) ? 0.0 : (((double) rowCount - value)) / rowCount;
+        return (rowCount == 0L) ?
+                0.0 :
+                (((double) rowCount - value)) / rowCount;
     }
 }

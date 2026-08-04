@@ -20,13 +20,17 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
 
-public class TrinoSerializableTableStatisticsDeserializer extends JsonDeserializer<TrinoSerializableTableStatistics>
+public class TrinoSerializableTableStatisticsDeserializer
+        extends JsonDeserializer<TrinoSerializableTableStatistics>
 {
-    public TrinoSerializableTableStatisticsDeserializer() {}
-
     private static final ObjectMapper mapper = TrinoStatisticsMapper.instance();
 
-    public TrinoSerializableTableStatistics deserialize(JsonParser jp, DeserializationContext deserializationContext)
+    public TrinoSerializableTableStatisticsDeserializer()
+    {
+    }
+
+    public TrinoSerializableTableStatistics deserialize(JsonParser jp,
+                                                        DeserializationContext deserializationContext)
             throws IOException
     {
         List<TrinoSerializableTableStatistics.Entry<ColumnHandle, ColumnStatistics>> pairs = new LinkedList<>();
@@ -39,10 +43,13 @@ public class TrinoSerializableTableStatisticsDeserializer extends JsonDeserializ
         for (JsonNode next : pairList) {
             JsonParser key = next.get("key").traverse();
 
-            VastColumnHandle vastColumnHandle = mapper.readValue(key, VastColumnHandle.class);
+            VastColumnHandle vastColumnHandle = mapper.readValue(key,
+                    VastColumnHandle.class);
             JsonNode statsNode = next.get("value");
-            Estimate nullsFraction = getEstimationNode(statsNode.get("nullsFraction"));
-            Estimate distinctValueCount = getEstimationNode(statsNode.get("distinctValuesCount"));
+            Estimate nullsFraction = getEstimationNode(
+                    statsNode.get("nullsFraction"));
+            Estimate distinctValueCount = getEstimationNode(
+                    statsNode.get("distinctValuesCount"));
             Estimate dataSize = getEstimationNode(statsNode.get("dataSize"));
 
             JsonNode rangeNode = statsNode.get("range");
@@ -52,10 +59,13 @@ public class TrinoSerializableTableStatisticsDeserializer extends JsonDeserializ
                 r = Optional.empty();
             }
             else {
-                r = Optional.of(mapper.readValue(rangeNodeString, DoubleRange.class));
+                r = Optional.of(
+                        mapper.readValue(rangeNodeString, DoubleRange.class));
             }
-            ColumnStatistics stats = new ColumnStatistics(nullsFraction, distinctValueCount, dataSize, r);
-            pairs.add(new TrinoSerializableTableStatistics.Entry<>(vastColumnHandle, stats));
+            ColumnStatistics stats = new ColumnStatistics(nullsFraction,
+                    distinctValueCount, dataSize, r);
+            pairs.add(new TrinoSerializableTableStatistics.Entry<>(
+                    vastColumnHandle, stats));
         }
         return new TrinoSerializableTableStatistics(est, pairs);
     }

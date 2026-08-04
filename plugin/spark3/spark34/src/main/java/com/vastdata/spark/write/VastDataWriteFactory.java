@@ -8,6 +8,9 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastConfig;
 import com.vastdata.client.error.VastUserException;
+import com.vastdata.client.metrics.ByColumnInserterMetrics;
+import com.vastdata.client.metrics.RecordBatchSplitterMetrics;
+import com.vastdata.client.rowid.RowIDStrategyType;
 import com.vastdata.client.tx.VastTransaction;
 import com.vastdata.spark.FullSliceExtractor;
 import com.vastdata.spark.VastArrowAllocator;
@@ -20,6 +23,7 @@ import com.vastdata.spark.write.bg.Status;
 import com.vastdata.spark.write.bg.VastBGWriter;
 import com.vastdata.spark.write.bg.VastBGWriterFactory;
 import ndb.NDB;
+import ndb.NDBSparkSessionExtension;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.types.pojo.Schema;
@@ -36,6 +40,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -56,16 +61,52 @@ public class VastDataWriteFactory
         }
     };
 
-    private static final Logger FACTORY_LOG = LoggerFactory.getLogger(VastDataWriteFactory.class);
-    private static final Logger DATA_WRITER_LOG = LoggerFactory.getLogger(VastDataWriter.class);
+    private static final Logger FACTORY_LOG = LoggerFactory.getLogger(
+            VastDataWriteFactory.class);
+    private static final Logger DATA_WRITER_LOG = LoggerFactory.getLogger(
+            VastDataWriter.class);
 
     private final List<URI> endpoints;
     private final VastTransaction tx;
     private final VastConfig vastConfig;
     private final VastTableMetaData vastTableMetaData;
     private final String vastTraceTokenStr;
+    private final String enduser;
+    private final RowIDStrategyType rowIdType;
+    private final Set<String> nonUpdatableColumns;
+    private transient RecordBatchSplitterMetrics splitterMetrics;
+    private transient ByColumnInserterMetrics insertMetrics;
+    private transient ExecutorService ioExecutor;
+    private transient ExecutorService cpuExecutor;
 
-    private class VastDataWriter implements DataWriter<InternalRow>, CompletedWriteExecutionComponent
+    public VastDataWriteFactory(VastTransaction tx, VastConfig vastConfig,
+            VastTable vastTable, List<URI> dataEndpoints)
+    {
+        this.tx = tx;
+        this.vastConfig = vastConfig;
+        this.vastTraceTokenStr = tx
+                .generateTraceToken(Optional.empty())
+                .toString();
+        this.vastTableMetaData = vastTable.getTableMD();
+        this.endpoints = dataEndpoints;
+        this.enduser = NDBSparkSessionExtension.getSessionUser(vastConfig);
+        boolean complexRowID = vastTable.properties().containsKey("sorted_by") || (vastTable.partitioning() != null && vastTable.partitioning().length > 0);
+        this.rowIdType = complexRowID ? RowIDStrategyType.DECIMAL_128 : RowIDStrategyType.UNSIGNED_INT64;
+        this.nonUpdatableColumns = vastTable.getNonUpdatableColumns();
+    }
+
+    @Override
+    public DataWriter<InternalRow> createWriter(int partitionId, long taskId)
+    {
+        VastDataWriter vastDataWriter = new VastDataWriter(partitionId, taskId,
+                enduser);
+        FACTORY_LOG.info("Created new writer: {} for partitionId={}, taskId={}",
+                vastDataWriter.name(), partitionId, taskId);
+        return vastDataWriter;
+    }
+
+    private class VastDataWriter
+            implements DataWriter<InternalRow>, CompletedWriteExecutionComponent
     {
         private final int dataWriterIndex;
         private final String dataWriteTraceToken;
@@ -73,41 +114,96 @@ public class VastDataWriteFactory
         private final AwaitableCompletionListener bgTaskPhasesCompletionListener;
         private final BufferAllocator writerAllocator;
         private final FunctionalQ<VectorSchemaRoot> insertArrowVectorsQ;
-        private Status status;
         private final Schema tableArrowSchema;
+        private final int chunkSize;
+        private final FullSliceExtractor fullSliceExtractor;
+        private Status status;
         private int ctr = 0;
         private ArrowWriter arrowWriter;
         private VectorSchemaRoot currentRoot;
-        private final int chunkSize;
-        private final FullSliceExtractor fullSliceExtractor;
 
-        private VastDataWriter(int dataWriterIndex, Object traceObj)
+        private VastDataWriter(int dataWriterIndex, Object traceObj,
+                String endUser)
         {
-            this.dataWriteTraceToken = format("(%s:%s:%s)", vastTraceTokenStr, traceObj, dataWriterIndex);
+            this.dataWriteTraceToken = format("(%s:%s:%s)", vastTraceTokenStr,
+                    traceObj, dataWriterIndex);
             this.dataWriterIndex = dataWriterIndex;
-            this.bgTaskPhasesCompletionListener = new AwaitableCompletionListener(2); // 2 phases - this, BGInserter
+            this.bgTaskPhasesCompletionListener = new AwaitableCompletionListener(
+                    2); // 2 phases - this, BGInserter
             this.bgTaskPhasesCompletionListener.registerFailureAction(() -> {
-                DATA_WRITER_LOG.info("{} Rolling back tx: {}", dataWriteTraceToken, tx);
+                DATA_WRITER_LOG.info("{} Rolling back tx: {}",
+                        dataWriteTraceToken, tx);
                 VastClient vastClient = NDB.getVastClient(vastConfig);
-                vastClient.rollbackTransaction(tx, null);
+                vastClient.rollbackTransaction(tx, endUser);
                 return null;
             });
             this.status = new Status(true, null);
-            this.writerAllocator = VastArrowAllocator.writeAllocator().newChildAllocator(format("VastDataWriter%s", this.dataWriteTraceToken), 0, Long.MAX_VALUE);
-            this.tableArrowSchema = new Schema(TypeUtil.sparkSchemaToArrowFieldsList(vastTableMetaData.schema));
-            this.fullSliceExtractor = new FullSliceExtractor(this.tableArrowSchema);
+            this.writerAllocator = VastArrowAllocator
+                    .writeAllocator()
+                    .newChildAllocator(format("VastDataWriter%s",
+                            this.dataWriteTraceToken), 0, Long.MAX_VALUE);
+            this.tableArrowSchema = new Schema(
+                    TypeUtil.sparkSchemaToArrowFieldsList(
+                            vastTableMetaData.schema));
+            this.fullSliceExtractor = new FullSliceExtractor(
+                    this.tableArrowSchema);
             this.chunkSize = vastConfig.getMaxRowsPerInsert();
             int ordinal = ordinal();
-            this.insertArrowVectorsQ = new FunctionalQ<>(VectorSchemaRoot.class, this.dataWriteTraceToken, ordinal, 100, 2, this.bgTaskPhasesCompletionListener);
+            this.insertArrowVectorsQ = new FunctionalQ<>(VectorSchemaRoot.class,
+                    this.dataWriteTraceToken, ordinal, 100, 2,
+                    this.bgTaskPhasesCompletionListener);
 
             ordinal++;
             URI endpoint = endpoints.get(dataWriterIndex % endpoints.size());
-            VastBGWriter vastBgWriter = VastBGWriterFactory.forInsert(ordinal, VAST_CLIENT_SUPPLIER_FROM_SPARK_CONTEXT, this.dataWriteTraceToken, vastConfig, endpoint, tx,
-                    vastTableMetaData.schemaName, vastTableMetaData.tableName, this.insertArrowVectorsQ, vastTableMetaData.forImportData);
-            DATA_WRITER_LOG.info("VastDataWriter{}: INSERT chunkSize = {}, tableArrowSchema = {}", dataWriteTraceToken, chunkSize, tableArrowSchema);
-            vastBgWriter.registerCompletionListener(this.bgTaskPhasesCompletionListener);
+            VastBGWriter vastBgWriter = null;
 
-            this.executorService = Executors.newFixedThreadPool(2, new ThreadFactoryBuilder().setNameFormat("insert-worker-" + dataWriterIndex + "-%s").build());
+            if (vastTableMetaData.forImportData) {
+                vastBgWriter = VastBGWriterFactory.forImport(
+                        ordinal,
+                        VAST_CLIENT_SUPPLIER_FROM_SPARK_CONTEXT,
+                        this.dataWriteTraceToken, vastConfig, endpoint, tx,
+                        vastTableMetaData.schemaName, vastTableMetaData.tableName,
+                        this.insertArrowVectorsQ
+                );
+            }
+            else {
+                if (splitterMetrics == null) {
+                    splitterMetrics = new RecordBatchSplitterMetrics();
+                }
+                if (insertMetrics == null) {
+                    insertMetrics = new ByColumnInserterMetrics();
+                }
+                if (ioExecutor == null) {
+                    ioExecutor = Executors.newFixedThreadPool(
+                            vastConfig.getNodeIoExecutorNumThreads(),
+                            new ThreadFactoryBuilder().setNameFormat("vast-insert-io-%d").build());
+                }
+                if (cpuExecutor == null) {
+                    cpuExecutor = Executors.newFixedThreadPool(
+                            2 * Runtime.getRuntime().availableProcessors(),
+                            new ThreadFactoryBuilder().setNameFormat("vast-insert-cpu-%d").build());
+                }
+                vastBgWriter = VastBGWriterFactory.forInsert(
+                        ordinal,
+                        VAST_CLIENT_SUPPLIER_FROM_SPARK_CONTEXT,
+                        this.dataWriteTraceToken, vastConfig, endpoints, tx,
+                        vastTableMetaData.schemaName, vastTableMetaData.tableName,
+                        this.insertArrowVectorsQ, enduser, nonUpdatableColumns,
+                        rowIdType,
+                        splitterMetrics, insertMetrics, ioExecutor, cpuExecutor
+                );
+            }
+            DATA_WRITER_LOG.info(
+                    "VastDataWriter{}: INSERT chunkSize = {}, tableArrowSchema = {}",
+                    dataWriteTraceToken, chunkSize, tableArrowSchema);
+            vastBgWriter.registerCompletionListener(
+                    this.bgTaskPhasesCompletionListener);
+
+            this.executorService = Executors.newFixedThreadPool(2,
+                    new ThreadFactoryBuilder()
+                            .setNameFormat(
+                                    "insert-worker-" + dataWriterIndex + "-%s")
+                            .build());
             executorService.submit(vastBgWriter);
         }
 
@@ -131,7 +227,9 @@ public class VastDataWriteFactory
                 arrowWriter.write(internalRow);
             }
             catch (RuntimeException re) {
-                DATA_WRITER_LOG.error(format("VastDataWriter%s: Exception during arrow write of row no. %s: %s", dataWriteTraceToken, ctr, internalRow), re);
+                DATA_WRITER_LOG.error(
+                        format("VastDataWriter%s: Exception during arrow write of row no. %s: %s",
+                                dataWriteTraceToken, ctr, internalRow), re);
                 arrowWriter.finish();
                 currentRoot.close();
                 throw re;
@@ -140,12 +238,15 @@ public class VastDataWriteFactory
 
         private void setNextArrowWriter()
         {
-            currentRoot = VectorSchemaRoot.create(tableArrowSchema, this.writerAllocator);
+            currentRoot = VectorSchemaRoot.create(tableArrowSchema,
+                    this.writerAllocator);
             try {
                 arrowWriter = TypeUtil.getArrowSchemaWriter(currentRoot);
             }
             catch (Exception any) {
-                DATA_WRITER_LOG.error(format("VastDataWriter%s: Failed creating new writer, ctr = %s", dataWriteTraceToken, ctr), any);
+                DATA_WRITER_LOG.error(
+                        format("VastDataWriter%s: Failed creating new writer, ctr = %s",
+                                dataWriteTraceToken, ctr), any);
                 throw toRuntime(any);
             }
         }
@@ -161,8 +262,12 @@ public class VastDataWriteFactory
             }
 
             try {
-                DATA_WRITER_LOG.info("VastDataWriter{}: Submitting next chunk of {} rows, hash={}", dataWriteTraceToken, currentRoot.getRowCount(), currentRoot.hashCode());
-                this.insertArrowVectorsQ.accept(fullSliceExtractor.apply(currentRoot));
+                DATA_WRITER_LOG.info(
+                        "VastDataWriter{}: Submitting next chunk of {} rows, hash={}",
+                        dataWriteTraceToken, currentRoot.getRowCount(),
+                        currentRoot.hashCode());
+                this.insertArrowVectorsQ.accept(
+                        fullSliceExtractor.apply(currentRoot));
             }
             catch (Throwable any) {
                 currentRoot.close();
@@ -174,7 +279,8 @@ public class VastDataWriteFactory
         public WriterCommitMessage commit()
                 throws IOException
         {
-            DATA_WRITER_LOG.info("VastDataWriter{} commit(), ctr = {}", dataWriteTraceToken, ctr);
+            DATA_WRITER_LOG.info("VastDataWriter{} commit(), ctr = {}",
+                    dataWriteTraceToken, ctr);
             this.bgTaskPhasesCompletionListener.assertFailure();
             if (ctr % chunkSize != 0) {
                 submitInsertChunk();
@@ -184,17 +290,24 @@ public class VastDataWriteFactory
                 this.bgTaskPhasesCompletionListener.await();
             }
             catch (InterruptedException e) {
-                throw new IOException(format("VastDataWriter%s Interrupted while waiting for BG tasks completion", dataWriteTraceToken), e);
+                throw new IOException(
+                        format("VastDataWriter%s Interrupted while waiting for BG tasks completion",
+                                dataWriteTraceToken), e);
             }
-            DATA_WRITER_LOG.debug("VastDataWriter{} BG tasks threadpool shutdown", dataWriteTraceToken);
+            DATA_WRITER_LOG.debug(
+                    "VastDataWriter{} BG tasks threadpool shutdown",
+                    dataWriteTraceToken);
             terminateBackgroundProcesses();
-            return new VastCommitMessage(new WriteCommitInfo(dataWriterIndex, dataWriteTraceToken, ctr).toString());
+            return new VastCommitMessage(
+                    new WriteCommitInfo(dataWriterIndex, dataWriteTraceToken,
+                            ctr).toString());
         }
 
         @Override
         public void abort()
         {
-            DATA_WRITER_LOG.info("VastDataWriter{} abort()", dataWriteTraceToken);
+            DATA_WRITER_LOG.info("VastDataWriter{} abort()",
+                    dataWriteTraceToken);
             this.status = new Status(false, null);
             this.bgTaskPhasesCompletionListener.completed(this);
             terminateBackgroundProcesses();
@@ -204,13 +317,20 @@ public class VastDataWriteFactory
         {
             if (!this.executorService.shutdownNow().isEmpty()) {
                 try {
-                    DATA_WRITER_LOG.info("VastDataWriter{} abort() awaitTermination - start", dataWriteTraceToken);
-                    boolean termination = this.executorService.awaitTermination(100, TimeUnit.MILLISECONDS);
-                    DATA_WRITER_LOG.info("VastDataWriter{} abort() awaitTermination - end: {}", dataWriteTraceToken, termination);
+                    DATA_WRITER_LOG.info(
+                            "VastDataWriter{} abort() awaitTermination - start",
+                            dataWriteTraceToken);
+                    boolean termination = this.executorService.awaitTermination(
+                            100, TimeUnit.MILLISECONDS);
+                    DATA_WRITER_LOG.info(
+                            "VastDataWriter{} abort() awaitTermination - end: {}",
+                            dataWriteTraceToken, termination);
                 }
                 catch (InterruptedException e) {
                     if (Thread.interrupted()) {
-                        throw new RuntimeException(format("VastDataWriter%s Interrupted while awaiting BG tasks termination", dataWriteTraceToken), e);
+                        throw new RuntimeException(
+                                format("VastDataWriter%s Interrupted while awaiting BG tasks termination",
+                                        dataWriteTraceToken), e);
                     }
                 }
             }
@@ -219,13 +339,18 @@ public class VastDataWriteFactory
         @Override
         public void close()
         {
-            DATA_WRITER_LOG.info("VastDataWriter{} close()", dataWriteTraceToken);
+            DATA_WRITER_LOG.info("VastDataWriter{} close()",
+                    dataWriteTraceToken);
             if (!this.executorService.shutdownNow().isEmpty()) {
-                DATA_WRITER_LOG.warn("VastDataWriter{} Data write is closed without successfully terminating background threads", dataWriteTraceToken);
+                DATA_WRITER_LOG.warn(
+                        "VastDataWriter{} Data write is closed without successfully terminating background threads",
+                        dataWriteTraceToken);
             }
             VectorSchemaRoot tmp;
             while ((tmp = this.insertArrowVectorsQ.get()) != null) {
-                DATA_WRITER_LOG.warn("VastDataWriter{} Closing leftover chunk of {} rows: {}", dataWriteTraceToken, tmp.getRowCount(), tmp.hashCode());
+                DATA_WRITER_LOG.warn(
+                        "VastDataWriter{} Closing leftover chunk of {} rows: {}",
+                        dataWriteTraceToken, tmp.getRowCount(), tmp.hashCode());
                 tmp.close();
             }
             this.bgTaskPhasesCompletionListener.assertFailure();
@@ -234,9 +359,13 @@ public class VastDataWriteFactory
             }
             long allocated = this.writerAllocator.getAllocatedMemory();
             if (allocated != 0) {
-                String msg = format("VastDataWriter%s: %s bytes are not freed: %s", dataWriteTraceToken, allocated, writerAllocator.toVerboseString());
+                String msg = format(
+                        "VastDataWriter%s: %s bytes are not freed: %s",
+                        dataWriteTraceToken, allocated,
+                        writerAllocator.toVerboseString());
                 DATA_WRITER_LOG.error(msg);
-                throw new IllegalStateException(msg); // TODO: consider disabling via config/session
+                throw new IllegalStateException(
+                        msg); // TODO: consider disabling via config/session
             }
             this.writerAllocator.close();
         }
@@ -258,23 +387,5 @@ public class VastDataWriteFactory
         {
             return status;
         }
-    }
-
-
-    public VastDataWriteFactory(VastTransaction tx, VastConfig vastConfig, VastTable vastTable, List<URI> dataEndpoints)
-    {
-        this.tx = tx;
-        this.vastConfig = vastConfig;
-        this.vastTraceTokenStr = tx.generateTraceToken(Optional.empty()).toString();
-        this.vastTableMetaData = vastTable.getTableMD();
-        this.endpoints = dataEndpoints;
-    }
-
-    @Override
-    public DataWriter<InternalRow> createWriter(int partitionId, long taskId)
-    {
-        VastDataWriter vastDataWriter = new VastDataWriter(partitionId, taskId);
-        FACTORY_LOG.info("Created new writer: {} for partitionId={}, taskId={}", vastDataWriter.name(), partitionId, taskId);
-        return vastDataWriter;
     }
 }

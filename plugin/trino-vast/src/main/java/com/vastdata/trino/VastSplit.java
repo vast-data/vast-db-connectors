@@ -14,7 +14,7 @@ import io.trino.spi.predicate.TupleDomain;
 
 import java.net.URI;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.vastdata.trino.ClassInstanceSize.sizeOf;
@@ -24,24 +24,32 @@ import static java.util.Objects.requireNonNull;
 public class VastSplit
         implements ConnectorSplit
 {
+    public static final AtomicInteger SPLIT_COUNTER = new AtomicInteger(0);
     private static final long INSTANCE_SIZE = sizeOf(VastSplit.class);
 
     private final VastSplitContext context;
     private final List<URI> endpoints;
     private final VastSchedulingInfo schedulingInfo;
     private final TupleDomain<VastColumnHandle> filters;
+    private final HostAddress address;
+    private final String traceToken;
+    private final long retainedSize;
 
     @JsonCreator
-    public VastSplit(
-            @JsonProperty("endpoints") List<URI> endpoints,
-            @JsonProperty("context") VastSplitContext context,
-            @JsonProperty("schedulingInfo") VastSchedulingInfo schedulingInfo,
-            @JsonProperty("filters") TupleDomain<VastColumnHandle> filters)
+    public VastSplit(@JsonProperty("address") HostAddress address,
+                     @JsonProperty("endpoints") List<URI> endpoints,
+                     @JsonProperty("context") VastSplitContext context,
+                     @JsonProperty("schedulingInfo") VastSchedulingInfo schedulingInfo,
+                     @JsonProperty("filters") TupleDomain<VastColumnHandle> filters,
+                     @JsonProperty("traceToken") String traceToken)
     {
-        this.endpoints = requireNonNull(endpoints, "addresses is null");
+        this.address = address;
+        this.endpoints = requireNonNull(endpoints, "endpoints is null");
         this.context = requireNonNull(context, "context is null");
-        this.schedulingInfo = requireNonNull(schedulingInfo, "schedulingInfo is null");
+        this.schedulingInfo = schedulingInfo;
         this.filters = requireNonNull(filters, "filters is null");
+        this.traceToken = requireNonNull(traceToken, "traceToken is null");
+        this.retainedSize = INSTANCE_SIZE + estimatedSizeOf(endpoints, uri -> estimatedSizeOf(uri.toString()));
     }
 
     @JsonProperty
@@ -68,6 +76,12 @@ public class VastSplit
         return filters;
     }
 
+    @JsonProperty
+    public String getTraceToken()
+    {
+        return traceToken;
+    }
+
     @Override
     public boolean isRemotelyAccessible()
     {
@@ -77,14 +91,13 @@ public class VastSplit
     @Override
     public List<HostAddress> getAddresses()
     {
-        return endpoints.stream().map(HostAddress::fromUri).collect(Collectors.toList());
+        return address != null ? List.of(address) : List.of();
     }
 
     @Override
     public long getRetainedSizeInBytes()
     {
-        return INSTANCE_SIZE
-                + estimatedSizeOf(endpoints, uri -> estimatedSizeOf(uri.toString()));
+        return retainedSize;
     }
 
     @Override
@@ -92,7 +105,10 @@ public class VastSplit
     {
         return toStringHelper(this)
                 .add("endpoints", endpoints)
+                .add("address", address)
                 .add("context", context)
+                .add("filters", filters)
+                .add("traceToken", traceToken)
                 .toString();
     }
 }

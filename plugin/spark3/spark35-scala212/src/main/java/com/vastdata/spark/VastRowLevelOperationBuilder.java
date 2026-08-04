@@ -18,12 +18,15 @@ import static java.lang.String.format;
 public class VastRowLevelOperationBuilder
         implements RowLevelOperationBuilder
 {
-    private static final Logger LOG = LoggerFactory.getLogger(VastRowLevelOperationBuilder.class);
+    private static final Logger LOG = LoggerFactory.getLogger(
+            VastRowLevelOperationBuilder.class);
 
     private final VastTable vastTable;
     private final RowLevelOperationInfo info;
 
-    public VastRowLevelOperationBuilder(VastTable vastTable, RowLevelOperationInfo info) {
+    public VastRowLevelOperationBuilder(VastTable vastTable,
+            RowLevelOperationInfo info)
+    {
         this.vastTable = Objects.requireNonNull(vastTable);
         this.info = Objects.requireNonNull(info);
     }
@@ -38,13 +41,15 @@ public class VastRowLevelOperationBuilder
         else if (info.command().equals(RowLevelOperation.Command.UPDATE)) {
             return new RowLevelUpdate(vastTable);
         }
-        throw new UnsupportedOperationException(format("Unsupported row level operation: %s", info));
+        throw new UnsupportedOperationException(
+                format("Unsupported row level operation: %s", info));
     }
 
     @Override
     public String toString()
     {
-        return new StringJoiner(", ", VastRowLevelOperationBuilder.class.getSimpleName() + "[", "]")
+        return new StringJoiner(", ",
+                VastRowLevelOperationBuilder.class.getSimpleName() + "[", "]")
                 .add("vastTable=" + vastTable.getTableMD())
                 .add("command=" + info.command())
                 .add("options=" + info.options().asCaseSensitiveMap())

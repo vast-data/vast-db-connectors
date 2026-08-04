@@ -14,18 +14,25 @@ import java.util.function.Predicate;
 public final class AlwaysFalseFilterUtil
 {
 
-    private static final Predicate<List<List<VastPredicate>>> IS_ALWAYS_FALSE = predicates -> predicates.stream()
-            .anyMatch(plist -> plist.get(0).getPredicate() instanceof AlwaysFalse);
-    private static final ImmutableList<List<VastPredicate>> ALWAYS_FALSE_PREDICATES_LIST = ImmutableList.of(ImmutableList.of(new VastPredicate(new AlwaysFalse(), null, null)));
+    private static final Predicate<List<List<VastPredicate>>> IS_ALWAYS_FALSE = predicates -> predicates
+            .stream()
+            .anyMatch(plist -> plist
+                    .get(0)
+                    .getPredicate() instanceof AlwaysFalse);
+    private static final ImmutableList<List<VastPredicate>> ALWAYS_FALSE_PREDICATES_LIST = ImmutableList.of(
+            ImmutableList.of(new VastPredicate(new AlwaysFalse(), null, null)));
 
-    private AlwaysFalseFilterUtil() {}
+    private AlwaysFalseFilterUtil()
+    {
+    }
 
     public static List<List<VastPredicate>> getAlwaysFalsePredicates()
     {
         return ALWAYS_FALSE_PREDICATES_LIST;
     }
 
-    public static boolean isAlwaysFalsePredicate(List<List<VastPredicate>> predicates)
+    public static boolean isAlwaysFalsePredicate(
+            List<List<VastPredicate>> predicates)
     {
         return IS_ALWAYS_FALSE.test(predicates);
     }

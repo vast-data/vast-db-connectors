@@ -56,10 +56,12 @@ public class TestWorkSubmitter
         runTest(numOfTestObjects, numOfTestObjects, breaker);
     }
 
-    private void runTest(int expectedQueueSize, int expectedNumberOfSubmittedObjects, BooleanSupplier breaker)
+    private void runTest(int expectedQueueSize,
+            int expectedNumberOfSubmittedObjects, BooleanSupplier breaker)
             throws InterruptedException
     {
-        LinkedBlockingDeque<WorkExecutor<Object>> queue = new LinkedBlockingDeque<>(1);
+        LinkedBlockingDeque<WorkExecutor<Object>> queue = new LinkedBlockingDeque<>(
+                1);
         AtomicInteger polled = new AtomicInteger(0);
         Thread queuePoller = new Thread(() -> {
             try {
@@ -72,10 +74,12 @@ public class TestWorkSubmitter
             }
         });
         queuePoller.start();
-        WorkSubmitter<Object> unit = new WorkSubmitter<>(supplier, null, null, null, () -> null, breaker, queue);
+        WorkSubmitter<Object> unit = new WorkSubmitter<>(supplier, null, null,
+                null, () -> null, breaker, queue);
         unit.run();
         queuePoller.join(100);
-        assertEquals(numberOfSuppliedObjects.get(), expectedNumberOfSubmittedObjects);
+        assertEquals(numberOfSuppliedObjects.get(),
+                expectedNumberOfSubmittedObjects);
         assertEquals(polled.get(), expectedQueueSize);
     }
 }

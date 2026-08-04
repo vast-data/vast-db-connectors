@@ -23,15 +23,19 @@ import static org.apache.arrow.vector.complex.BaseRepeatedValueVector.OFFSET_WID
 
 public final class SparkVectorAdaptorUtil
 {
-    private SparkVectorAdaptorUtil() {}
+    private SparkVectorAdaptorUtil()
+    {
+    }
 
-    public static void convertFixedSizeBinaryIntoVarchar(FixedSizeBinaryVector src, VarCharVector dst)
+    public static void convertFixedSizeBinaryIntoVarchar(
+            FixedSizeBinaryVector src, VarCharVector dst)
     {
         final int valueCount = src.getValueCount();
         final int byteWidth = src.getByteWidth();
         ArrowBuf data = src.getDataBuffer();
         ArrowBuf validity = src.getValidityBuffer();
-        try (ArrowBuf offsets = dst.getAllocator().buffer((long) (valueCount + 1) * OFFSET_WIDTH)) {
+        try (ArrowBuf offsets = dst.getAllocator().buffer(
+                (long) (valueCount + 1) * OFFSET_WIDTH)) {
             int offset = 0;
             int index = 0;
             for (int i = 0; i <= valueCount; ++i) {
@@ -39,18 +43,22 @@ public final class SparkVectorAdaptorUtil
                 index += OFFSET_WIDTH;
                 offset += byteWidth;
             }
-            ArrowFieldNode node = new ArrowFieldNode(valueCount, src.getNullCount());
+            ArrowFieldNode node = new ArrowFieldNode(valueCount,
+                    src.getNullCount());
             // See https://arrow.apache.org/docs/format/Columnar.html#buffer-listing-for-each-layout for buffer order definition
-            dst.loadFieldBuffers(node, ImmutableList.of(validity, offsets, data));
+            dst.loadFieldBuffers(node,
+                    ImmutableList.of(validity, offsets, data));
             dst.setValueCount(valueCount);
         }
     }
 
-    public static void convertNonMicroTSVectorToMicroTSVector(TimeStampVector src, TimeStampMicroTZVector dst)
+    public static void convertNonMicroTSVectorToMicroTSVector(
+            TimeStampVector src, TimeStampMicroTZVector dst)
     {
         int valueCount = src.getValueCount();
         dst.allocateNew(valueCount);
-        UnaryOperator<Long> valueOperator = getVastTimestampToSparkValueAdaptor(src);
+        UnaryOperator<Long> valueOperator = getVastTimestampToSparkValueAdaptor(
+                src);
         for (int i = 0; i < valueCount; i++) {
             Long originalValue = (Long) src.getObject(i);
             if (originalValue != null) {
@@ -64,7 +72,8 @@ public final class SparkVectorAdaptorUtil
         dst.setValueCount(valueCount);
     }
 
-    private static UnaryOperator<Long> getVastTimestampToSparkValueAdaptor(TimeStampVector src)
+    private static UnaryOperator<Long> getVastTimestampToSparkValueAdaptor(
+            TimeStampVector src)
     {
         if (src instanceof TimeStampSecTZVector) {
             return value -> value * 1000000;
@@ -76,11 +85,13 @@ public final class SparkVectorAdaptorUtil
             return value -> value / 1000;
         }
         else {
-            throw new RuntimeException("Unsupported timestamp type: " + src.getClass());
+            throw new RuntimeException(
+                    "Unsupported timestamp type: " + src.getClass());
         }
     }
 
-    public static UnaryOperator<Long> getSparkTimestampToVastValueAdaptor(TimeStampVector src)
+    public static UnaryOperator<Long> getSparkTimestampToVastValueAdaptor(
+            TimeStampVector src)
     {
         if (src instanceof TimeStampSecTZVector) {
             return value -> value / 1000000;
@@ -92,7 +103,8 @@ public final class SparkVectorAdaptorUtil
             return value -> value * 1000;
         }
         else {
-            throw new RuntimeException("Unsupported timestamp type: " + src.getClass());
+            throw new RuntimeException(
+                    "Unsupported timestamp type: " + src.getClass());
         }
     }
 

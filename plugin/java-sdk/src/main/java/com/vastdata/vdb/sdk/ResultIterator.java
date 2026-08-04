@@ -10,12 +10,13 @@ import java.util.Iterator;
 import static java.util.Objects.requireNonNull;
 
 /**
- * An iterator over query results, returning VectorSchemaRoot objects.
- * Each call to next() fetches the next batch of results.
- * The iterator ends when there are no more results to fetch.
+ * An iterator over query results, returning VectorSchemaRoot objects. Each call
+ * to next() fetches the next batch of results. The iterator ends when there are
+ * no more results to fetch.
  */
 public class ResultIterator
-        implements Iterator<VectorSchemaRoot> {
+        implements Iterator<VectorSchemaRoot>
+{
     private final Table table;
 
     ResultIterator(Table table)

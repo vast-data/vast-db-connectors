@@ -7,7 +7,8 @@ import static java.lang.String.format;
 
 public final class SparkViewUserDefinedColumnsValidator
 {
-    public static void validateNumberOfUserDefinedColumns(int schemaSize, int userDefinedColumnsSize)
+    public static void validateNumberOfUserDefinedColumns(int schemaSize,
+            int userDefinedColumnsSize)
     {
         if (userDefinedColumnsSize != 0 && userDefinedColumnsSize != schemaSize) {
             throw new IllegalArgumentException(

@@ -7,17 +7,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.google.common.collect.ImmutableMap;
-import com.vastdata.client.QueryDataPagination;
-import com.vastdata.client.QueryDataResponseHandler;
+import com.vastdata.client.QueryDataExtraParams;
 import com.vastdata.client.VastClient;
-import com.vastdata.client.VastDebugConfig;
-import com.vastdata.client.VastSchedulingInfo;
+import com.vastdata.client.VastObjectDetails;
 import com.vastdata.client.VastSplitContext;
 import com.vastdata.client.error.VastException;
-import com.vastdata.client.executor.VastRetryConfig;
-import com.vastdata.client.schema.EnumeratedSchema;
 import com.vastdata.client.schema.VastViewMetadata;
-import com.vastdata.client.tx.VastTraceToken;
 import com.vastdata.trino.tx.VastTransactionHandle;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
@@ -32,8 +27,10 @@ import io.trino.spi.block.RowBlockBuilder;
 import io.trino.spi.block.SqlMap;
 import io.trino.spi.block.VariableWidthBlock;
 import io.trino.spi.connector.CatalogSchemaName;
+import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.connector.ConnectorViewDefinition;
+import io.trino.spi.connector.DynamicFilter;
 import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.connector.SourcePage;
 import io.trino.spi.predicate.TupleDomain;
@@ -60,14 +57,9 @@ import java.net.URI;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -90,9 +82,6 @@ import static com.vastdata.trino.TypeUtils.convertArrowFieldToTrinoType;
 import static com.vastdata.trino.TypeUtils.convertTrinoTypeToArrowField;
 import static com.vastdata.trino.TypeUtils.parseTrinoTypeId;
 import static com.vastdata.trino.VastSessionProperties.getDataEndpoints;
-import static com.vastdata.trino.VastSessionProperties.getEnableSortedProjections;
-import static com.vastdata.trino.VastSessionProperties.getRetryMaxCount;
-import static com.vastdata.trino.VastSessionProperties.getRetrySleepDuration;
 import static io.airlift.slice.Slices.utf8Slice;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
@@ -111,77 +100,127 @@ import static io.trino.spi.type.Varchars.truncateToLength;
 import static java.lang.Math.toIntExact;
 import static java.lang.String.format;
 
-public class ViewDefinitionHelpers {
+public class ViewDefinitionHelpers
+{
     private static final int MAX_PRECISION_INT64 = toIntExact(maxPrecision(8));
 
     private static final Logger LOG = Logger.get(ViewDefinitionHelpers.class);
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module());
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(
+            new Jdk8Module());
 
-    private static long maxPrecision(int numBytes) {
-        return Math.round(Math.floor(Math.log10(Math.pow(2, 8 * numBytes - 1) - 1)));
+    private ViewDefinitionHelpers()
+    {
     }
 
-    public static VastViewMetadata getVastViewMetadata(ConnectorViewDefinition definition, Map<String, Object> viewProperties, SchemaTableName viewName)
+    private static long maxPrecision(int numBytes)
     {
-        final Map<String, String> properties = new HashMap<>(viewProperties.size() + 3);
+        return Math.round(
+                Math.floor(Math.log10(Math.pow(2, 8 * numBytes - 1) - 1)));
+    }
+
+    public static VastViewMetadata getVastViewMetadata(ConnectorViewDefinition definition,
+                                                       Map<String, Object> viewProperties,
+                                                       SchemaTableName viewName)
+    {
+        final Map<String, String> properties = new HashMap<>(
+                viewProperties.size() + 3);
         properties.put(PROPERTY_ORIGINAL_SQL, definition.getOriginalSql());
-        definition.getOwner().ifPresent(owner -> properties.put(PROPERTY_OWNER, owner));
-        properties.put(PROPERTY_IS_RUN_AS_INVOKER, String.valueOf(definition.isRunAsInvoker()));
+        definition
+                .getOwner()
+                .ifPresent(owner -> properties.put(PROPERTY_OWNER, owner));
+        properties.put(PROPERTY_IS_RUN_AS_INVOKER,
+                String.valueOf(definition.isRunAsInvoker()));
         String serializedTrinoTypesIDs;
         try {
-            serializedTrinoTypesIDs = OBJECT_MAPPER.writeValueAsString(definition.getColumns());
+            serializedTrinoTypesIDs = OBJECT_MAPPER.writeValueAsString(
+                    definition.getColumns());
             properties.put(VAST_TRINO_TYPES_IDS, serializedTrinoTypesIDs);
         }
         catch (JsonProcessingException e) {
             throw new RuntimeException("Failed serializing Trino TypeIDs", e);
         }
-        viewProperties.forEach((key, value) -> {
+        viewProperties.forEach((key, value) ->
+        {
             if (properties.containsKey(key)) {
-                LOG.warn("createView: viewProperties overrides internal Trino property: key = \"%s\", overridden value = \"%s\", new value = \"%s\"", key, properties.get(key), value);
+                LOG.warn(
+                        "createView: viewProperties overrides internal Trino property: key = \"%s\", overridden value = \"%s\", new value = \"%s\"",
+                        key, properties.get(key), value);
             }
             properties.put(key, value.toString());
         });
-        final VectorSchemaRoot metadata = metadata(
-                definition.getOriginalSql(),
+        final VectorSchemaRoot metadata = metadata(definition.getOriginalSql(),
                 definition.getCatalog().orElse(""),
-                definition.getComment().orElse(""),
-                definition.getPath().stream().map(CatalogSchemaName::getSchemaName).toList(),
-                Collections.emptyList(),
-                Collections.emptyList(),
-                Collections.emptyList(),
-                properties
-        );
+                definition.getComment().orElse(""), definition
+                        .getPath()
+                        .stream()
+                        .map(CatalogSchemaName::getSchemaName)
+                        .toList(), Collections.emptyList(),
+                Collections.emptyList(), Collections.emptyList(), properties);
 
-        final Schema schema = new Schema(definition.getColumns().stream().map(column -> {
-                try {
-                    return convertTrinoTypeToArrowField(parseTrinoTypeId(column.getType()), column.getName(), true);
-                }
-                catch (Exception e) {
-                    LOG.warn("Defaulting to binary column for unsupported view column: %s", column);
-                    return defaultViewColumn(column.getName());
-                }
-            }
-        ).toList());
-        return new VastViewMetadata(viewName.getSchemaName(), viewName.getTableName(), metadata, schema);
+        final Schema schema = new Schema(
+                definition.getColumns().stream().map(column ->
+                {
+                    try {
+                        return convertTrinoTypeToArrowField(
+                                parseTrinoTypeId(column.getType()),
+                                column.getName(), true);
+                    }
+                    catch (Exception e) {
+                        LOG.warn(
+                                "Defaulting to binary column for unsupported view column: %s",
+                                column);
+                        return defaultViewColumn(column.getName());
+                    }
+                }).toList());
+        return new VastViewMetadata(viewName.getSchemaName(),
+                viewName.getTableName(), metadata, schema);
     }
 
-    public static ConnectorViewDefinition pageToViewDefinition(final SourcePage page, final List<Field> underlyingColumns, final String schemaName)
+    public static ConnectorViewDefinition pageToViewDefinition(final SourcePage page,
+                                                               final List<Field> underlyingColumns,
+                                                               final String schemaName)
     {
-        final VariableWidthBlock blockSql = (VariableWidthBlock) page.getBlock(indexOf(FIELD_SQL));
+        final VariableWidthBlock blockSql = (VariableWidthBlock) page.getBlock(
+                indexOf(FIELD_SQL));
         final String sql = blockSql.getSlice(0).toStringUtf8();
-        final VariableWidthBlock blockCurrentCatalog = (VariableWidthBlock) page.getBlock(indexOf(FIELD_CURRENT_CATALOG));
-        final String currentCatalog = blockCurrentCatalog.getSlice(0).toStringUtf8();
-        final VariableWidthBlock blockComment = (VariableWidthBlock) page.getBlock(indexOf(FIELD_COMMENT));
+        final VariableWidthBlock blockCurrentCatalog = (VariableWidthBlock) page.getBlock(
+                indexOf(FIELD_CURRENT_CATALOG));
+        final String currentCatalog = blockCurrentCatalog
+                .getSlice(0)
+                .toStringUtf8();
+        final VariableWidthBlock blockComment = (VariableWidthBlock) page.getBlock(
+                indexOf(FIELD_COMMENT));
         final String comment = blockComment.getSlice(0).toStringUtf8();
-        final VariableWidthBlock blockCurrentNamespace = (VariableWidthBlock) ((ArrayBlock) page.getBlock(indexOf(FIELD_CURRENT_NAMESPACE))).getArray(0);
-        final List<String> currentNamespace = IntStream.range(0, blockCurrentNamespace.getPositionCount()).mapToObj(blockCurrentNamespace::getSlice).map(Slice::toStringUtf8).toList();
-        final VariableWidthBlock blockQueryColumnNames = (VariableWidthBlock) ((ArrayBlock) page.getBlock(indexOf(FIELD_QUERY_COLUMN_NAMES))).getArray(0);
-        final List<String> queryColumnNames = IntStream.range(0, blockQueryColumnNames.getPositionCount()).mapToObj(blockQueryColumnNames::getSlice).map(Slice::toStringUtf8).toList();
-        final VariableWidthBlock blockColumnAliases = (VariableWidthBlock) ((ArrayBlock) page.getBlock(indexOf(FIELD_COLUMN_ALIASES))).getArray(0);
-        final List<String> columnAliases = IntStream.range(0, blockColumnAliases.getPositionCount()).mapToObj(blockColumnAliases::getSlice).map(Slice::toStringUtf8).toList();
-        final VariableWidthBlock blockColumnComments = (VariableWidthBlock) ((ArrayBlock) page.getBlock(indexOf(FIELD_COLUMN_COMMENTS))).getArray(0);
-        final List<String> columnComments = IntStream.range(0, blockColumnComments.getPositionCount()).mapToObj(blockColumnComments::getSlice).map(Slice::toStringUtf8).toList();
-        final MapBlock blockProperties = (MapBlock) page.getBlock(indexOf(FIELD_PROPERTIES));
+        final VariableWidthBlock blockCurrentNamespace = (VariableWidthBlock) ((ArrayBlock) page.getBlock(
+                indexOf(FIELD_CURRENT_NAMESPACE))).getArray(0);
+        final List<String> currentNamespace = IntStream
+                .range(0, blockCurrentNamespace.getPositionCount())
+                .mapToObj(blockCurrentNamespace::getSlice)
+                .map(Slice::toStringUtf8)
+                .toList();
+        final VariableWidthBlock blockQueryColumnNames = (VariableWidthBlock) ((ArrayBlock) page.getBlock(
+                indexOf(FIELD_QUERY_COLUMN_NAMES))).getArray(0);
+        final List<String> queryColumnNames = IntStream
+                .range(0, blockQueryColumnNames.getPositionCount())
+                .mapToObj(blockQueryColumnNames::getSlice)
+                .map(Slice::toStringUtf8)
+                .toList();
+        final VariableWidthBlock blockColumnAliases = (VariableWidthBlock) ((ArrayBlock) page.getBlock(
+                indexOf(FIELD_COLUMN_ALIASES))).getArray(0);
+        final List<String> columnAliases = IntStream
+                .range(0, blockColumnAliases.getPositionCount())
+                .mapToObj(blockColumnAliases::getSlice)
+                .map(Slice::toStringUtf8)
+                .toList();
+        final VariableWidthBlock blockColumnComments = (VariableWidthBlock) ((ArrayBlock) page.getBlock(
+                indexOf(FIELD_COLUMN_COMMENTS))).getArray(0);
+        final List<String> columnComments = IntStream
+                .range(0, blockColumnComments.getPositionCount())
+                .mapToObj(blockColumnComments::getSlice)
+                .map(Slice::toStringUtf8)
+                .toList();
+        final MapBlock blockProperties = (MapBlock) page.getBlock(
+                indexOf(FIELD_PROPERTIES));
         final SqlMap sqlMap = blockProperties.getMap(0);
         final VariableWidthBlock blockKeys = (VariableWidthBlock) sqlMap.getRawKeyBlock();
         final VariableWidthBlock blockValues = (VariableWidthBlock) sqlMap.getRawValueBlock();
@@ -194,36 +233,62 @@ public class ViewDefinitionHelpers {
         final List<ConnectorViewDefinition.ViewColumn> viewColumns;
         if (properties.containsKey(VAST_TRINO_TYPES_IDS)) {
             String s = properties.get(VAST_TRINO_TYPES_IDS);
-            LOG.debug("pageToViewDefinition: Loading view columns from Vast Trino Types IDs property %s: %s", VAST_TRINO_TYPES_IDS, s);
+            LOG.debug(
+                    "pageToViewDefinition: Loading view columns from Vast Trino Types IDs property %s: %s",
+                    VAST_TRINO_TYPES_IDS, s);
             try {
-                viewColumns = OBJECT_MAPPER.readValue(s, OBJECT_MAPPER.getTypeFactory().constructCollectionType(List.class, ConnectorViewDefinition.ViewColumn.class));
+                viewColumns = OBJECT_MAPPER.readValue(s, OBJECT_MAPPER
+                        .getTypeFactory()
+                        .constructCollectionType(List.class,
+                                ConnectorViewDefinition.ViewColumn.class));
             }
             catch (JsonProcessingException e) {
-                throw new RuntimeException(format("Failed parsing VAST_TRINO_TYPES_IDS property string: %s", s), e);
+                throw new RuntimeException(
+                        format("Failed parsing VAST_TRINO_TYPES_IDS property string: %s",
+                                s), e);
             }
         }
         else {
-            LOG.debug("pageToViewDefinition: Loading view columns from underlyingColumns = %s, columnComments = %s", underlyingColumns, columnComments);
-            viewColumns = IntStream.range(0, underlyingColumns.size()).mapToObj(i -> {
-                final Field column = underlyingColumns.get(i);
-                final Type type = convertArrowFieldToTrinoType(column);
-                final Optional<String> columnComment = i < columnComments.size() ? Optional.ofNullable(columnComments.get(i)) : Optional.empty();
-                return new ConnectorViewDefinition.ViewColumn(column.getName(), type.getTypeId(), columnComment);
-            }).toList();
+            LOG.debug(
+                    "pageToViewDefinition: Loading view columns from underlyingColumns = %s, columnComments = %s",
+                    underlyingColumns, columnComments);
+            viewColumns = IntStream
+                    .range(0, underlyingColumns.size())
+                    .mapToObj(i ->
+                    {
+                        final Field column = underlyingColumns.get(i);
+                        final Type type = convertArrowFieldToTrinoType(column);
+                        final Optional<String> columnComment = i < columnComments.size() ?
+                                Optional.ofNullable(columnComments.get(i)) :
+                                Optional.empty();
+                        return new ConnectorViewDefinition.ViewColumn(
+                                column.getName(), type.getTypeId(),
+                                columnComment);
+                    })
+                    .toList();
         }
-        final String originalSql = properties.getOrDefault(PROPERTY_ORIGINAL_SQL, sql);
+        final String originalSql = properties.getOrDefault(
+                PROPERTY_ORIGINAL_SQL, sql);
         final String owner = properties.getOrDefault(PROPERTY_OWNER, null);
-        final boolean isRunAsInvoker = Boolean.parseBoolean(properties.get(PROPERTY_IS_RUN_AS_INVOKER));
-        final List<CatalogSchemaName> path = currentNamespace.stream().map(schema -> new CatalogSchemaName(currentCatalog, schema)).toList();
-        LOG.warn("Throwing away queryColumnNames = %s, columnAliases = %s, sql = %s", queryColumnNames, columnAliases, sql);
-        final VastConnectorViewDefinition definition = new VastConnectorViewDefinition(originalSql,
-                Optional.of(currentCatalog), Optional.of(schemaName), viewColumns, Optional.of(comment),
+        final boolean isRunAsInvoker = Boolean.parseBoolean(
+                properties.get(PROPERTY_IS_RUN_AS_INVOKER));
+        final List<CatalogSchemaName> path = currentNamespace
+                .stream()
+                .map(schema -> new CatalogSchemaName(currentCatalog, schema))
+                .toList();
+        LOG.warn(
+                "Throwing away queryColumnNames = %s, columnAliases = %s, sql = %s",
+                queryColumnNames, columnAliases, sql);
+        final VastConnectorViewDefinition definition = new VastConnectorViewDefinition(
+                originalSql, Optional.of(currentCatalog),
+                Optional.of(schemaName), viewColumns, Optional.of(comment),
                 Optional.ofNullable(owner), isRunAsInvoker, path, properties);
         LOG.debug("pageToViewsDefinition: returning %s", definition);
         return definition;
     }
 
-    public static VastPageSource viewPageSource(final SchemaTableName viewName,
+    public static VastPageSource viewPageSource(final VastPageSourceProvider vastPageSourceProvider,
+                                                final SchemaTableName viewName,
                                                 final VastTransactionHandle transactionHandle,
                                                 final VastClient client,
                                                 final ConnectorSession session)
@@ -231,84 +296,66 @@ public class ViewDefinitionHelpers {
     {
         final String endUser = session.getUser();
         final String trace = "getView:" + viewName.getTableName();
-        final VastTraceToken token = transactionHandle.generateTraceToken(Optional.of(trace));
-        final Map<String, String> extraQueryParams = ImmutableMap.of("sub-table", VIEW_METADATA_TABLE);
-        final List<Field> columns = client.listColumns(transactionHandle, viewName.getSchemaName(), viewName.getTableName(), 1000, extraQueryParams, endUser);
+        QueryDataExtraParams queryDataExtraParams = new QueryDataExtraParams();
+        final Map<String, String> urlQueryParams = ImmutableMap.of(
+                "sub-table", VIEW_METADATA_TABLE);
+        urlQueryParams.forEach((k, v) -> queryDataExtraParams.addExtraQueryParams(QueryDataExtraParams.QueryDataExtraParamType.URL_PARAM, k, v));
+        final List<Field> columns = client
+                .listColumns(transactionHandle, viewName.getSchemaName(),
+                        viewName.getTableName(), 1000, queryDataExtraParams,
+                        endUser)
+                .getFields();
+//        Optional<VastObjectDetails> objectDetailsOpt = client.getVastViewHandleId(
+//                transactionHandle, viewName.getSchemaName(),
+//                viewName.getTableName(), endUser);
+//
         LOG.debug("getView listColumns: %s", columns);
-        final VastSchedulingInfo schedulingInfo = client.getSchedulingInfo(transactionHandle, token, viewName.getSchemaName(), viewName.getTableName(), endUser);
         final List<URI> endpoints = getDataEndpoints(session);
-        final VastSplit split = new VastSplit(endpoints, new VastSplitContext(0, 1, 1, 1), schedulingInfo, TupleDomain.all());
-        final QueryDataPagination pagination = new QueryDataPagination(split.getContext().getNumOfSubSplits());
+        final VastSplit split = new VastSplit(null, endpoints,
+                new VastSplitContext(0, 1, 1, 1), null, TupleDomain.all(),
+                trace);
         final List<VastColumnHandle> projectedColumns = columns
                 .stream()
                 .map(VastColumnHandle::new)
                 .collect(Collectors.toList());
-        final Set<Field> schemaFields = new LinkedHashSet<>();
-        projectedColumns.forEach(vch -> schemaFields.add(vch.getBaseField()));
-
-        LOG.debug("getView schemaFields: %s", schemaFields);
-        final EnumeratedSchema enumeratedSchema = new EnumeratedSchema(schemaFields);
-        final TrinoProjectionSerializer projectionSerializer = new TrinoProjectionSerializer(projectedColumns, enumeratedSchema);
-        final List<Integer> projections = projectionSerializer.getProjectionIndices();
-        final Optional<Integer> batchSize = projections.isEmpty() ? Optional.empty() : Optional.of(1);
-        final Schema responseSchema = projectionSerializer.getResponseSchema();
-        final LinkedHashMap<Field, LinkedHashMap<List<Integer>, Integer>> baseFieldWithProjections = projectionSerializer.getBaseFieldWithProjections();
-        final TrinoPredicateSerializer predicateSerializer  = new TrinoPredicateSerializer(TupleDomain.all(), Optional.empty(), Collections.emptyList(), enumeratedSchema);
-        LOG.debug("getView QueryData(%s) schema: %s, projections: %s, projectedColumns=%s", token, enumeratedSchema, projections, projectedColumns);
-        final VastDebugConfig debugConfig = new VastDebugConfig(
-                VastSessionProperties.getDebugDisableArrowParsing(session),
-                VastSessionProperties.getDebugDisablePageQueueing(session));
-        final VastRetryConfig retryConfig = new VastRetryConfig(getRetryMaxCount(session), getRetrySleepDuration(session));
-        final Supplier<QueryDataResponseParser> fetchPages = () -> {
-            final QueryDataResponseSchemaConstructor querySchema = QueryDataResponseSchemaConstructor.deconstruct(trace, responseSchema, projections, baseFieldWithProjections);
-            final AtomicReference<QueryDataResponseParser> result = new AtomicReference<>();
-            final Supplier<QueryDataResponseHandler> handlerSupplier = () -> {
-                QueryDataResponseParser parser = new QueryDataResponseParser(token, querySchema, debugConfig, pagination, Optional.of(1L));
-                result.set(parser);
-                return new QueryDataResponseHandler(parser::parse, token);
-            };
-            client.queryData(
-                    transactionHandle, token, viewName.getSchemaName(), viewName.getTableName(), enumeratedSchema.getSchema(), projectionSerializer, predicateSerializer,
-                    handlerSupplier,
-                    new AtomicReference<>(),
-                    split.getContext(), split.getSchedulingInfo(),
-                    endpoints, retryConfig, batchSize, Optional.empty(), pagination,
-                    getEnableSortedProjections(session), 0, extraQueryParams, endUser);
-            return result.get();
-        };
-        return new VastPageSource(token, split, fetchPages, Optional.of(1L));
+        VastObjectDetails fakeObjectDetails = new VastObjectDetails(viewName.getTableName(), "", "id", 0, 0, 0, false, 0, 0, 0, 0);
+        VastTableHandle getViewTableHandle = new VastTableHandle(
+                viewName.getSchemaName(), viewName.getTableName(), fakeObjectDetails, false,
+                false);
+        getViewTableHandle.addExtraQueryParams(QueryDataExtraParams.QueryDataExtraParamType.URL_PARAM, "sub-table", VIEW_METADATA_TABLE);
+        if (projectedColumns.isEmpty()) {
+            getViewTableHandle = getViewTableHandle.withLimit(1);
+        }
+        getViewTableHandle.setColumnHandlesCache(projectedColumns);
+        List<ColumnHandle> columnHandles = projectedColumns
+                .stream()
+                .map(a -> (ColumnHandle) a)
+                .collect(Collectors.toList());
+        return (VastPageSource) vastPageSourceProvider.createPageSource(
+                transactionHandle, session, split, getViewTableHandle,
+                columnHandles, DynamicFilter.EMPTY);
     }
 
-    public static VectorSchemaRoot metadata(
-            final String sql,
-            final String currentCatalog,
-            final String comment,
-            final List<String> currentNamespace,
-            final List<String> queryColumnNames,
-            final List<String> columnAliases,
-            final List<String> columnComments,
-            final Map<String, String> properties)
+    public static VectorSchemaRoot metadata(final String sql,
+                                            final String currentCatalog,
+                                            final String comment,
+                                            final List<String> currentNamespace,
+                                            final List<String> queryColumnNames,
+                                            final List<String> columnAliases,
+                                            final List<String> columnComments,
+                                            final Map<String, String> properties)
     {
-        final List<Object> values = Arrays.asList(
-                sql,
-                currentCatalog,
-                comment,
-                currentNamespace,
-                queryColumnNames,
-                columnAliases,
-                columnComments,
-                properties
-        );
-        final List<Type> types = Arrays.asList(
-                VarcharType.VARCHAR,
-                VarcharType.VARCHAR,
-                VarcharType.VARCHAR,
+        final List<Object> values = Arrays.asList(sql, currentCatalog, comment,
+                currentNamespace, queryColumnNames, columnAliases,
+                columnComments, properties);
+        final List<Type> types = Arrays.asList(VarcharType.VARCHAR,
+                VarcharType.VARCHAR, VarcharType.VARCHAR,
                 new ArrayType(VarcharType.VARCHAR),
                 new ArrayType(VarcharType.VARCHAR),
                 new ArrayType(VarcharType.VARCHAR),
                 new ArrayType(VarcharType.VARCHAR),
-                new MapType(VarcharType.VARCHAR, VarcharType.VARCHAR, new TypeOperators())
-        );
+                new MapType(VarcharType.VARCHAR, VarcharType.VARCHAR,
+                        new TypeOperators()));
         final PageBuilder pageBuilder = new PageBuilder(types);
         for (int i = 0; i < types.size(); ++i) {
             final Type type = types.get(i);
@@ -317,10 +364,14 @@ public class ViewDefinitionHelpers {
             writeValue(type, blockBuilder, value);
         }
         pageBuilder.declarePositions(1);
-        return new VastRecordBatchBuilder(VastViewMetadata.VIEW_DETAILS_SCHEMA).build(pageBuilder.build());
+        return new VastRecordBatchBuilder(
+                VastViewMetadata.VIEW_DETAILS_SCHEMA).build(
+                pageBuilder.build());
     }
 
-    private static void writeValue(final Type type, final BlockBuilder blockBuilder, final Object value)
+    private static void writeValue(final Type type,
+                                   final BlockBuilder blockBuilder,
+                                   final Object value)
     {
         if (value == null) {
             blockBuilder.appendNull();
@@ -329,18 +380,29 @@ public class ViewDefinitionHelpers {
             if (BOOLEAN.equals(type)) {
                 type.writeBoolean(blockBuilder, (Boolean) value);
             }
-            else if (TINYINT.equals(type) || SMALLINT.equals(type) || INTEGER.equals(type) || BIGINT.equals(type)) {
+            else if (TINYINT.equals(type) || SMALLINT.equals(
+                    type) || INTEGER.equals(type) || BIGINT.equals(type)) {
                 type.writeLong(blockBuilder, ((Number) value).longValue());
             }
             else if (type instanceof DecimalType decimalType) {
                 if (decimalType.isShort()) {
-                    type.writeLong(blockBuilder, ((SqlDecimal) value).getUnscaledValue().longValue());
+                    type.writeLong(blockBuilder, ((SqlDecimal) value)
+                            .getUnscaledValue()
+                            .longValue());
                 }
-                else if (Decimals.overflows(((SqlDecimal) value).getUnscaledValue(), MAX_PRECISION_INT64)) {
-                    type.writeObject(blockBuilder, Int128.valueOf(((SqlDecimal) value).toBigDecimal().unscaledValue()));
+                else if (Decimals.overflows(
+                        ((SqlDecimal) value).getUnscaledValue(),
+                        MAX_PRECISION_INT64)) {
+                    type.writeObject(blockBuilder, Int128.valueOf(
+                            ((SqlDecimal) value)
+                                    .toBigDecimal()
+                                    .unscaledValue()));
                 }
                 else {
-                    type.writeObject(blockBuilder, Int128.valueOf(((SqlDecimal) value).getUnscaledValue().longValue()));
+                    type.writeObject(blockBuilder, Int128.valueOf(
+                            ((SqlDecimal) value)
+                                    .getUnscaledValue()
+                                    .longValue()));
                 }
             }
             else if (DOUBLE.equals(type)) {
@@ -355,55 +417,74 @@ public class ViewDefinitionHelpers {
                 type.writeSlice(blockBuilder, slice);
             }
             else if (type instanceof CharType) {
-                Slice slice = truncateToLengthAndTrimSpaces(utf8Slice((String) value), type);
+                Slice slice = truncateToLengthAndTrimSpaces(
+                        utf8Slice((String) value), type);
                 type.writeSlice(blockBuilder, slice);
             }
             else if (VARBINARY.equals(type)) {
-                type.writeSlice(blockBuilder, Slices.wrappedBuffer(((SqlVarbinary) value).getBytes()));
+                type.writeSlice(blockBuilder, Slices.wrappedBuffer(
+                        ((SqlVarbinary) value).getBytes()));
             }
             else if (DATE.equals(type)) {
                 long days = ((SqlDate) value).getDays();
                 type.writeLong(blockBuilder, days);
             }
-            else if (TIMESTAMP_MILLIS.equals(type) || TIMESTAMP_MICROS.equals(type)) {
-                type.writeLong(blockBuilder, ((SqlTimestamp) value).getEpochMicros());
+            else if (TIMESTAMP_MILLIS.equals(type) || TIMESTAMP_MICROS.equals(
+                    type)) {
+                type.writeLong(blockBuilder,
+                        ((SqlTimestamp) value).getEpochMicros());
             }
             else if (TIMESTAMP_NANOS.equals(type)) {
-                type.writeObject(blockBuilder, new LongTimestamp(((SqlTimestamp) value).getEpochMicros(), ((SqlTimestamp) value).getPicosOfMicros()));
+                type.writeObject(blockBuilder, new LongTimestamp(
+                        ((SqlTimestamp) value).getEpochMicros(),
+                        ((SqlTimestamp) value).getPicosOfMicros()));
             }
             else {
                 switch (type) {
                     case ArrayType _ -> {
                         List<?> array = (List<?>) value;
                         Type elementType = type.getTypeParameters().getFirst();
-                        ((ArrayBlockBuilder) blockBuilder).buildEntry(elementBuilder -> {
-                            for (Object elementValue : array) {
-                                writeValue(elementType, elementBuilder, elementValue);
-                            }
-                        });
+                        ((ArrayBlockBuilder) blockBuilder).buildEntry(
+                                elementBuilder ->
+                                {
+                                    for (Object elementValue : array) {
+                                        writeValue(elementType, elementBuilder,
+                                                elementValue);
+                                    }
+                                });
                     }
                     case MapType _ -> {
                         Map<?, ?> map = (Map<?, ?>) value;
                         Type keyType = type.getTypeParameters().get(0);
                         Type valueType = type.getTypeParameters().get(1);
-                        ((MapBlockBuilder) blockBuilder).buildEntry((keyBuilder, valueBuilder) -> {
-                            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                                writeValue(keyType, keyBuilder, entry.getKey());
-                                writeValue(valueType, valueBuilder, entry.getValue());
-                            }
-                        });
+                        ((MapBlockBuilder) blockBuilder).buildEntry(
+                                (keyBuilder, valueBuilder) ->
+                                {
+                                    for (Map.Entry<?, ?> entry : map.entrySet()) {
+                                        writeValue(keyType, keyBuilder,
+                                                entry.getKey());
+                                        writeValue(valueType, valueBuilder,
+                                                entry.getValue());
+                                    }
+                                });
                     }
                     case RowType _ -> {
                         List<?> array = (List<?>) value;
                         List<Type> fieldTypes = type.getTypeParameters();
-                        ((RowBlockBuilder) blockBuilder).buildEntry(fieldBuilders -> {
-                            for (int fieldId = 0; fieldId < fieldTypes.size(); fieldId++) {
-                                Type fieldType = fieldTypes.get(fieldId);
-                                writeValue(fieldType, fieldBuilders.get(fieldId), array.get(fieldId));
-                            }
-                        });
+                        ((RowBlockBuilder) blockBuilder).buildEntry(
+                                fieldBuilders ->
+                                {
+                                    for (int fieldId = 0; fieldId < fieldTypes.size(); fieldId++) {
+                                        Type fieldType = fieldTypes.get(
+                                                fieldId);
+                                        writeValue(fieldType,
+                                                fieldBuilders.get(fieldId),
+                                                array.get(fieldId));
+                                    }
+                                });
                     }
-                    case null, default -> throw new IllegalArgumentException("Unsupported type " + type);
+                    case null, default -> throw new IllegalArgumentException(
+                            "Unsupported type " + type);
                 }
             }
         }

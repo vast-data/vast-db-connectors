@@ -6,11 +6,13 @@ package com.vastdata.client;
 
 public class VastVersion
 {
-    public final static int MAJOR = 5;
-    public final static int MINOR = 4;
-    public final static int PATCH = 4;
-    public final static int PROTOCOL = 0;
-    public final static String FEATURES_HASH = "0xb4af7925a4fe5fed";
-    public final static String SYS_VERSION = "5.4.4.0.13019758250340278253";
-    public final static String HASH = "1e14fabd355e2984876355180953500b154dd7a8";
+    public static final int MAJOR = 5;
+    public static final int MINOR = 6;
+    public static final int PATCH = 0;
+    public static final int PROTOCOL = 1;
+    public static final String FEATURES_HASH = "0xaf49e7c8f19a47d4";
+    public static final String SYS_VERSION = "5.6.0.1.12630881480170162132";
+    public static final String HASH = "300c4955e7700e92f79cf54de3494e73617e8b0d";
+
+    private VastVersion() {}
 }

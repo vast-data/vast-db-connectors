@@ -16,7 +16,8 @@ import org.apache.spark.sql.types.StructType;
 
 import java.io.Serializable;
 
-public class NDBCommitTransactionFunction extends AbstractNDBCommitTransactionFunction
+public class NDBCommitTransactionFunction
+        extends AbstractNDBCommitTransactionFunction
         implements UnboundFunction, Serializable
 {
 

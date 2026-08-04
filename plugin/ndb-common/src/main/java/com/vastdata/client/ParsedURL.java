@@ -16,7 +16,7 @@ import static java.lang.String.format;
 
 public class ParsedURL
 {
-    public final static String PATH_SEPERATOR = "/";
+    public static final String PATH_SEPERATOR = "/";
     private final String[] parts;
 
     private ParsedURL(String[] parts)
@@ -42,7 +42,8 @@ public class ParsedURL
         verify(!Strings.isNullOrEmpty(path), "Empty URL");
         String[] urlParts = parse(path);
         for (int i = 1; i < urlParts.length; i++) {
-            verify(!Strings.isNullOrEmpty(urlParts[i]), format("Empty URL part at index: %s", i));
+            verify(!Strings.isNullOrEmpty(urlParts[i]),
+                    format("Empty URL part at index: %s", i));
         }
         return new ParsedURL(urlParts);
     }
@@ -113,7 +114,8 @@ public class ParsedURL
             }
             return joiner.toString();
         }
-        throw userException(format("url does not contain schema name: %s", Arrays.asList(parts)));
+        throw userException(format("url does not contain schema name: %s",
+                Arrays.asList(parts)));
     }
 
     public String[] getFullSchemaParts()
@@ -131,14 +133,16 @@ public class ParsedURL
             }
             return joiner.toString();
         }
-        throw userException(format("url does not contain schema name: %s", Arrays.asList(parts)));
+        throw userException(format("url does not contain schema name: %s",
+                Arrays.asList(parts)));
     }
 
     public String getTableName()
             throws VastUserException
     {
         if (!hasTable()) {
-            throw userException(format("url does not contain table name: %s", Arrays.asList(parts)));
+            throw userException(format("url does not contain table name: %s",
+                    Arrays.asList(parts)));
         }
         return parts[parts.length - 1];
     }

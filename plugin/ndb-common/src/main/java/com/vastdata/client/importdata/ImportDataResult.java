@@ -12,7 +12,8 @@ public class ImportDataResult
     private final int failCount;
     private final Optional<String> errorDetails;
 
-    public ImportDataResult(int successCount, int failCount, Optional<String> errorDetails)
+    public ImportDataResult(int successCount, int failCount,
+            Optional<String> errorDetails)
     {
         this.successCount = successCount;
         this.failCount = failCount;

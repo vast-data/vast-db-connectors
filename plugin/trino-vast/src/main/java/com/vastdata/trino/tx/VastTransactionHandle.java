@@ -9,9 +9,10 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.vastdata.client.tx.SimpleVastTransaction;
 import io.trino.spi.connector.ConnectorTransactionHandle;
 
-public class VastTransactionHandle extends SimpleVastTransaction implements ConnectorTransactionHandle
+public class VastTransactionHandle
+        extends SimpleVastTransaction
+        implements ConnectorTransactionHandle
 {
-
     @JsonCreator
     public VastTransactionHandle(@JsonProperty("id") long id)
     {
@@ -25,13 +26,9 @@ public class VastTransactionHandle extends SimpleVastTransaction implements Conn
         return super.getId();
     }
 
-
-
     @Override
     public String toString()
     {
-        return "VastTransactionHandle{" +
-                "id='" + getId() + '\'' +
-                '}';
+        return "VastTransactionHandle{" + "id='" + getId() + '\'' + '}';
     }
 }

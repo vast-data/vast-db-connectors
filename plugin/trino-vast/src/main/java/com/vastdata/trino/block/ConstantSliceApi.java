@@ -11,7 +11,8 @@ class ConstantSliceApi
 {
     private final Slice slice;
 
-    ConstantSliceApi(Slice slice) {
+    ConstantSliceApi(Slice slice)
+    {
         this.slice = slice;
     }
 

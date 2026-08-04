@@ -7,15 +7,20 @@ import java.util.EnumMap;
 
 public class RowIDStrategyFactory
 {
-    private RowIDStrategyFactory() {}
-
     private static final Int64RowIDStrategy defaultStrategy = new Int64RowIDStrategy();
+    private static final EnumMap<RowIDStrategyType, RowIDStrategy> implMap = new EnumMap<>(
+            RowIDStrategyType.class);
 
-    private static final EnumMap<RowIDStrategyType, RowIDStrategy> implMap = new EnumMap<>(RowIDStrategyType.class);
     static {
         implMap.put(RowIDStrategyType.UNSIGNED_INT64, defaultStrategy);
-        implMap.put(RowIDStrategyType.DECIMAL_128, new Decimal128RowIDStrategy());
+        implMap.put(RowIDStrategyType.DECIMAL_128,
+                new Decimal128RowIDStrategy());
     }
+
+    private RowIDStrategyFactory()
+    {
+    }
+
     public static RowIDStrategy get(RowIDStrategyType type)
     {
         return implMap.getOrDefault(type, defaultStrategy);
@@ -25,10 +30,13 @@ public class RowIDStrategyFactory
     {
         if (type == TableType.SORTED) {
             return get(RowIDStrategyType.DECIMAL_128);
-        } else if (type == TableType.REGULAR) {
+        }
+        else if (type == TableType.REGULAR) {
             return get(RowIDStrategyType.UNSIGNED_INT64);
-        } else {
-            throw new IllegalArgumentException("Unsupported table type: " + type);
+        }
+        else {
+            throw new IllegalArgumentException(
+                    "Unsupported table type: " + type);
         }
     }
 }

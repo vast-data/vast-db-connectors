@@ -33,13 +33,17 @@ import scala.collection.mutable.Builder;
 import spark.sql.catalog.ndb.InitializedVastCatalog;
 import spark.sql.catalog.ndb.VastCatalogCreateColumnOverride;
 
-public class NDBStrategy extends SparkStrategy
+import static ndb.SparkPlannerUtil.EMPTY_RESULT_SEQ;
+
+public class NDBStrategy
+        extends SparkStrategy
 {
-    private static final Logger LOG = LoggerFactory.getLogger(NDBStrategy.class);
-    public static final List<SparkPlan> EMPTY_RESULT_SEQ = List.<SparkPlan>newBuilder().result();
+    private static final Logger LOG = LoggerFactory.getLogger(
+            NDBStrategy.class);
     private final SparkSession session;
 
-    public NDBStrategy(SparkSession session) {
+    public NDBStrategy(SparkSession session)
+    {
         this.session = session;
     }
 
@@ -47,50 +51,71 @@ public class NDBStrategy extends SparkStrategy
     public scala.collection.immutable.Seq<SparkPlan> apply(LogicalPlan plan)
     {
         if (plan instanceof ShowColumns) {
-            ShowNDBTableColumnsCommand ndbPlan = ShowNDBTableColumnsCommand.instance((ShowColumns) plan);
+            ShowNDBTableColumnsCommand ndbPlan = ShowNDBTableColumnsCommand.instance(
+                    (ShowColumns) plan);
             LOG.debug("Returning {} for ShowColumns plan: {}", ndbPlan, plan);
             return planToResultImmutableSeq(ndbPlan);
-        } else if (plan instanceof AnalyzeTable) {
-            AnalyzeNDBTableCommand ndbPlan = AnalyzeNDBTableCommand.instance((AnalyzeTable) plan);
+        }
+        else if (plan instanceof AnalyzeTable) {
+            AnalyzeNDBTableCommand ndbPlan = AnalyzeNDBTableCommand.instance(
+                    (AnalyzeTable) plan);
             LOG.debug("Returning {} for AnalyzeTable plan: {}", ndbPlan, plan);
             return planToResultImmutableSeq(ndbPlan);
-        } else if (plan instanceof AnalyzeColumn) {
-            AnalyzeNDBColumnCommand ndbPlan = AnalyzeNDBColumnCommand.instance((AnalyzeColumn) plan);
+        }
+        else if (plan instanceof AnalyzeColumn) {
+            AnalyzeNDBColumnCommand ndbPlan = AnalyzeNDBColumnCommand.instance(
+                    (AnalyzeColumn) plan);
             LOG.debug("Returning {} for AnalyzeColumn plan: {}", ndbPlan, plan);
             return planToResultImmutableSeq(ndbPlan);
-        } else if (plan instanceof CreateTableAsSelect) {
+        }
+        else if (plan instanceof CreateTableAsSelect) {
             CreateTableAsSelect c = (CreateTableAsSelect) plan;
-            CreateTableAsSelectExec createTableAsSelectExec =
-                    new CreateTableAsSelectExec(new VastCatalogCreateColumnOverride(InitializedVastCatalog.getVastCatalog()),
-                            c.tableName(), c.partitioning(), c.query(), (TableSpec) c.tableSpec(), c.writeOptions(), c.ignoreIfExists());
+            CreateTableAsSelectExec createTableAsSelectExec = new CreateTableAsSelectExec(
+                    new VastCatalogCreateColumnOverride(
+                            InitializedVastCatalog.getVastCatalog()),
+                    c.tableName(), c.partitioning(), c.query(),
+                    (TableSpec) c.tableSpec(), c.writeOptions(),
+                    c.ignoreIfExists());
             LOG.debug("CreateTableAsSelectExec: {}", createTableAsSelectExec);
             return planToResultImmutableSeq(createTableAsSelectExec);
-        } else if (plan instanceof ShowNDBViewsPlan) {
-            final ShowNDBViewsCommand command = ShowNDBViewsCommand.instance((ShowNDBViewsPlan) plan);
+        }
+        else if (plan instanceof ShowNDBViewsPlan) {
+            final ShowNDBViewsCommand command = ShowNDBViewsCommand.instance(
+                    (ShowNDBViewsPlan) plan);
             LOG.info("Returning {} for ShowNDBViewsPlan: {}", command, plan);
             return planToResultImmutableSeq(command);
-        } else if (plan instanceof CreateNDBViewPlan) {
-            final CreateNDBViewCommand command = CreateNDBViewCommand.instance((CreateNDBViewPlan) plan);
+        }
+        else if (plan instanceof CreateNDBViewPlan) {
+            final CreateNDBViewCommand command = CreateNDBViewCommand.instance(
+                    (CreateNDBViewPlan) plan);
             LOG.info("Returning {} for CreateNDBViewPlan: {}", command, plan);
             return planToResultImmutableSeq(command);
-        } else if (plan instanceof DropNDBViewPlan) {
-            final DropNDBViewCommand command = DropNDBViewCommand.instance((DropNDBViewPlan) plan);
+        }
+        else if (plan instanceof DropNDBViewPlan) {
+            final DropNDBViewCommand command = DropNDBViewCommand.instance(
+                    (DropNDBViewPlan) plan);
             LOG.info("Returning {} for DropNDBViewPlan: {}", command, plan);
             return planToResultImmutableSeq(command);
-        } else if (plan instanceof RenameNDBViewPlan) {
-            final RenameNDBViewCommand command = RenameNDBViewCommand.instance((RenameNDBViewPlan) plan, session);
+        }
+        else if (plan instanceof RenameNDBViewPlan) {
+            final RenameNDBViewCommand command = RenameNDBViewCommand.instance(
+                    (RenameNDBViewPlan) plan, session);
             LOG.info("Returning {} for RenameNDBViewPlan: {}", command, plan);
             return planToResultImmutableSeq(command);
-        } else if (plan instanceof AlterNDBViewAsPlan) {
-            final AlterNDBViewAsCommand command = AlterNDBViewAsCommand.instance((AlterNDBViewAsPlan) plan, session);
+        }
+        else if (plan instanceof AlterNDBViewAsPlan) {
+            final AlterNDBViewAsCommand command = AlterNDBViewAsCommand.instance(
+                    (AlterNDBViewAsPlan) plan, session);
             LOG.info("Returning {} for AlterNDBViewAsPlan: {}", command, plan);
             return planToResultImmutableSeq(command);
         }
-        LOG.debug("{} not supported by NDBStrategy", plan.getClass().getCanonicalName());
+        LOG.debug("{} not supported by NDBStrategy",
+                plan.getClass().getCanonicalName());
         return EMPTY_RESULT_SEQ;
     }
 
-    private scala.collection.immutable.Seq<SparkPlan> planToResultImmutableSeq(SparkPlan plan)
+    private scala.collection.immutable.Seq<SparkPlan> planToResultImmutableSeq(
+            SparkPlan plan)
     {
         Builder<SparkPlan, List<SparkPlan>> builder = List.newBuilder();
         builder.addOne(plan);

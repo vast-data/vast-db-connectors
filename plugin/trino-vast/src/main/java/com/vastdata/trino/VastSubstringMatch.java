@@ -11,15 +11,12 @@ import java.util.Objects;
 
 import static java.lang.String.format;
 
-public class VastSubstringMatch
+public record VastSubstringMatch(VastColumnHandle column,
+        String pattern)
 {
-    private final VastColumnHandle column;
-    private final String pattern;
-
     @JsonCreator
-    public VastSubstringMatch(
-            @JsonProperty("column") VastColumnHandle column,
-            @JsonProperty("pattern") String pattern)
+    public VastSubstringMatch(@JsonProperty("column") VastColumnHandle column,
+                              @JsonProperty("pattern") String pattern)
     {
         this.column = column;
         this.pattern = pattern;
@@ -53,7 +50,8 @@ public class VastSubstringMatch
             return false;
         }
         VastSubstringMatch that = (VastSubstringMatch) o;
-        return Objects.equals(column, that.column) && Objects.equals(pattern, that.pattern);
+        return Objects.equals(column, that.column) && Objects.equals(pattern,
+                that.pattern);
     }
 
     @Override

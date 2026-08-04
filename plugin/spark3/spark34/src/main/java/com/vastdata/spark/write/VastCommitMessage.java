@@ -12,7 +12,9 @@ public class VastCommitMessage
         implements WriterCommitMessage
 {
     private final String toString;
-    public VastCommitMessage(String info) {
+
+    public VastCommitMessage(String info)
+    {
         this.toString = format("VastCommitMessage[%s]", info);
     }
 

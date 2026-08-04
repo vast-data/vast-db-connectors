@@ -30,9 +30,9 @@ public abstract class VastExpressionSerializer
 
     private void setBuilder(FlatBufferBuilder builder)
     {
-        this.builder = builder;    
+        this.builder = builder;
     }
-    
+
     @Override
     public int serialize(FlatBufferBuilder builder)
     {
@@ -56,7 +56,8 @@ public abstract class VastExpressionSerializer
         Call.addArguments(builder, argumentsOffset);
         int callOffset = Call.endCall(builder);
 
-        return Expression.createExpression(builder, ExpressionImpl.Call, callOffset);
+        return Expression.createExpression(builder, ExpressionImpl.Call,
+                callOffset);
     }
 
     protected int buildAnd(int... offsets)
@@ -86,7 +87,8 @@ public abstract class VastExpressionSerializer
 
     protected int buildGreater(int column, int literal, boolean inclusive)
     {
-        return buildFunction(inclusive ? GREATER_EQUAL : GREATER, column, literal);
+        return buildFunction(inclusive ? GREATER_EQUAL : GREATER, column,
+                literal);
     }
 
     protected int buildIsNull(int column)
@@ -106,8 +108,12 @@ public abstract class VastExpressionSerializer
 
     protected int buildColumn(long position)
     {
-        int index = org.apache.arrow.computeir.flatbuf.FieldIndex.createFieldIndex(builder, position);
-        int ref = org.apache.arrow.computeir.flatbuf.FieldRef.createFieldRef(builder, org.apache.arrow.computeir.flatbuf.Deref.FieldIndex, index, NOT_SPECIFIED /*relation*/);
-        return Expression.createExpression(builder, ExpressionImpl.FieldRef, ref);
+        int index = org.apache.arrow.computeir.flatbuf.FieldIndex.createFieldIndex(
+                builder, position);
+        int ref = org.apache.arrow.computeir.flatbuf.FieldRef.createFieldRef(
+                builder, org.apache.arrow.computeir.flatbuf.Deref.FieldIndex,
+                index, NOT_SPECIFIED /*relation*/);
+        return Expression.createExpression(builder, ExpressionImpl.FieldRef,
+                ref);
     }
 }
