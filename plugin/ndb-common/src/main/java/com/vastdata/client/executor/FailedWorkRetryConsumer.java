@@ -18,7 +18,8 @@ public class FailedWorkRetryConsumer<T>
     private final Consumer<WorkExecutor<T>> retryAction;
     private final BiConsumer<Throwable, URI> exceptionHandler;
 
-    public FailedWorkRetryConsumer(Consumer<WorkExecutor<T>> retryAction, BiConsumer<Throwable, URI> exceptionHandler)
+    public FailedWorkRetryConsumer(Consumer<WorkExecutor<T>> retryAction,
+            BiConsumer<Throwable, URI> exceptionHandler)
     {
         this.retryAction = retryAction;
         this.exceptionHandler = exceptionHandler;
@@ -33,12 +34,14 @@ public class FailedWorkRetryConsumer<T>
                 Thread.sleep(retryStrategy.getWaitingPeriodMillis());
             }
             catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
                 throw toRuntime(e);
             }
             retryAction.accept(workExecutor);
         }
         else {
-            exceptionHandler.accept(VastExceptionFactory.maxRetries(retryStrategy.getCurrentRetryCount()), null);
+            exceptionHandler.accept(VastExceptionFactory.maxRetries(
+                    retryStrategy.getCurrentRetryCount()), null);
         }
     }
 }

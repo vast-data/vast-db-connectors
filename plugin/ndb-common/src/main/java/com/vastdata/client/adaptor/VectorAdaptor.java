@@ -11,5 +11,6 @@ import org.apache.arrow.vector.types.pojo.Field;
 @FunctionalInterface
 public interface VectorAdaptor
 {
-    FieldVector adapt(FieldVector vector, Field field, BufferAllocator allocator);
+    FieldVector adapt(FieldVector vector, Field field,
+            BufferAllocator allocator);
 }

@@ -14,12 +14,15 @@ public final class VastClientForTests
 {
     public static final int RETRY_MAX_COUNT = 2;
 
-    private VastClientForTests() {}
+    private VastClientForTests()
+    {
+    }
 
     public static VastClient getVastClient(HttpClient httpClient, int port)
     {
         VastConfig vastConfig = getMockServerReadyVastConfig(port);
-        return new VastClient(httpClient, vastConfig, new DummyDependenciesFactory(vastConfig));
+        return new VastClient(httpClient, vastConfig,
+                new DummyDependenciesFactory(vastConfig));
     }
 
     private static VastConfig getMockServerReadyVastConfig(int port)

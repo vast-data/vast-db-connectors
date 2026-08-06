@@ -16,7 +16,8 @@ import org.apache.spark.sql.types.StructType;
 
 import java.io.Serializable;
 
-public class NDBRollbackTransactionFunction extends AbstractNDBRollbackTransactionFunction
+public class NDBRollbackTransactionFunction
+        extends AbstractNDBRollbackTransactionFunction
         implements UnboundFunction, Serializable
 {
 

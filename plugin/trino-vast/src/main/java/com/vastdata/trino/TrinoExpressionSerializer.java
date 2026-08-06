@@ -59,161 +59,170 @@ import static java.lang.Float.intBitsToFloat;
 import static java.lang.Math.toIntExact;
 import static java.lang.String.format;
 
-abstract public class TrinoExpressionSerializer
+public abstract class TrinoExpressionSerializer
         extends VastExpressionSerializer
 {
-    private static final Logger LOG = Logger.get(TrinoExpressionSerializer.class);
+    private static final Logger LOG = Logger.get(
+            TrinoExpressionSerializer.class);
 
     protected int buildLiteral(Type type, Object value)
     {
         if (LOG.isDebugEnabled()) {
-            LOG.debug("converting %s %s (%s) to Arrow literal", type, value, value.getClass());
+            LOG.debug("converting %s %s (%s) to Arrow literal", type, value,
+                    value.getClass());
         }
 
-        Field field = TypeUtils.convertTrinoTypeToArrowField(type, null /*name*/, true /*nullable*/);
+        Field field = TypeUtils.convertTrinoTypeToArrowField(type,
+                null /*name*/, true /*nullable*/);
         ArrowType arrowType = field.getType();
         int fieldOffset = field.getField(builder);
 
         if (type.equals(BIGINT)) {
-            return Expression.createExpression(builder, ExpressionImpl.Literal, Literal.createLiteral(
-                    builder,
-                    LiteralImpl.Int64Literal,
-                    Int64Literal.createInt64Literal(builder, (Long) value),
-                    fieldOffset));
+            return Expression.createExpression(builder, ExpressionImpl.Literal,
+                    Literal.createLiteral(builder, LiteralImpl.Int64Literal,
+                            Int64Literal.createInt64Literal(builder,
+                                    (Long) value), fieldOffset));
         }
         if (type.equals(INTEGER)) {
-            return Expression.createExpression(builder, ExpressionImpl.Literal, Literal.createLiteral(
-                    builder,
-                    LiteralImpl.Int32Literal,
-                    Int32Literal.createInt32Literal(builder, ((Long) value).intValue()),
-                    fieldOffset));
+            return Expression.createExpression(builder, ExpressionImpl.Literal,
+                    Literal.createLiteral(builder, LiteralImpl.Int32Literal,
+                            Int32Literal.createInt32Literal(builder,
+                                    ((Long) value).intValue()), fieldOffset));
         }
         if (type.equals(SMALLINT)) {
-            return Expression.createExpression(builder, ExpressionImpl.Literal, Literal.createLiteral(
-                    builder,
-                    LiteralImpl.Int16Literal,
-                    Int16Literal.createInt16Literal(builder, ((Long) value).shortValue()),
-                    fieldOffset));
+            return Expression.createExpression(builder, ExpressionImpl.Literal,
+                    Literal.createLiteral(builder, LiteralImpl.Int16Literal,
+                            Int16Literal.createInt16Literal(builder,
+                                    ((Long) value).shortValue()), fieldOffset));
         }
         if (type.equals(TINYINT)) {
-            return Expression.createExpression(builder, ExpressionImpl.Literal, Literal.createLiteral(
-                    builder,
-                    LiteralImpl.Int8Literal,
-                    Int8Literal.createInt8Literal(builder, ((Long) value).byteValue()),
-                    fieldOffset));
+            return Expression.createExpression(builder, ExpressionImpl.Literal,
+                    Literal.createLiteral(builder, LiteralImpl.Int8Literal,
+                            Int8Literal.createInt8Literal(builder,
+                                    ((Long) value).byteValue()), fieldOffset));
         }
         if (type.equals(REAL)) {
-            return Expression.createExpression(builder, ExpressionImpl.Literal, Literal.createLiteral(
-                    builder,
-                    LiteralImpl.Float32Literal,
-                    Float32Literal.createFloat32Literal(builder, intBitsToFloat(toIntExact((long) value))),
-                    fieldOffset));
+            return Expression.createExpression(builder, ExpressionImpl.Literal,
+                    Literal.createLiteral(builder, LiteralImpl.Float32Literal,
+                            Float32Literal.createFloat32Literal(builder,
+                                    intBitsToFloat(toIntExact((long) value))),
+                            fieldOffset));
         }
         if (type.equals(DOUBLE)) {
-            return Expression.createExpression(builder, ExpressionImpl.Literal, Literal.createLiteral(
-                    builder,
-                    LiteralImpl.Float64Literal,
-                    Float64Literal.createFloat64Literal(builder, (double) value),
-                    fieldOffset));
+            return Expression.createExpression(builder, ExpressionImpl.Literal,
+                    Literal.createLiteral(builder, LiteralImpl.Float64Literal,
+                            Float64Literal.createFloat64Literal(builder,
+                                    (double) value), fieldOffset));
         }
         if (type.equals(VARCHAR)) {
-            return Expression.createExpression(builder, ExpressionImpl.Literal, Literal.createLiteral(
-                    builder,
-                    LiteralImpl.StringLiteral,
-                    StringLiteral.createStringLiteral(builder, builder.createString(((Slice) value).toStringUtf8())),
-                    fieldOffset));
+            return Expression.createExpression(builder, ExpressionImpl.Literal,
+                    Literal.createLiteral(builder, LiteralImpl.StringLiteral,
+                            StringLiteral.createStringLiteral(builder,
+                                    builder.createString(
+                                            ((Slice) value).toStringUtf8())),
+                            fieldOffset));
         }
         if (type instanceof CharType) {
             int length = ((CharType) type).getLength();
             String origPredicateStringValue = ((Slice) value).toStringUtf8();
-            verify(CharMatcher.ascii().matchesAllOf(origPredicateStringValue), "CHAR type predicate pushdown is supported only for ASCII charset");
+            verify(CharMatcher.ascii().matchesAllOf(origPredicateStringValue),
+                    "CHAR type predicate pushdown is supported only for ASCII charset");
             // Works for ASCII translations only.
             // Trino does not pad values automatically, except when casting a char - Trino right-pads CHAR values: https://trino.io/docs/current/language/types.html#char
             // VAST requires padded values.
-            String paddedPredicateStringValue = TypeUtils.rightPadSpaces(origPredicateStringValue, length);
-            return Expression.createExpression(builder, ExpressionImpl.Literal, Literal.createLiteral(
-                    builder,
-                    LiteralImpl.FixedSizeBinaryLiteral,
-                    FixedSizeBinaryLiteral.createFixedSizeBinaryLiteral(builder, builder.createString(paddedPredicateStringValue)),
-                    fieldOffset));
+            String paddedPredicateStringValue = TypeUtils.rightPadSpaces(
+                    origPredicateStringValue, length);
+            return Expression.createExpression(builder, ExpressionImpl.Literal,
+                    Literal.createLiteral(builder,
+                            LiteralImpl.FixedSizeBinaryLiteral,
+                            FixedSizeBinaryLiteral.createFixedSizeBinaryLiteral(
+                                    builder, builder.createString(
+                                            paddedPredicateStringValue)),
+                            fieldOffset));
         }
         if (type.equals(DATE)) {
-            return Expression.createExpression(builder, ExpressionImpl.Literal, Literal.createLiteral(
-                    builder,
-                    LiteralImpl.DateLiteral,
-                    DateLiteral.createDateLiteral(builder, (long) value),
-                    fieldOffset));
+            return Expression.createExpression(builder, ExpressionImpl.Literal,
+                    Literal.createLiteral(builder, LiteralImpl.DateLiteral,
+                            DateLiteral.createDateLiteral(builder,
+                                    (long) value), fieldOffset));
         }
         if (type instanceof TimestampType) {
             TimeUnit unit = ((ArrowType.Timestamp) arrowType).getUnit();
             long result;
             if (unit == TimeUnit.NANOSECOND) {
                 LongTimestamp ts = (LongTimestamp) value;
-                result = TypeUtils.convertTwoValuesNanoToLong(ts.getEpochMicros(), ts.getPicosOfMicro()); // in nanos
+                result = TypeUtils.convertTwoValuesNanoToLong(
+                        ts.getEpochMicros(), ts.getPicosOfMicro()); // in nanos
             }
             else {
                 // ShortTimestampType is represented in micros since Epoch (in Trino)
                 long microsInUnit = TypeUtils.timeUnitToPicos(unit) / 1_000_000;
                 long valueMicros = (long) value;
                 if (valueMicros % microsInUnit != 0) {
-                    throw new IllegalArgumentException(format("%s value %d be a multiple of %d", arrowType, valueMicros, microsInUnit));
+                    throw new IllegalArgumentException(
+                            format("%s value %d be a multiple of %d", arrowType,
+                                    valueMicros, microsInUnit));
                 }
                 result = valueMicros / microsInUnit; // rescale to use the correct TimeUnit (for Arrow)
             }
-            return Expression.createExpression(builder, ExpressionImpl.Literal, Literal.createLiteral(
-                    builder,
-                    LiteralImpl.TimestampLiteral,
-                    TimestampLiteral.createTimestampLiteral(builder, result),
-                    fieldOffset));
+            return Expression.createExpression(builder, ExpressionImpl.Literal,
+                    Literal.createLiteral(builder, LiteralImpl.TimestampLiteral,
+                            TimestampLiteral.createTimestampLiteral(builder,
+                                    result), fieldOffset));
         }
         if (type instanceof TimestampWithTimeZoneType) {
             TimeUnit unit = ((ArrowType.Timestamp) arrowType).getUnit();
             long result;
             if (unit == TimeUnit.NANOSECOND) {
                 LongTimestampWithTimeZone ts = (LongTimestampWithTimeZone) value;
-                result = TypeUtils.convertTwoValuesNanoToLongMilli(ts.getEpochMillis(), ts.getPicosOfMilli()); // in nanos
+                result = TypeUtils.convertTwoValuesNanoToLongMilli(
+                        ts.getEpochMillis(), ts.getPicosOfMilli()); // in nanos
             }
             else if (unit == TimeUnit.MICROSECOND) {
                 LongTimestampWithTimeZone ts = (LongTimestampWithTimeZone) value;
-                result = TypeUtils.convertTwoValuesMicroToLong(ts.getEpochMillis(), ts.getPicosOfMilli()); // in micros
+                result = TypeUtils.convertTwoValuesMicroToLong(
+                        ts.getEpochMillis(), ts.getPicosOfMilli()); // in micros
             }
             else {
                 // ShortTimestampWithTimeZoneType is represented in millis since Epoch (in Trino)
-                long millisInUnit = TypeUtils.timeUnitToPicos(unit) / 1_000_000_000;
+                long millisInUnit = TypeUtils.timeUnitToPicos(
+                        unit) / 1_000_000_000;
                 long valueMillis = unpackMillisUtc((long) value);
                 if (valueMillis % millisInUnit != 0) {
-                    throw new IllegalArgumentException(format("%s value %d be a multiple of %d", arrowType, valueMillis, millisInUnit));
+                    throw new IllegalArgumentException(
+                            format("%s value %d be a multiple of %d", arrowType,
+                                    valueMillis, millisInUnit));
                 }
                 result = valueMillis / millisInUnit; // rescale to use the correct TimeUnit (for Arrow)
             }
-            return Expression.createExpression(builder, ExpressionImpl.Literal, Literal.createLiteral(
-                    builder,
-                    LiteralImpl.TimestampLiteral,
-                    TimestampLiteral.createTimestampLiteral(builder, result),
-                    fieldOffset));
+            return Expression.createExpression(builder, ExpressionImpl.Literal,
+                    Literal.createLiteral(builder, LiteralImpl.TimestampLiteral,
+                            TimestampLiteral.createTimestampLiteral(builder,
+                                    result), fieldOffset));
         }
         if (type instanceof TimeType) {
             ArrowType.Time arrowTimeType = (ArrowType.Time) arrowType;
-            long picosInUnit = TypeUtils.timeUnitToPicos(arrowTimeType.getUnit());
+            long picosInUnit = TypeUtils.timeUnitToPicos(
+                    arrowTimeType.getUnit());
             long longValueInPicos = (long) value;
             if (longValueInPicos % picosInUnit != 0) {
-                throw new IllegalArgumentException(format("%s value %d be a multiple of %d", arrowType, longValueInPicos, picosInUnit));
+                throw new IllegalArgumentException(
+                        format("%s value %d be a multiple of %d", arrowType,
+                                longValueInPicos, picosInUnit));
             }
-            return Expression.createExpression(builder, ExpressionImpl.Literal, Literal.createLiteral(
-                    builder,
-                    LiteralImpl.TimeLiteral,
-                    TimeLiteral.createTimeLiteral(builder, longValueInPicos / picosInUnit),
-                    fieldOffset));
+            return Expression.createExpression(builder, ExpressionImpl.Literal,
+                    Literal.createLiteral(builder, LiteralImpl.TimeLiteral,
+                            TimeLiteral.createTimeLiteral(builder,
+                                    longValueInPicos / picosInUnit),
+                            fieldOffset));
         }
         if (type.equals(BOOLEAN)) {
-            return Expression.createExpression(builder, ExpressionImpl.Literal, Literal.createLiteral(
-                    builder,
-                    LiteralImpl.BooleanLiteral,
-                    BooleanLiteral.createBooleanLiteral(builder, (boolean) value),
-                    fieldOffset));
+            return Expression.createExpression(builder, ExpressionImpl.Literal,
+                    Literal.createLiteral(builder, LiteralImpl.BooleanLiteral,
+                            BooleanLiteral.createBooleanLiteral(builder,
+                                    (boolean) value), fieldOffset));
         }
-        if (type instanceof DecimalType) {
-            DecimalType decimalType = (DecimalType) type;
+        if (type instanceof DecimalType decimalType) {
             Int128 int128Value;
             if (decimalType.isShort()) {
                 int128Value = Int128.valueOf((Long) value);
@@ -228,28 +237,31 @@ abstract public class TrinoExpressionSerializer
                     .putLong(int128Value.getLow())
                     .putLong(int128Value.getHigh());
             int valueOffset = DecimalLiteral.createValueVector(builder, bytes);
-            return Expression.createExpression(builder, ExpressionImpl.Literal, Literal.createLiteral(
-                    builder,
-                    LiteralImpl.DecimalLiteral,
-                    DecimalLiteral.createDecimalLiteral(builder, valueOffset),
-                    fieldOffset));
+            return Expression.createExpression(builder, ExpressionImpl.Literal,
+                    Literal.createLiteral(builder, LiteralImpl.DecimalLiteral,
+                            DecimalLiteral.createDecimalLiteral(builder,
+                                    valueOffset), fieldOffset));
         }
         if (type.equals(VARBINARY)) {
             Slice slice = (Slice) value;
-            return Expression.createExpression(builder, ExpressionImpl.Literal, Literal.createLiteral(
-                    builder,
-                    LiteralImpl.BinaryLiteral,
-                    BinaryLiteral.createBinaryLiteral(builder, builder.createByteVector(slice.getBytes())),
-                    fieldOffset));
+            return Expression.createExpression(builder, ExpressionImpl.Literal,
+                    Literal.createLiteral(builder, LiteralImpl.BinaryLiteral,
+                            BinaryLiteral.createBinaryLiteral(builder,
+                                    builder.createByteVector(slice.getBytes())),
+                            fieldOffset));
         }
         if (type.equals(UUID)) {
             Slice slice = (Slice) value;
-            return Expression.createExpression(builder, ExpressionImpl.Literal, Literal.createLiteral(
-                    builder,
-                    LiteralImpl.FixedSizeBinaryLiteral,
-                    FixedSizeBinaryLiteral.createFixedSizeBinaryLiteral(builder, builder.createByteVector(slice.getBytes())),
-                    fieldOffset));
+            return Expression.createExpression(builder, ExpressionImpl.Literal,
+                    Literal.createLiteral(builder,
+                            LiteralImpl.FixedSizeBinaryLiteral,
+                            FixedSizeBinaryLiteral.createFixedSizeBinaryLiteral(
+                                    builder,
+                                    builder.createByteVector(slice.getBytes())),
+                            fieldOffset));
         }
-        throw new UnsupportedOperationException(format("unsupported predicate pushdown for type=%s, value=%s", type, value));
+        throw new UnsupportedOperationException(
+                format("unsupported predicate pushdown for type=%s, value=%s",
+                        type, value));
     }
 }

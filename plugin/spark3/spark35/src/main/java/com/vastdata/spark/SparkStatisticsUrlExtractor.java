@@ -24,10 +24,11 @@ public class SparkStatisticsUrlExtractor
                 return ParsedURL.of(t.name()).getBucket();
             }
             catch (VastUserException e) {
-                throw new RuntimeException(format("Failed extracting bucket from table: %s", t.name()), e);
+                throw new RuntimeException(
+                        format("Failed extracting bucket from table: %s",
+                                t.name()), e);
             }
-        },
-                t1 -> t1.properties().get(HANDLE_ID_PROPERTY));
+        }, t1 -> t1.properties().get(HANDLE_ID_PROPERTY));
     }
 
     public static StatisticsUrlExtractor<Table> instance()

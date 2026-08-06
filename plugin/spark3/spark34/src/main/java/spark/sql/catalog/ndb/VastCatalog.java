@@ -4,11 +4,15 @@
 
 package spark.sql.catalog.ndb;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.vastdata.client.QueryDataExtraParams;
+import com.vastdata.client.RowColumnSecurityResponse;
+import com.vastdata.client.TableSpecifiers;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastConfig;
-import com.vastdata.client.VastSchedulingInfo;
+import com.vastdata.client.VastObjectDetails;
 import com.vastdata.client.error.VastConflictException;
 import com.vastdata.client.error.VastException;
 import com.vastdata.client.error.VastExceptionFactory;
@@ -20,8 +24,10 @@ import com.vastdata.client.schema.DropTableContext;
 import com.vastdata.client.schema.DropViewContext;
 import com.vastdata.client.schema.VastMetadataUtils;
 import com.vastdata.client.tx.SimpleVastTransaction;
+import com.vastdata.client.tx.VastAutocommitTransaction;
 import com.vastdata.client.tx.VastTraceToken;
 import com.vastdata.client.tx.VastTransaction;
+import com.vastdata.client.tx.VastTransactionFactory;
 import com.vastdata.client.tx.VastTransactionHandleManager;
 import com.vastdata.spark.SparkViewMetadata;
 import com.vastdata.spark.VastColumnarBatchReader;
@@ -29,8 +35,6 @@ import com.vastdata.spark.VastInputPartition;
 import com.vastdata.spark.VastTable;
 import com.vastdata.spark.VastTableReadOnly;
 import com.vastdata.spark.VastView;
-import com.vastdata.client.tx.VastAutocommitTransaction;
-import com.vastdata.client.tx.VastTransactionFactory;
 import com.vastdata.spark.tx.VastSparkTransactionsManager;
 import ndb.DefaultSource;
 import ndb.NDB;
@@ -83,14 +87,13 @@ import static com.vastdata.client.ParsedURL.compose;
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 import static com.vastdata.client.importdata.VastImportDataMetadataUtils.IMPORT_DATA_HIDDEN_FIELD;
 import static com.vastdata.client.importdata.VastImportDataMetadataUtils.IMPORT_DATA_TABLE_NAME_SUFFIX;
-import static com.vastdata.client.importdata.VastImportDataMetadataUtils.getTableNameForAPI;
-import static com.vastdata.client.importdata.VastImportDataMetadataUtils.isImportDataTableName;
 import static com.vastdata.client.schema.VastViewMetadata.COLUMN_ALIASES_FIELD;
 import static com.vastdata.client.schema.VastViewMetadata.COLUMN_COMMENTS_FIELD;
 import static com.vastdata.client.schema.VastViewMetadata.COMMENT_FIELD;
 import static com.vastdata.client.schema.VastViewMetadata.SQL_FIELD;
 import static com.vastdata.client.schema.VastViewMetadata.VIEW_METADATA_TABLE;
 import static java.lang.String.format;
+import static ndb.NDBSparkSessionExtension.getSessionUser;
 import static spark.sql.catalog.ndb.NDBRowLevelOperationIdentifier.isForRowLevelOp;
 import static spark.sql.catalog.ndb.NDBRowLevelOperationIdentifier.trimTableNameFromRowLevelOpSuffix;
 
@@ -98,43 +101,65 @@ public class VastCatalog
         implements CatalogExtension
 {
     public static final String[] EMPTY_NAMESPACE = new String[0];
-    private static final Logger LOG = LoggerFactory.getLogger(VastCatalog.class);
     public static final String[] DEFAULT_VAST_CATALOG = {"ndb"};
-
-    private final static DefaultSource defaultVastSource = new DefaultSource();
-
     public static final int PAGE_SIZE = 1000; // TODO: use setting
+    private static final Logger LOG = LoggerFactory.getLogger(
+            VastCatalog.class);
+    private final static DefaultSource defaultVastSource = new DefaultSource();
     private SparkConfValidator sparkConfValidator;
     private VastClient vastClient;
     private VastTransactionHandleManager<SimpleVastTransaction> transactionsManager;
 
     private FunctionCatalog functionsCatalogDelegate;
+    private VastConfig config;
+    private VastCatalogUtils vastCatalogUtils;
+
+    private static String[] rawObjectsArrayToStringsArray(
+            Object[] rawAliasArray)
+    {
+        return rawAliasArray == null ? new String[0] : Arrays
+                .stream(rawAliasArray)
+                .map(o -> o == null ? null : o.toString())
+                .toArray(String[]::new);
+    }
 
     @Override
-    public void initialize(final String name, final CaseInsensitiveStringMap options)
+    public void initialize(final String name,
+            final CaseInsensitiveStringMap options)
     {
         LOG.debug("initialize {}, {}", name, options);
         try {
-            VastConfig config = NDB.getConfig();
+            this.config = NDB.getConfig();
             this.vastClient = NDB.getVastClient(config);
-            this.transactionsManager = VastSparkTransactionsManager.getInstance(vastClient, new VastTransactionFactory());
+            this.transactionsManager = VastSparkTransactionsManager.getInstance(
+                    vastClient, new VastTransactionFactory());
             this.functionsCatalogDelegate = new VastNDBFunctionsCatalog();
             this.functionsCatalogDelegate.initialize(name, options);
+            this.vastCatalogUtils = new VastCatalogUtils(config, vastClient,
+                    transactionsManager);
             Option<SparkContext> active = SparkContext$.MODULE$.getActive();
             boolean empty = active.isEmpty();
             if (!empty) {
                 SparkContext sparkContext = active.get();
                 SparkConf conf = sparkContext.getConf();
-                sparkConfValidator = new SparkConfValidator(conf::getInt, conf::getBoolean);
-                Optional<SparkListenerInterface> any = sparkContext.listenerBus().listeners().stream().filter(l -> l instanceof NDBJobsListener).findAny();
+                sparkConfValidator = new SparkConfValidator(conf::getInt,
+                        conf::getBoolean);
+                Optional<SparkListenerInterface> any = sparkContext
+                        .listenerBus()
+                        .listeners()
+                        .stream()
+                        .filter(l -> l instanceof NDBJobsListener)
+                        .findAny();
                 if (!any.isPresent()) {
-                    SparkListenerInterface instance = NDBJobsListener.instance(() -> vastClient, config);
+                    SparkListenerInterface instance = NDBJobsListener.instance(
+                            () -> vastClient, config);
                     LOG.info("Registering NDBJobsListener: {}", instance);
                     sparkContext.addSparkListener(instance);
                 }
             }
             else {
-                throw new RuntimeException("UNEXPECTED CATALOG INIT WITH NO CONTEXT");
+                throw new RuntimeException(
+                        "UNEXPECTED CATALOG INIT WITH NO CONTEXT");
             }
         }
         catch (VastUserException e) {
@@ -198,9 +223,11 @@ public class VastCatalog
     public String[][] listNamespaces(String[] namespace)
             throws NoSuchNamespaceException
     {
+        final String endUser = getSessionUser(config);
         LOG.debug("listNamespaces({})", Arrays.toString(namespace));
         if (namespace.length == 0 || namespaceExists(namespace)) {
-            return VastCatalogUtils.listNamespaces(vastClient, namespace, PAGE_SIZE, transactionsManager);
+            return vastCatalogUtils.listNamespaces(namespace, PAGE_SIZE,
+                    transactionsManager, endUser);
         }
         else {
             throw new NoSuchNamespaceException(namespace);
@@ -210,14 +237,18 @@ public class VastCatalog
     @Override
     public boolean namespaceExists(String[] namespace)
     {
-        final String endUser = null;
+        final String endUser = getSessionUser(config);
         LOG.debug("namespaceExists({})", Arrays.toString(namespace));
         try {
             if (namespace.length == 1) {
                 return vastClient.listBuckets(false).contains(namespace[0]);
             }
-            try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
-                return vastClient.schemaExists(tx, String.join(PATH_SEPERATOR, namespace), endUser);
+            try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(
+                    transactionsManager,
+                    () -> transactionsManager.startTransaction(endUser),
+                    endUser)) {
+                return vastClient.schemaExists(tx,
+                        String.join(PATH_SEPERATOR, namespace), endUser);
             }
         }
         catch (VastException e) {
@@ -233,19 +264,31 @@ public class VastCatalog
     }
 
     @Override
-    public void createNamespace(String[] namespace, Map<String, String> metadata)
+    public void createNamespace(String[] namespace,
+            Map<String, String> metadata)
             throws NamespaceAlreadyExistsException
     {
-        final String endUser = null;
-        LOG.info("Creating namespace: {}, with metadata: {}", Arrays.toString(namespace), metadata);
+        final String endUser = getSessionUser(config);
+        LOG.info("Creating namespace: {}, with metadata: {}",
+                Arrays.toString(namespace), metadata);
         if (namespace.length < 2) {
-            throw toRuntime(new VastUserException(format("Namespace identifier must include full schema path: %s", Arrays.toString(namespace))));
+            throw toRuntime(new VastUserException(
+                    format("Namespace identifier must include full schema path: %s",
+                            Arrays.toString(namespace))));
         }
         String schemaName = compose(namespace);
-        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(
+                transactionsManager,
+                () -> transactionsManager.startTransaction(endUser), endUser)) {
             if (!vastClient.schemaExists(tx, schemaName, endUser)) {
-                Map<String, Object> newmap = metadata.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-                vastClient.createSchema(tx, schemaName, new VastMetadataUtils().getPropertiesString(newmap), endUser);
+                Map<String, Object> newmap = metadata
+                        .entrySet()
+                        .stream()
+                        .collect(Collectors.toMap(Map.Entry::getKey,
+                                Map.Entry::getValue));
+                vastClient.createSchema(tx, schemaName,
+                        new VastMetadataUtils().getPropertiesString(newmap),
+                        endUser);
             }
             else {
                 throw new NamespaceAlreadyExistsException(namespace);
@@ -260,23 +303,30 @@ public class VastCatalog
     public void alterNamespace(String[] namespace, NamespaceChange... changes)
             throws NoSuchNamespaceException
     {
-        throw new UnsupportedOperationException("NDB catalog does not support altering namespaces");
+        throw new UnsupportedOperationException(
+                "NDB catalog does not support altering namespaces");
     }
 
     @Override
     public boolean dropNamespace(String[] namespace, boolean cascade)
             throws NoSuchNamespaceException, NonEmptyNamespaceException
     {
-        final String endUser = null;
-        LOG.info("Dropping namespace: {}, cascade: {}", Arrays.toString(namespace), cascade);
+        final String endUser = getSessionUser(config);
+        LOG.info("Dropping namespace: {}, cascade: {}",
+                Arrays.toString(namespace), cascade);
         if (cascade) {
-            throw new UnsupportedOperationException("NDB catalog does not support drop cascade");
+            throw new UnsupportedOperationException(
+                    "NDB catalog does not support drop cascade");
         }
         if (namespace.length < 2) {
-            throw toRuntime(new VastUserException(format("Namespace identifier must include full schema path: %s", Arrays.toString(namespace))));
+            throw toRuntime(new VastUserException(
+                    format("Namespace identifier must include full schema path: %s",
+                            Arrays.toString(namespace))));
         }
         String schemaName = compose(namespace);
-        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(
+                transactionsManager,
+                () -> transactionsManager.startTransaction(endUser), endUser)) {
             if (vastClient.schemaExists(tx, schemaName, endUser)) {
                 vastClient.dropSchema(tx, schemaName, endUser);
                 return true;
@@ -297,7 +347,7 @@ public class VastCatalog
     public Identifier[] listTables(String[] namespace)
             throws NoSuchNamespaceException
     {
-        final String endUser = null;
+        final String endUser = getSessionUser(config);
         LOG.debug("listTables {}", Arrays.toString(namespace));
 
         if (namespace.length < 2) {
@@ -305,13 +355,18 @@ public class VastCatalog
             throw new NoSuchNamespaceException(namespace);
         }
         String schemaName = compose(namespace);
-        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(
+                transactionsManager,
+                () -> transactionsManager.startTransaction(endUser), endUser)) {
             if (!vastClient.schemaExists(tx, schemaName, endUser)) {
                 throw new NoSuchNamespaceException(namespace);
             }
             LOG.debug("Listing tables for schema name: {}", schemaName);
             try {
-                return vastClient.listTables(tx, schemaName, PAGE_SIZE, endUser).map(tableName -> Identifier.of(namespace, tableName)).toArray(Identifier[]::new);
+                return vastClient
+                        .listTables(tx, schemaName, PAGE_SIZE, endUser)
+                        .map(table -> Identifier.of(namespace, table.getName()))
+                        .toArray(Identifier[]::new);
             }
             catch (VastServerException | VastUserException e) {
                 throw toRuntime(e);
@@ -325,12 +380,15 @@ public class VastCatalog
     @Override
     public boolean tableExists(Identifier ident)
     {
-        final String endUser = null;
-        LOG.debug("tableExists {}", ident);
+        final String endUser = getSessionUser(config);
+        LOG.debug("tableExists {}, user {}", ident, endUser);
 
         String schemaName = compose(ident.namespace());
-        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
-            boolean exists = vastClient.tableExists(tx, schemaName, ident.name(), endUser);
+        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(
+                transactionsManager,
+                () -> transactionsManager.startTransaction(endUser), endUser)) {
+            boolean exists = vastClient.tableExists(tx, schemaName,
+                    ident.name(), endUser);
             LOG.debug("tableExists {} return {}", ident, exists);
             return exists;
         }
@@ -338,7 +396,9 @@ public class VastCatalog
             throw re;
         }
         catch (final Exception e) {
-            throw new RuntimeException(format("Table existence check failed during fetching table info for identifier %s", ident.name()), e);
+            throw new RuntimeException(
+                    format("Table existence check failed during fetching table info for identifier %s",
+                            ident.name()), e);
         }
     }
 
@@ -346,48 +406,53 @@ public class VastCatalog
     public Table loadTable(Identifier ident)
             throws NoSuchTableException
     {
-        final String endUser = null;
+        final String endUser = getSessionUser(config);
         LOG.debug("loadTable {}", ident);
 
         String schemaName = compose(ident.namespace());
-        String tableName = ident.name();
-        boolean isImport = false;
-        if (isImportDataTableName(tableName)) {
-            isImport = true;
-            tableName = getTableNameForAPI(ident.name());
+        TableSpecifiers tableSpecifiers = TableSpecifiers.parse(ident.name());
+        String tableName = tableSpecifiers.getTableName();
+
+        if (tableSpecifiers.isForImportDataOperation())
             LOG.debug("loadTable importing into table {}", tableName);
-        }
-        else if (isForRowLevelOp(tableName)) {
+
+        if (isForRowLevelOp(tableName)) {
             tableName = trimTableNameFromRowLevelOpSuffix(ident.name());
             LOG.debug("loadTable row level operation on table {}", tableName);
         }
-        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
-            Optional<String> vastTableHandleId = vastClient.getVastTableHandleId(tx, schemaName, tableName, endUser);
+        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(
+                transactionsManager,
+                () -> transactionsManager.startTransaction(endUser), endUser)) {
+            Optional<VastObjectDetails> vastTableHandleId = vastClient.getVastTableHandleId(
+                    tx, schemaName, tableName, endUser);
             if (vastTableHandleId.isPresent()) {
-                List<Field> fields = vastClient.listColumns(tx, schemaName, tableName, PAGE_SIZE, Collections.emptyMap(), endUser);
-                if (isImport) {
+                List<Field> fields = vastClient
+                        .listColumns(tx, schemaName, tableName, PAGE_SIZE,
+                                new QueryDataExtraParams(), endUser)
+                        .getFields();
+                if (tableSpecifiers.isForImportDataOperation()) {
                     // Adjust schema of the table for only the fields the user mentioned as Spark is doing a strict validation
                     // Add at the end a field for the given imported filename
-                    String fieldsList = ident.name().substring(ident.name().indexOf(IMPORT_DATA_TABLE_NAME_SUFFIX) + IMPORT_DATA_TABLE_NAME_SUFFIX.length());
-                    if (fieldsList.length() < 2 || fieldsList.charAt(0) != '(' || fieldsList.charAt(fieldsList.length() - 1) != ')' ) {
-                         throw toRuntime(new VastUserException(format("Illegal import data field list for table: %s (ident: %s)", tableName, ident.name())));
-                    }
-                    String[] splitFields = fieldsList.substring(1, fieldsList.length() - 1).split(",");
-                    Set<String> givenColumns = new HashSet<>(splitFields.length);
-                    for (String str : splitFields) {
-                        String trimmed = str.trim();
-                        if (!trimmed.isEmpty())
-                            givenColumns.add(trimmed);
-                    }
-                    fields = fields.stream().filter(field -> givenColumns.contains(field.getName())).collect(Collectors.toList());
+                    Set<String> givenColumns = tableSpecifiers.getImportDataColumns();
+
+                    fields = fields
+                            .stream()
+                            .filter(field -> givenColumns.contains(
+                                    field.getName()))
+                            .collect(Collectors.toList());
                     if (fields.size() != givenColumns.size()) {
-                        throw toRuntime(new VastUserException(format("Not all given columns exist in the table. ident: %s, fields.size(): %d, givenColumns.size(): %d",
-                                ident.name(), fields.size(), givenColumns.size())));
+                        throw toRuntime(new VastUserException(
+                                format("Not all given columns exist in the table. ident: %s, fields.size(): %d, givenColumns.size(): %d",
+                                        ident.name(), fields.size(),
+                                        givenColumns.size())));
                     }
                     fields.add(IMPORT_DATA_HIDDEN_FIELD);
                 }
-                StructType schema = TypeUtil.arrowFieldsListToSparkSchema(fields);
-                return makeVastTable(schemaName, tableName, vastTableHandleId.get(), schema, () -> this.vastClient, isImport);
+                StructType schema = TypeUtil.arrowFieldsListToSparkSchema(
+                        fields);
+                return makeVastTable(schemaName, tableName,
+                        vastTableHandleId.get().getHandle(), schema, () -> this.vastClient,
+                        tableSpecifiers.isForImportDataOperation());
             }
             else {
                 throw new NoSuchTableException(ident);
@@ -397,33 +462,55 @@ public class VastCatalog
             throw rethrowable;
         }
         catch (final Exception e) {
-            throw new RuntimeException(format("Loading table failed during fetching table info for identifier %s", ident.name()), e);
+            throw new RuntimeException(
+                    format("Loading table failed during fetching table info for identifier %s",
+                            ident.name()), e);
         }
     }
 
     @Override
-    public Table createTable(Identifier ident, StructType schema, Transform[] partitions, Map<String, String> properties)
+    public Table createTable(Identifier ident, StructType schema,
+            Transform[] partitions, Map<String, String> properties)
             throws TableAlreadyExistsException, NoSuchNamespaceException
     {
-        final String endUser = null;
-        LOG.info("Creating table identifier: {}, schema: {}, partitions: {}, properties: {}", ident, schema, Arrays.toString(partitions), properties);
+        final String endUser = getSessionUser(config);
+        LOG.info(
+                "Creating table identifier: {}, schema: {}, partitions: {}, properties: {}",
+                ident, schema, Arrays.toString(partitions), properties);
 
         String schemaName = compose(ident.namespace());
-        String tableName = ident.name();
-        if (isImportDataTableName(tableName)) {
-            throw toRuntime(new VastUserException(format("Illegal table name for create table: %s", tableName)));
+        String tableName = TableSpecifiers.parseUnspecifiedTableName(
+                ident.name(), toRuntime(new VastUserException(
+                        format("Illegal table name for create table: %s",
+                                ident.name()))));
+
+        List<Field> fieldList = TypeUtil.adaptVerifiedSparkSchemaToArrowFieldsList(
+                schema);
+        CreateTableContext ctx;
+        try {
+            ctx = CreateTableContext.create(schemaName, tableName, fieldList,
+                    Optional.empty(), ImmutableMap.of(), null, true);
+        }
+        catch (VastUserException e) {
+            throw toRuntime(e);
         }
 
-        List<Field> fieldList = TypeUtil.adaptVerifiedSparkSchemaToArrowFieldsList(schema);
-        CreateTableContext ctx = new CreateTableContext(schemaName, tableName, fieldList, Optional.empty(), ImmutableMap.of());
-
-        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(
+                transactionsManager,
+                () -> transactionsManager.startTransaction(endUser), endUser)) {
             if (vastClient.schemaExists(tx, schemaName, endUser)) {
-                if (!vastClient.tableExists(tx, schemaName, tableName, endUser)) {
+                if (!vastClient.tableExists(tx, schemaName, tableName,
+                        endUser)) {
                     vastClient.createTable(tx, ctx, endUser);
-                    final String vastTableHandleId = vastClient.getVastTableHandleId(tx, schemaName, tableName, endUser).orElseThrow(() -> VastExceptionFactory.tableHandleIdNotFound(schemaName, tableName));
+                    final String vastTableHandleId = vastClient
+                            .getVastTableHandleId(tx, schemaName, tableName,
+                                    endUser)
+                            .orElseThrow(
+                                    () -> VastExceptionFactory.tableHandleIdNotFound(
+                                            schemaName, tableName)).getHandle();
                     tx.setCommit(true);
-                    return makeVastTable(schemaName, tableName, vastTableHandleId, schema, () -> vastClient, false);
+                    return makeVastTable(schemaName, tableName,
+                            vastTableHandleId, schema, () -> vastClient, false);
                 }
                 else {
                     throw new TableAlreadyExistsException(ident);
@@ -433,11 +520,14 @@ public class VastCatalog
                 throw new NoSuchNamespaceException(ident.namespace());
             }
         }
-        catch (final TableAlreadyExistsException | NoSuchNamespaceException | RuntimeException rethrowable) {
+        catch (final TableAlreadyExistsException | NoSuchNamespaceException |
+                RuntimeException rethrowable) {
             throw rethrowable;
         }
         catch (final Exception any) {
-            throw new RuntimeException(format("Creating table failed during putting table info to server for identifier %s", ident.name()), any);
+            throw new RuntimeException(
+                    format("Creating table failed during putting table info to server for identifier %s",
+                            ident.name()), any);
         }
     }
 
@@ -445,24 +535,35 @@ public class VastCatalog
     public Table alterTable(Identifier ident, TableChange... changes)
             throws NoSuchTableException
     {
-        final String endUser = null;
+        final String endUser = getSessionUser(config);
         LOG.debug("alterTable {}, {}", ident, Arrays.toString(changes));
 
         String schemaName = compose(ident.namespace());
-        String tableName = ident.name();
+        String tableName = TableSpecifiers.parseUnspecifiedTableName(
+                ident.name(), toRuntime(new VastUserException(
+                        format("Illegal table name for alter table: %s",
+                                ident.name()))));
 
-        if (isImportDataTableName(tableName)) {
-            throw toRuntime(new VastUserException(format("Illegal table name for alter table: %s", tableName)));
-        }
-        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
-            VastTableChangeFactory vastTableChangeFactory = new VastTableChangeFactory(schemaName, tableName);
-            Optional<String> vastTableHandleId = vastClient.getVastTableHandleId(tx, schemaName, tableName, endUser);
+        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(
+                transactionsManager,
+                () -> transactionsManager.startTransaction(endUser), endUser)) {
+            VastTableChangeFactory vastTableChangeFactory = new VastTableChangeFactory(
+                    config, schemaName, tableName);
+            Optional<VastObjectDetails> vastTableHandleId = vastClient.getVastTableHandleId(
+                    tx, schemaName, tableName, endUser);
             if (vastTableHandleId.isPresent()) {
-                VastTableChange vastTableChange = vastTableChangeFactory.compose(changes);
+                VastTableChange vastTableChange = vastTableChangeFactory.compose(
+                        changes);
                 vastTableChange.accept(vastClient, tx);
                 tx.setCommit(true);
-                List<Field> fields = vastClient.listColumns(tx, schemaName, tableName, PAGE_SIZE, Collections.emptyMap(), endUser);
-                return makeVastTable(schemaName, tableName, vastTableHandleId.get(), TypeUtil.arrowFieldsListToSparkSchema(fields), () -> vastClient, false);
+                List<Field> fields = vastClient
+                        .listColumns(tx, schemaName, tableName, PAGE_SIZE,
+                                new QueryDataExtraParams(), endUser)
+                        .getFields();
+                return makeVastTable(schemaName, tableName,
+                        vastTableHandleId.get().getHandle(),
+                        TypeUtil.arrowFieldsListToSparkSchema(fields),
+                        () -> vastClient, false);
             }
             else {
                 throw new NoSuchTableException(ident);
@@ -472,14 +573,16 @@ public class VastCatalog
             throw re;
         }
         catch (final Exception any) {
-            throw new RuntimeException(format("Failed applying table changes for identifier %s", ident.name()), any);
+            throw new RuntimeException(
+                    format("Failed applying table changes for identifier %s",
+                            ident.name()), any);
         }
     }
 
     @Override
     public boolean dropTable(Identifier ident)
     {
-        final String endUser = null;
+        final String endUser = getSessionUser(config);
         LOG.debug("dropTable {}", ident);
 
         String schemaName = compose(ident.namespace());
@@ -487,7 +590,9 @@ public class VastCatalog
 
         DropTableContext ctx = new DropTableContext(schemaName, tableName);
 
-        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(
+                transactionsManager,
+                () -> transactionsManager.startTransaction(endUser), endUser)) {
             if (vastClient.tableExists(tx, schemaName, tableName, endUser)) {
                 vastClient.dropTable(tx, ctx, endUser);
                 tx.setCommit(true);
@@ -501,7 +606,9 @@ public class VastCatalog
             throw re;
         }
         catch (final Exception e) {
-            throw new RuntimeException(format("Failed dropping table for identifier %s", ident.name()), e);
+            throw new RuntimeException(
+                    format("Failed dropping table for identifier %s",
+                            ident.name()), e);
         }
     }
 
@@ -509,55 +616,85 @@ public class VastCatalog
     public void renameTable(Identifier oldIdent, Identifier newIdent)
             throws NoSuchTableException, TableAlreadyExistsException
     {
-        final String endUser = null;
+        final String endUser = getSessionUser(config);
         LOG.info("Renaming table {} to {}", oldIdent, newIdent);
         if (newIdent.namespace().length < 2) {
-            throw new RuntimeException(format("Failed renaming table - new name must include valid table path: %s", newIdent));
+            throw new RuntimeException(
+                    format("Failed renaming table - new name must include valid table path: %s",
+                            newIdent));
         }
         String oldBucket = oldIdent.namespace()[0];
         String newBucket = newIdent.namespace()[0];
         if (!oldBucket.equalsIgnoreCase(newBucket)) {
-            throw new RuntimeException(format("Failed renaming table - changing bucket is not supported: %s, %s", oldIdent, newIdent));
+            throw new RuntimeException(
+                    format("Failed renaming table - changing bucket is not supported: %s, %s",
+                            oldIdent, newIdent));
         }
         String schemaName = compose(oldIdent.namespace());
-        String tableName = oldIdent.name();
-        String newFullSchemaPath = compose(newIdent.namespace());
-        String newSchemaName = compose(Arrays.copyOfRange(newIdent.namespace(), 1, newIdent.namespace().length));
-        String newTableName = newIdent.name();
+        String tableName = TableSpecifiers.parseUnspecifiedTableName(
+                oldIdent.name(), toRuntime(new VastUserException(
+                        format("Illegal table name for rename table: %s",
+                                oldIdent.name()))));
 
-        if (isImportDataTableName(newTableName)) {
-            throw toRuntime(new VastUserException(format("Illegal table name for rename table: %s", newTableName)));
-        }
+        String newFullSchemaPath = compose(newIdent.namespace());
+        String newSchemaName = compose(
+                Arrays.copyOfRange(newIdent.namespace(), 1,
+                        newIdent.namespace().length));
+        String newTableName = TableSpecifiers.parseUnspecifiedTableName(
+                newIdent.name(), toRuntime(new VastUserException(
+                        format("Illegal table name for rename table: %s",
+                                oldIdent.name()))));
+
         String format = format("%s/%s", newSchemaName, newTableName);
-        AlterTableContext ctx = new AlterTableContext(format, null);
-        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        AlterTableContext ctx;
+        try {
+            ctx = AlterTableContext.create(format, null, null, true);
+        }
+        catch (VastUserException e) {
+            throw toRuntime(e);
+        }
+        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(
+                transactionsManager,
+                () -> transactionsManager.startTransaction(endUser), endUser)) {
             if (!vastClient.tableExists(tx, schemaName, tableName, endUser)) {
                 throw new NoSuchTableException(oldIdent);
             }
-            if (vastClient.tableExists(tx, newFullSchemaPath, newTableName, endUser)) {
+            if (vastClient.tableExists(tx, newFullSchemaPath, newTableName,
+                    endUser)) {
                 throw new TableAlreadyExistsException(newIdent);
             }
             vastClient.alterTable(tx, schemaName, tableName, ctx, endUser);
             tx.setCommit(true);
         }
-        catch (final NoSuchTableException | TableAlreadyExistsException | RuntimeException rethrowable) {
+        catch (final NoSuchTableException | TableAlreadyExistsException |
+                RuntimeException rethrowable) {
             throw rethrowable;
         }
         catch (final Exception e) {
-            throw new RuntimeException(format("Renaming table failed during update of table info for identifier %s", oldIdent), e);
+            throw new RuntimeException(
+                    format("Renaming table failed during update of table info for identifier %s",
+                            oldIdent), e);
         }
     }
 
-    private VastTable makeVastTable(String schemaName, String tableName, String handleID, StructType schema,
-                                    Supplier<VastClient> clientSupplier, boolean forImportData)
+    private VastTable makeVastTable(String schemaName, String tableName,
+            String handleID, StructType schema,
+            Supplier<VastClient> clientSupplier, boolean forImportData)
     {
-        return sparkConfValidator.writeError
-                .map(error -> (VastTable) new VastTableReadOnly(schemaName, tableName, handleID, schema, clientSupplier, forImportData, error))
-                .orElseGet(() -> new VastTable(schemaName, tableName, handleID, schema, clientSupplier, forImportData));
+        LOG.debug("create VastTable for {}.{}, importData: {}", schemaName,
+                tableName, forImportData);
+        return sparkConfValidator.writeError.map(
+                error -> (VastTable) new VastTableReadOnly(vastCatalogUtils,
+                        schemaName, tableName, handleID, schema, clientSupplier,
+                        forImportData, error)).orElseGet(
+                () -> new VastTable(vastCatalogUtils, schemaName, tableName,
+                        handleID, schema, clientSupplier, forImportData, true));
     }
 
-    public Identifier[] listViews(String... namespace) throws NoSuchNamespaceException {
-        final String endUser = null;
+    public Identifier[] listViews(String... namespace)
+            throws NoSuchNamespaceException
+    {
+        final String endUser = getSessionUser(config);
         LOG.debug("listViews {}", Arrays.toString(namespace));
 
         if (namespace.length < 2) {
@@ -566,13 +703,18 @@ public class VastCatalog
         }
 
         final String schemaName = compose(namespace);
-        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(
+                transactionsManager,
+                () -> transactionsManager.startTransaction(endUser), endUser)) {
             if (!vastClient.schemaExists(tx, schemaName, endUser)) {
                 throw new NoSuchNamespaceException(namespace);
             }
             LOG.debug("Listing views for schema name: {}", schemaName);
             try {
-                return vastClient.listViews(tx, schemaName, PAGE_SIZE, endUser).map(viewName -> Identifier.of(namespace, viewName)).toArray(Identifier[]::new);
+                return vastClient
+                        .listViews(tx, schemaName, PAGE_SIZE, endUser)
+                        .map(viewName -> Identifier.of(namespace, viewName))
+                        .toArray(Identifier[]::new);
             }
             catch (final VastServerException | VastUserException e) {
                 throw toRuntime(e);
@@ -583,40 +725,70 @@ public class VastCatalog
         }
     }
 
-    public VastView loadView(final Identifier ident, Optional<VastTransaction> existingTransaction) throws NoSuchViewException
+    public VastView loadView(final Identifier ident,
+            Optional<VastTransaction> existingTransaction)
+            throws NoSuchViewException
     {
-        final String endUser = null;
+        final String endUser = getSessionUser(config);
         LOG.debug("loadViewSql {}", ident);
         final String schemaName = compose(ident.namespace());
         final String viewName = ident.name();
-        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.wrapVastTransactionOrCreateNew(existingTransaction, transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.wrapVastTransactionOrCreateNew(
+                existingTransaction, transactionsManager,
+                () -> transactionsManager.startTransaction(endUser), endUser)) {
             if (vastClient.schemaExists(tx, schemaName, endUser)) {
                 if (vastClient.viewExists(tx, schemaName, viewName, endUser)) {
-                    VastTraceToken token = tx.generateTraceToken(Optional.of(format("getViewMetadata:%s", viewName)));
+                    VastTraceToken token = tx.generateTraceToken(Optional.of(
+                            format("getViewMetadata:%s", viewName)));
                     VastConfig config = NDB.getConfig();
-                    VastSchedulingInfo schedulingInfo = vastClient.getSchedulingInfo(tx, token, schemaName, viewName, endUser);
-                    SimpleVastTransaction transaction = new SimpleVastTransaction(tx.getId());
-                    VastInputPartition partition = new VastInputPartition(0, 0, 1);
-                    StructType structType = TypeUtil.arrowFieldsListToSparkSchema(ImmutableList.of(SQL_FIELD, COLUMN_ALIASES_FIELD, COLUMN_COMMENTS_FIELD, COMMENT_FIELD));
-                    Map<String, String> extraQueryParams = ImmutableMap.of("sub-table", VIEW_METADATA_TABLE);
-                    List<Field> fields = vastClient.listColumns(tx, schemaName, viewName, 1000, ImmutableMap.of(), endUser);
-                    StructType viewSchema = new StructType(fields.stream().map(TypeUtil::arrowFieldToSparkField).toArray(StructField[]::new));
-                    try (VastColumnarBatchReader batchReader = new VastColumnarBatchReader(transaction, 0, config,
-                            schemaName, viewName, partition, structType, 1, Collections.emptyList(), schedulingInfo, false, extraQueryParams)) {
+                    SimpleVastTransaction transaction = new SimpleVastTransaction(
+                            tx.getId());
+                    VastInputPartition partition = new VastInputPartition(0, 0,
+                            1, 1);
+                    StructType structType = TypeUtil.arrowFieldsListToSparkSchema(
+                            ImmutableList.of(SQL_FIELD, COLUMN_ALIASES_FIELD,
+                                    COLUMN_COMMENTS_FIELD, COMMENT_FIELD));
+                    QueryDataExtraParams queryDataExtraParams = new QueryDataExtraParams();
+                    queryDataExtraParams.addExtraQueryParams(QueryDataExtraParams.QueryDataExtraParamType.URL_PARAM,
+                            "sub-table", VIEW_METADATA_TABLE);
+                    List<Field> fields = vastClient
+                            .listColumns(tx, schemaName, viewName, 1000,
+                                    new QueryDataExtraParams(), endUser)
+                            .getFields();
+                    StructType viewSchema = new StructType(fields
+                            .stream()
+                            .map(TypeUtil::arrowFieldToSparkField)
+                            .toArray(StructField[]::new));
+                    RowColumnSecurityResponse rowColumnSecurity = vastCatalogUtils.getRowColumnSecurity(
+                            schemaName, viewName, endUser);
+                    Map<String, String> columnMasks = Collections.emptyMap();
+                    if (rowColumnSecurity != null && rowColumnSecurity.getMaskedColumns() != null) {
+                        columnMasks = rowColumnSecurity.getMaskedColumns();
+                    }
+                    try (VastColumnarBatchReader batchReader = new VastColumnarBatchReader(
+                            transaction, 0, config, schemaName, viewName,
+                            partition, structType, 1, Collections.emptyList(),
+                            null, false, queryDataExtraParams, endUser)) {
                         while (batchReader.next()) {
                             ColumnarBatch columnarBatch = batchReader.get();
                             if (columnarBatch.numRows() > 0) {
                                 InternalRow row = columnarBatch.getRow(0);
-                                String sqlString = row.getUTF8String(0).toString();
-                                String[] aliases = rawObjectsArrayToStringsArray(row.getArray(1).array());
-                                String[] colComments = rawObjectsArrayToStringsArray(row.getArray(2).array());
+                                String sqlString = row
+                                        .getUTF8String(0)
+                                        .toString();
+                                String[] aliases = rawObjectsArrayToStringsArray(
+                                        row.getArray(1).array());
+                                String[] colComments = rawObjectsArrayToStringsArray(
+                                        row.getArray(2).array());
                                 String comment = row.getString(3);
-                                return new VastView(viewName, sqlString, "ndb", comment, ident.namespace(), viewSchema, aliases, aliases, colComments);
+                                return new VastView(viewName, sqlString, "ndb",
+                                        comment, ident.namespace(), viewSchema,
+                                        aliases, aliases, colComments);
                             }
                         }
-                        throw new RuntimeException("Failed to load view metadata " + ident);
+                        throw new RuntimeException(
+                                "Failed to load view metadata " + ident);
                     }
-
                 }
                 else {
                     throw new NoSuchViewException(ident);
@@ -630,52 +802,63 @@ public class VastCatalog
             throw rethrowable;
         }
         catch (final Exception any) {
-            throw new RuntimeException(format("Loading view failed for identifier %s", viewName), any);
+            throw new RuntimeException(
+                    format("Loading view failed for identifier %s", viewName),
+                    any);
         }
     }
 
-    private static String[] rawObjectsArrayToStringsArray(Object[] rawAliasArray)
-    {
-        return rawAliasArray == null ? new String[0] : Arrays.stream(rawAliasArray).map(o -> o == null ? null : o.toString()).toArray(String[]::new);
-    }
-
-    public void createView(SparkViewMetadata ctx, boolean replace, Optional<VastTransaction> existingTransaction)
+    public void createView(SparkViewMetadata ctx, boolean replace,
+            Optional<VastTransaction> existingTransaction)
             throws ViewAlreadyExistsException, NoSuchNamespaceException
     {
-        final String endUser = null;
+        final String endUser = getSessionUser(config);
         LOG.debug("createView: CreateSparkViewContext: {}", ctx);
         final String schemaName = compose(ctx.getIdentifier().namespace());
         final String viewName = ctx.getIdentifier().name();
-        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.wrapVastTransactionOrCreateNew(existingTransaction, transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.wrapVastTransactionOrCreateNew(
+                existingTransaction, transactionsManager,
+                () -> transactionsManager.startTransaction(endUser), endUser)) {
             if (vastClient.schemaExists(tx, schemaName, endUser)) {
                 if (!vastClient.viewExists(tx, schemaName, viewName, endUser)) {
-                    vastClient.createView(tx, ctx.toVastCreateViewContext(), endUser);
+                    vastClient.createView(tx, ctx.toVastCreateViewContext(),
+                            endUser);
                 }
                 else {
                     if (replace) {
                         LOG.debug("createView: replacing existing view");
-                        vastClient.dropView(tx, new DropViewContext(schemaName, viewName), endUser);
-                        vastClient.createView(tx, ctx.toVastCreateViewContext(), endUser);
+                        vastClient.dropView(tx,
+                                new DropViewContext(schemaName, viewName),
+                                endUser);
+                        vastClient.createView(tx, ctx.toVastCreateViewContext(),
+                                endUser);
                     }
                     else {
-                        throw new ViewAlreadyExistsException(ctx.getIdentifier());
+                        throw new ViewAlreadyExistsException(
+                                ctx.getIdentifier());
                     }
                 }
             }
             else {
-                throw new NoSuchNamespaceException(ctx.getIdentifier().namespace());
+                throw new NoSuchNamespaceException(
+                        ctx.getIdentifier().namespace());
             }
         }
-        catch (final ViewAlreadyExistsException | NoSuchNamespaceException | RuntimeException re) {
+        catch (final ViewAlreadyExistsException | NoSuchNamespaceException |
+                RuntimeException re) {
             throw re;
         }
         catch (final Exception any) {
-            throw new RuntimeException(format("Creating view failed during putting view info to server for identifier %s", viewName), any);
+            throw new RuntimeException(
+                    format("Creating view failed during putting view info to server for identifier %s",
+                            viewName), any);
         }
     }
 
-    public boolean dropView(Identifier ident, Optional<VastTransaction> existingTransaction) {
-        final String endUser = null;
+    public boolean dropView(Identifier ident,
+            Optional<VastTransaction> existingTransaction)
+    {
+        final String endUser = getSessionUser(config);
         LOG.debug("dropView {}", ident);
 
         final String schemaName = compose(ident.namespace());
@@ -683,7 +866,9 @@ public class VastCatalog
 
         final DropViewContext ctx = new DropViewContext(schemaName, viewName);
 
-        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.wrapVastTransactionOrCreateNew(existingTransaction, transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        try (final VastAutocommitTransaction tx = VastAutocommitTransaction.wrapVastTransactionOrCreateNew(
+                existingTransaction, transactionsManager,
+                () -> transactionsManager.startTransaction(endUser), endUser)) {
             if (vastClient.viewExists(tx, schemaName, viewName, endUser)) {
                 vastClient.dropView(tx, ctx, endUser);
                 tx.setCommit(true);
@@ -697,7 +882,15 @@ public class VastCatalog
             throw re;
         }
         catch (final Exception e) {
-            throw new RuntimeException(format("Failed dropping view for identifier %s", ident.name()), e);
+            throw new RuntimeException(
+                    format("Failed dropping view for identifier %s",
+                            ident.name()), e);
         }
+    }
+
+    @VisibleForTesting
+    public void setVastCatalogUtils(VastCatalogUtils vastCatalogUtils)
+    {
+        this.vastCatalogUtils = vastCatalogUtils;
     }
 }

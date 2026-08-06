@@ -18,7 +18,8 @@ public class SparkQueryIDSupplier
         SparkContext sparkContext = SparkContext$.MODULE$.getActive().get();
         String execId = sparkContext.getLocalProperty("spark.sql.execution.id");
         if (execId == null) {
-            throw new RuntimeException("Did not find a value for spark.sql.execution.id");
+            throw new RuntimeException(
+                    "Did not find a value for spark.sql.execution.id");
         }
         return Long.parseLong(execId);
     }

@@ -6,36 +6,35 @@ package com.vastdata.trino.predicate;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableSet;
 import com.vastdata.trino.VastColumnHandle;
 
 import java.util.List;
-import java.util.Objects;
 
-public class LogicalFunction
+import static com.google.common.base.MoreObjects.toStringHelper;
+
+public record LogicalFunction(String name,
+        List<ComplexPredicate> children)
         implements ComplexPredicate
 {
-    final String name;
-    final List<ComplexPredicate> children;
-
     @JsonCreator
-    public LogicalFunction(
-            @JsonProperty("name") String name,
-            @JsonProperty("children") List<ComplexPredicate> children)
+    public LogicalFunction(@JsonProperty("name") String name,
+                           @JsonProperty("children") List<ComplexPredicate> children)
     {
         this.name = name;
         this.children = children;
     }
 
+    @Override
     @JsonProperty
-    public String getName()
+    public String name()
     {
         return name;
     }
 
+    @Override
     @JsonProperty
-    public List<ComplexPredicate> getChildren()
+    public List<ComplexPredicate> children()
     {
         return children;
     }
@@ -47,28 +46,9 @@ public class LogicalFunction
     }
 
     @Override
-    public boolean equals(Object o)
-    {
-        if (this == o) {
-            return true;
-        }
-        if (o == null || getClass() != o.getClass()) {
-            return false;
-        }
-        LogicalFunction that = (LogicalFunction) o;
-        return Objects.equals(name, that.name) && Objects.equals(children, that.children);
-    }
-
-    @Override
-    public int hashCode()
-    {
-        return Objects.hash(name, children);
-    }
-
-    @Override
     public String toString()
     {
-        return MoreObjects.toStringHelper(this)
+        return toStringHelper(this)
                 .add("name", name)
                 .add("children", children)
                 .toString();

@@ -14,7 +14,10 @@ public class VastIOException
         super(msg, rootCause);
     }
 
-    public VastIOException(JsonProcessingException e) {super(e);}
+    public VastIOException(JsonProcessingException e)
+    {
+        super(e);
+    }
 
     @Override
     public ErrorType getErrorType()

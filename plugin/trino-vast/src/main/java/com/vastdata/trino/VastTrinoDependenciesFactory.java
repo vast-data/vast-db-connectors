@@ -4,7 +4,6 @@
 
 package com.vastdata.trino;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.vastdata.client.CommonRequestHeadersBuilder;
 import com.vastdata.client.ValidSchemaNamePredicate;
@@ -23,36 +22,49 @@ import java.util.function.Predicate;
 
 import static com.vastdata.client.RequestsHeaders.END_USER;
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
-import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 public class VastTrinoDependenciesFactory
         implements VastDependenciesFactory
 {
-    private static final Logger LOG = Logger.get(VastTrinoDependenciesFactory.class);
-
-    private VastTrinoConfig config;
-
-    static final ConfigDefaults<HttpClientConfig> HTTP_CLIENT_CONFIG_CONFIG_DEFAULTS = cfg -> {
-        cfg.setConnectTimeout(new Duration(1, MINUTES));
-        cfg.setIdleTimeout(new Duration(3600, SECONDS));
+    protected static final String VAST_TRINO_CLIENT_TAG = "VastTrinoPlugin-" + VastVersion.SYS_VERSION;
+    static final ConfigDefaults<HttpClientConfig> HTTP_CLIENT_CONFIG_CONFIG_DEFAULTS = cfg ->
+    {
+        cfg.setConnectTimeout(new Duration(200, SECONDS));
+        cfg.setIdleTimeout(new Duration(30, SECONDS));
         cfg.setRequestTimeout(new Duration(360000, SECONDS));
         cfg.setMaxConnectionsPerServer(250);
         cfg.setMaxContentLength(DataSize.of(32, MEGABYTE));
         cfg.setSelectorCount(10);
         cfg.setTimeoutThreads(8);
         cfg.setTimeoutConcurrency(4);
-        cfg.setKeyStorePath(null); // explicit overwrite the keyStorePath (used by jetty sslContextFactory)
+        cfg.setKeyStorePath(
+                null); // explicit overwrite the keyStorePath (used by jetty sslContextFactory)
     };
+    private static final Logger LOG = Logger.get(
+            VastTrinoDependenciesFactory.class);
+    private final Predicate<String> schemaNamePredicate = new ValidSchemaNamePredicate();
+    private final String clientTag;
+    private VastTrinoConfig config;
 
     @Inject
     public VastTrinoDependenciesFactory(final VastTrinoConfig config)
     {
+        String trinoVersion = Connector.class
+                .getPackage()
+                .getImplementationVersion();
+        clientTag = VAST_TRINO_CLIENT_TAG + "-trino-" + trinoVersion;
+
         this.config = config;
     }
 
-    @VisibleForTesting protected static final String VAST_TRINO_CLIENT_TAG = "VastTrinoPlugin-" + VastVersion.SYS_VERSION;
-    private final Predicate<String> schemaNamePredicate = new ValidSchemaNamePredicate();
+    private VastTrinoDependenciesFactory()
+    {
+        String trinoVersion = Connector.class
+                .getPackage()
+                .getImplementationVersion();
+        clientTag = VAST_TRINO_CLIENT_TAG + "-trino-" + trinoVersion;
+    }
 
     @Override
     public Predicate<String> getSchemaNameValidator()
@@ -63,14 +75,15 @@ public class VastTrinoDependenciesFactory
     @Override
     public VastRequestHeadersBuilder getHeadersFactory(final String endUser)
     {
-        String trinoVersion = Connector.class.getPackage().getImplementationVersion();
-        final VastRequestHeadersBuilder builder = new CommonRequestHeadersBuilder(() -> VAST_TRINO_CLIENT_TAG + "-trino-" + trinoVersion);
+        final VastRequestHeadersBuilder builder = new CommonRequestHeadersBuilder(
+                this::getClientTag);
         if (endUser != null) {
             if (config.isEndUserImpersonationEnabled()) {
-                LOG.debug("end-user-impersonation is enabled, adding header %s=%s", END_USER.getHeaderName(), endUser);
+                LOG.debug(
+                        "end-user-impersonation is enabled, adding header %s=%s",
+                        END_USER.getHeaderName(), endUser);
                 return builder.withEndUser(endUser);
             }
-            LOG.warn("end-user-impersonation is disabled, omitting header %s=%s", END_USER.getHeaderName(), endUser);
         }
         return builder;
     }
@@ -82,7 +95,8 @@ public class VastTrinoDependenciesFactory
     }
 
     @Override
-    public final String getConnectorVersionedStatisticsTag() {
+    public final String getConnectorVersionedStatisticsTag()
+    {
         String trinoVersion = "v1";
         return "VastTrinoPlugin." + trinoVersion;
     }
@@ -91,5 +105,11 @@ public class VastTrinoDependenciesFactory
     public StatisticsUrlExtractor<VastTableHandle> getStatisticsUrlHelper()
     {
         return TrinoStatisticsUrlExtractor.instance();
+    }
+
+    @Override
+    public String getClientTag()
+    {
+        return clientTag;
     }
 }

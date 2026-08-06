@@ -19,10 +19,12 @@ import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 public class InputStreamConsumingResponseHandler
         extends VastResponseHandler
 {
-    private static final Logger LOG = Logger.get(InputStreamConsumingResponseHandler.class);
+    private static final Logger LOG = Logger.get(
+            InputStreamConsumingResponseHandler.class);
     private final Consumer<InputStream> inputStreamConsumer;
 
-    public InputStreamConsumingResponseHandler(Consumer<InputStream> inputStreamConsumer)
+    public InputStreamConsumingResponseHandler(
+            Consumer<InputStream> inputStreamConsumer)
     {
         this.inputStreamConsumer = inputStreamConsumer;
     }
@@ -37,7 +39,8 @@ public class InputStreamConsumingResponseHandler
             LOG.debug("response: %s", response);
             try (InputStream inputStream = response.getInputStream()) {
                 inputStreamConsumer.accept(inputStream);
-                return new VastResponse(response.getStatusCode(), response.getHeaders(), new byte[0], request.getUri());
+                return new VastResponse(response.getStatusCode(),
+                        response.getHeaders(), new byte[0], request.getUri());
             }
             catch (IOException e) {
                 throw toRuntime(ioException("Failed reading input stream", e));

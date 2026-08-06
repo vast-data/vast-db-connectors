@@ -16,7 +16,8 @@ public class VastWriteBuilder
     private final VastTable table;
     private final VastClient client;
 
-    public VastWriteBuilder(VastClient client, VastTable table) {
+    public VastWriteBuilder(VastClient client, VastTable table)
+    {
         this.table = table;
         this.client = client;
     }
@@ -31,5 +32,10 @@ public class VastWriteBuilder
     public DeltaBatchWrite toBatch()
     {
         return new VastBatchWriter(client, table);
+    }
+
+    protected VastTable vastTable()
+    {
+        return this.table;
     }
 }

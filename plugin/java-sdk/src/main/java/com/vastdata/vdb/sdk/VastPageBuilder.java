@@ -4,6 +4,7 @@
 package com.vastdata.vdb.sdk;
 
 import com.vastdata.client.QueryDataPageBuilder;
+import com.vastdata.client.metrics.DataResponseParserMetrics;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
@@ -17,7 +18,7 @@ import java.util.stream.IntStream;
 import static java.lang.Math.toIntExact;
 
 public class VastPageBuilder
-        implements QueryDataPageBuilder<VectorSchemaRoot>
+        implements QueryDataPageBuilder<VectorSchemaRoot, Void>
 {
     private static final int DEFAULT_BATCHES_CAPACITY = 4;
 
@@ -34,25 +35,32 @@ public class VastPageBuilder
     }
 
     @Override
-    public QueryDataPageBuilder<VectorSchemaRoot> add(VectorSchemaRoot root)
+    public QueryDataPageBuilder<VectorSchemaRoot, Void> add(
+            VectorSchemaRoot root)
     {
         this.batches.add(root);
         return this;
     }
 
     @Override
-    public VectorSchemaRoot build()
+    public VectorSchemaRoot build(DataResponseParserMetrics metrics)
     {
-        int rowCount = toIntExact(batches.stream().mapToLong(batch -> (long) batch.getRowCount()).sum());
-        VectorSchemaRoot result = VectorSchemaRoot.create(requestedSchema, allocator);
+        int rowCount = toIntExact(batches
+                .stream()
+                .mapToLong(batch -> (long) batch.getRowCount())
+                .sum());
+        VectorSchemaRoot result = VectorSchemaRoot.create(requestedSchema,
+                allocator);
         if (rowCount > 0) {
-            IntStream.range(0, requestedSchema.getFields().size()).forEach(col -> {
-                FieldVector resultColumn = result.getVector(col);
-                resultColumn.setValueCount(rowCount);
-                resultColumn.setInitialCapacity(rowCount);
-                resultColumn.allocateNew();
-            });
-            VectorSchemaRootAppender.append(result, batches.toArray(new VectorSchemaRoot[0]));
+            IntStream.range(0, requestedSchema.getFields().size()).forEach(
+                    col -> {
+                        FieldVector resultColumn = result.getVector(col);
+                        resultColumn.setValueCount(rowCount);
+                        resultColumn.setInitialCapacity(rowCount);
+                        resultColumn.allocateNew();
+                    });
+            VectorSchemaRootAppender.append(result,
+                    batches.toArray(new VectorSchemaRoot[0]));
         }
         result.setRowCount(rowCount);
         return result;

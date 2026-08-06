@@ -20,18 +20,24 @@ import static spark.sql.catalog.ndb.SparkVectorAdaptorUtil.convertFixedSizeBinar
 public class CharNVectorAdaptor
         implements VectorAdaptor
 {
-    private static final Logger LOG = LoggerFactory.getLogger(CharNVectorAdaptor.class);
+    private static final Logger LOG = LoggerFactory.getLogger(
+            CharNVectorAdaptor.class);
 
     @Override
-    public FieldVector adapt(FieldVector vector, Field field, BufferAllocator allocator)
+    public FieldVector adapt(FieldVector vector, Field field,
+            BufferAllocator allocator)
     {
         LOG.debug("Adapting FixedSizeBinary column: {}", field);
         try {
-            Field newField = new Field(field.getName(), new FieldType(field.getFieldType().isNullable(), ArrowType.Utf8.INSTANCE, null), null);
+            Field newField = new Field(field.getName(),
+                    new FieldType(field.getFieldType().isNullable(),
+                            ArrowType.Utf8.INSTANCE, null), null);
             VarCharVector newVector = new VarCharVector(newField, allocator);
-            convertFixedSizeBinaryIntoVarchar((FixedSizeBinaryVector) vector, newVector);
+            convertFixedSizeBinaryIntoVarchar((FixedSizeBinaryVector) vector,
+                    newVector);
             return newVector;
-        } finally {
+        }
+        finally {
             vector.close();
         }
     }

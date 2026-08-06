@@ -53,6 +53,8 @@ public class TestJobEventService
         threadPool.shutdown();
         assertTrue(threadPool.awaitTermination(10, TimeUnit.SECONDS));
         ConcurrentHashMap<VastTransaction, AtomicInteger> activeTransactions = unit.getActiveTransactions();
-        assertTrue(activeTransactions.isEmpty() || activeTransactions.get(tx).get() == 0, format("%s", activeTransactions));
+        assertTrue(activeTransactions.isEmpty() || activeTransactions
+                .get(tx)
+                .get() == 0, format("%s", activeTransactions));
     }
 }

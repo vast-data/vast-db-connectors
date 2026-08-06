@@ -13,11 +13,13 @@ import java.util.stream.Stream;
 
 import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 
-public abstract class AbstractColumnsChange implements VastTableChange
+public abstract class AbstractColumnsChange
+        implements VastTableChange
 {
     protected final Stream<TableColumnLifecycleContext> columns;
 
-    public AbstractColumnsChange(Stream<TableColumnLifecycleContext> columns) {
+    public AbstractColumnsChange(Stream<TableColumnLifecycleContext> columns)
+    {
         this.columns = columns;
     }
 
@@ -34,5 +36,8 @@ public abstract class AbstractColumnsChange implements VastTableChange
         });
     }
 
-    protected abstract void executeAction(VastClient vastClient, VastTransaction vastTransaction, TableColumnLifecycleContext columnCtx) throws VastException;
+    protected abstract void executeAction(VastClient vastClient,
+            VastTransaction vastTransaction,
+            TableColumnLifecycleContext columnCtx)
+            throws VastException;
 }

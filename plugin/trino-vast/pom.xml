@@ -1,26 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>io.airlift</groupId>
         <artifactId>airbase</artifactId>
-        <version>253</version>
+        <version>334</version>
     </parent>
 
     <groupId>ndb</groupId>
     <artifactId>trino-vast</artifactId>
-    <version>5.4.0</version>
+    <version>5.5.0</version>
     <description>Trino - VAST Connector</description>
     <packaging>trino-plugin</packaging>
     <properties>
-        <dep.aws-sdk.version>1.12.782</dep.aws-sdk.version>
-        <air.modernizer.java-version>23</air.modernizer.java-version>
+        <dep.aws-sdk.version>1.12.793</dep.aws-sdk.version>
+        <air.modernizer.java-version>24</air.modernizer.java-version>
         <air.main.basedir>${project.basedir}</air.main.basedir>
         <air.release.preparation-goals>clean verify -DskipTests</air.release.preparation-goals>
         <dep.accumulo.version>1.7.4</dep.accumulo.version>
         <dep.accumulo-hadoop.version>2.7.7-1</dep.accumulo-hadoop.version>
         <dep.antlr.version>4.13.2</dep.antlr.version>
-        <dep.okhttp.version>4.12.0</dep.okhttp.version>
         <dep.jsonwebtoken.version>0.12.6</dep.jsonwebtoken.version>
         <dep.oracle.version>19.3.0.0</dep.oracle.version>
         <dep.drift.version>1.22</dep.drift.version>
@@ -28,14 +28,12 @@
         <dep.tempto.version>202</dep.tempto.version>
         <dep.duct-tape.version>1.0.8</dep.duct-tape.version>
         <dep.docker-java.version>3.2.12</dep.docker-java.version>
-        <project.build.targetJdk>23</project.build.targetJdk>
-        <air.java.version>23</air.java.version>
-        <dep.trino.version>475</dep.trino.version>
-        <dep.trino.airlift.version>332</dep.trino.airlift.version>
+        <project.build.targetJdk>24</project.build.targetJdk>
+        <air.java.version>24.0.0</air.java.version>
+        <dep.trino.version>478</dep.trino.version>
+        <dep.trino.airlift.version>380</dep.trino.airlift.version>
         <dep.packaging.version>${dep.trino.airlift.version}</dep.packaging.version>
-        <dep.arrow.version>18.2.0</dep.arrow.version>
-        <maven.compiler.source>23</maven.compiler.source>
-        <maven.compiler.target>23</maven.compiler.target>
+        <dep.arrow.version>18.3.0</dep.arrow.version>
 
         <dep.docker.images.version>110</dep.docker.images.version>
 
@@ -55,6 +53,31 @@
         <air.javadoc.lint>-missing</air.javadoc.lint>
     </properties>
 
+    <repositories>
+        <repository>
+            <id>internal-vast-maven-repository</id>
+            <name>VAST Internal Repo</name>
+            <url>https://artifactory.vastdata.com/artifactory/maven2</url>
+        </repository>
+        <repository>
+            <id>local-repo</id>
+            <name>Local Repository</name>
+            <url>file://${user.home}/.m2/repository</url>
+        </repository>
+    </repositories>
+
+    <pluginRepositories>
+        <pluginRepository>
+            <id>internal-vast-maven-repository</id>
+            <name>VAST Internal Repo</name>
+            <url>https://artifactory.vastdata.com/artifactory/maven2</url>
+        </pluginRepository>
+        <pluginRepository>
+            <id>local-repo</id>
+            <name>Local Repository</name>
+            <url>file://${user.home}/.m2/repository</url>
+        </pluginRepository>
+    </pluginRepositories>
     <dependencies>
         <dependency>
             <groupId>io.trino</groupId>
@@ -65,6 +88,20 @@
             <groupId>io.trino</groupId>
             <artifactId>trino-plugin-toolkit</artifactId>
             <version>${dep.trino.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.google.inject</groupId>
+                    <artifactId>guice</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.airlift</groupId>
+                    <artifactId>security</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.airlift</groupId>
+                    <artifactId>stats</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>io.airlift</groupId>
@@ -99,7 +136,7 @@
         <dependency>
             <groupId>io.airlift</groupId>
             <artifactId>units</artifactId>
-            <version>1.10</version>
+            <version>1.12</version>
         </dependency>
         <dependency>
             <groupId>com.amazonaws</groupId>
@@ -149,6 +186,22 @@
         <dependency>
             <groupId>com.google.inject</groupId>
             <artifactId>guice</artifactId>
+            <classifier>classes</classifier>
+        </dependency>
+        <dependency>
+            <groupId>com.google.protobuf</groupId>
+            <artifactId>protobuf-java</artifactId>
+            <version>4.33.5</version>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.annotation</groupId>
+            <artifactId>jakarta.annotation-api</artifactId>
+            <version>3.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>joda-time</groupId>
+            <artifactId>joda-time</artifactId>
+            <version>2.12.7</version>
         </dependency>
         <dependency>
             <groupId>ndb</groupId>
@@ -192,6 +245,29 @@
             </exclusions>
         </dependency>
         <dependency>
+            <groupId>org.weakref</groupId>
+            <artifactId>jmxutils</artifactId>
+            <version>${dep.jmxutils.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.arrow</groupId>
+            <artifactId>arrow-compression</artifactId>
+            <version>${dep.arrow.version}</version>
+            <scope>runtime</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>commons-codec</groupId>
+                    <artifactId>commons-codec</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>3.17.0</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
             <groupId>io.trino</groupId>
             <artifactId>trino-spi</artifactId>
             <!-- TODO: Need to have CI that will upload artifacts -->
@@ -201,13 +277,11 @@
         <dependency>
             <groupId>io.airlift</groupId>
             <artifactId>slice</artifactId>
-            <version>2.0</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-annotations</artifactId>
-            <version>${dep.jackson.version}</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -228,16 +302,15 @@
         </dependency>
         <dependency>
             <groupId>io.trino</groupId>
-            <artifactId>trino-jmx</artifactId>
-            <!-- TODO: Need to have CI that will upload artifacts -->
-            <version>${dep.trino.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>io.trino</groupId>
             <artifactId>trino-main</artifactId>
             <version>${dep.trino.version}</version>
             <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.google.inject</groupId>
+                    <artifactId>guice</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>io.trino</groupId>
@@ -245,6 +318,12 @@
             <!-- TODO: Need to have CI that will upload artifacts -->
             <version>${dep.trino.version}</version>
             <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.google.inject</groupId>
+                    <artifactId>guice</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>io.airlift</groupId>
@@ -297,7 +376,7 @@
         <dependency>
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
-            <version>4.11.0</version>
+            <version>5.12.0</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -406,13 +485,18 @@
                 <configuration>
                     <rules>
                         <compound implementation="com.github.ferstl.maven.pomenforcers.CompoundPedanticEnforcer">
-                            <enforcers>POM_SECTION_ORDER,MODULE_ORDER,DEPENDENCY_MANAGEMENT_ORDER,DEPENDENCY_ORDER,DEPENDENCY_ELEMENT</enforcers>
-                            <pomSectionPriorities>modelVersion,parent,groupId,artifactId,version,name,description,packaging,url,inceptionYear,licenses,scm,properties,modules</pomSectionPriorities>
+                            <enforcers>
+                                POM_SECTION_ORDER,MODULE_ORDER,DEPENDENCY_MANAGEMENT_ORDER,DEPENDENCY_ORDER,DEPENDENCY_ELEMENT
+                            </enforcers>
+                            <pomSectionPriorities>
+                                modelVersion,parent,groupId,artifactId,version,name,description,packaging,url,inceptionYear,licenses,scm,properties,modules
+                            </pomSectionPriorities>
                             <dependenciesGroupIdPriorities>io.trino,io.airlift</dependenciesGroupIdPriorities>
                             <dependenciesOrderBy>scope,groupId,artifactId</dependenciesOrderBy>
                             <dependenciesScopePriorities>compile,runtime,provided,test</dependenciesScopePriorities>
                             <dependencyManagementOrderBy>groupId,artifactId</dependencyManagementOrderBy>
-                            <dependencyManagementGroupIdPriorities>io.trino,io.airlift</dependencyManagementGroupIdPriorities>
+                            <dependencyManagementGroupIdPriorities>io.trino,io.airlift
+                            </dependencyManagementGroupIdPriorities>
                             <dependencyElementOrdering>groupId,artifactId,type,version</dependencyElementOrdering>
                         </compound>
                         <requireUpperBoundDeps>
@@ -479,38 +563,69 @@
                     </exclusionPatterns>
                     <exclusions>
                         <!-- getOnlyElement is more readable than the stream analogue -->
-                        <exclusion>com/google/common/collect/Iterables.getOnlyElement:(Ljava/lang/Iterable;)Ljava/lang/Object;</exclusion>
+                        <exclusion>
+                            com/google/common/collect/Iterables.getOnlyElement:(Ljava/lang/Iterable;)Ljava/lang/Object;
+                        </exclusion>
                         <!-- getLast has lower complexity for array based lists than the stream analogue (O(1) vs O(log(N)) -->
-                        <exclusion>com/google/common/collect/Iterables.getLast:(Ljava/lang/Iterable;)Ljava/lang/Object;</exclusion>
-                        <exclusion>com/google/common/collect/Iterables.getLast:(Ljava/lang/Iterable;Ljava/lang/Object;)Ljava/lang/Object;</exclusion>
+                        <exclusion>
+                            com/google/common/collect/Iterables.getLast:(Ljava/lang/Iterable;)Ljava/lang/Object;
+                        </exclusion>
+                        <exclusion>
+                            com/google/common/collect/Iterables.getLast:(Ljava/lang/Iterable;Ljava/lang/Object;)Ljava/lang/Object;
+                        </exclusion>
                         <!-- TODO: requires getting to common understanding which of those we want to enable -->
-                        <exclusion>com/google/common/collect/Iterables.transform:(Ljava/lang/Iterable;Lcom/google/common/base/Function;)Ljava/lang/Iterable;</exclusion>
-                        <exclusion>com/google/common/collect/Lists.transform:(Ljava/util/List;Lcom/google/common/base/Function;)Ljava/util/List;</exclusion>
+                        <exclusion>
+                            com/google/common/collect/Iterables.transform:(Ljava/lang/Iterable;Lcom/google/common/base/Function;)Ljava/lang/Iterable;
+                        </exclusion>
+                        <exclusion>
+                            com/google/common/collect/Lists.transform:(Ljava/util/List;Lcom/google/common/base/Function;)Ljava/util/List;
+                        </exclusion>
                         <exclusion>com/google/common/collect/Iterables.isEmpty:(Ljava/lang/Iterable;)Z</exclusion>
-                        <exclusion>com/google/common/collect/Iterables.concat:(Ljava/lang/Iterable;Ljava/lang/Iterable;)Ljava/lang/Iterable;</exclusion>
-                        <exclusion>com/google/common/collect/Iterables.concat:(Ljava/lang/Iterable;Ljava/lang/Iterable;Ljava/lang/Iterable;)Ljava/lang/Iterable;</exclusion>
-                        <exclusion>com/google/common/collect/Iterables.concat:(Ljava/lang/Iterable;Ljava/lang/Iterable;Ljava/lang/Iterable;Ljava/lang/Iterable;)Ljava/lang/Iterable;</exclusion>
-                        <exclusion>com/google/common/collect/Iterables.concat:(Ljava/lang/Iterable;)Ljava/lang/Iterable;</exclusion>
-                        <exclusion>com/google/common/collect/Iterables.all:(Ljava/lang/Iterable;Lcom/google/common/base/Predicate;)Z</exclusion>
-                        <exclusion>com/google/common/collect/Iterables.any:(Ljava/lang/Iterable;Lcom/google/common/base/Predicate;)Z</exclusion>
-                        <exclusion>com/google/common/collect/Iterables.skip:(Ljava/lang/Iterable;I)Ljava/lang/Iterable;</exclusion>
-                        <exclusion>com/google/common/collect/Iterables.limit:(Ljava/lang/Iterable;I)Ljava/lang/Iterable;</exclusion>
-                        <exclusion>com/google/common/collect/Iterables.get:(Ljava/lang/Iterable;I)Ljava/lang/Object;</exclusion>
-                        <exclusion>com/google/common/collect/Iterables.getFirst:(Ljava/lang/Iterable;Ljava/lang/Object;)Ljava/lang/Object;</exclusion>
-                        <exclusion>com/google/common/collect/Iterables.getLast:(Ljava/lang/Iterable;)Ljava/lang/Object;</exclusion>
-                        <exclusion>com/google/common/collect/Iterables.cycle:(Ljava/lang/Iterable;)Ljava/lang/Iterable;</exclusion>
-                        <exclusion>com/google/common/collect/Iterables.cycle:([Ljava/lang/Object;)Ljava/lang/Iterable;</exclusion>
-                        <exclusion>com/google/common/collect/Iterables.getOnlyElement:(Ljava/lang/Iterable;Ljava/lang/Object;)Ljava/lang/Object;</exclusion>
+                        <exclusion>
+                            com/google/common/collect/Iterables.concat:(Ljava/lang/Iterable;Ljava/lang/Iterable;)Ljava/lang/Iterable;
+                        </exclusion>
+                        <exclusion>
+                            com/google/common/collect/Iterables.concat:(Ljava/lang/Iterable;Ljava/lang/Iterable;Ljava/lang/Iterable;)Ljava/lang/Iterable;
+                        </exclusion>
+                        <exclusion>
+                            com/google/common/collect/Iterables.concat:(Ljava/lang/Iterable;Ljava/lang/Iterable;Ljava/lang/Iterable;Ljava/lang/Iterable;)Ljava/lang/Iterable;
+                        </exclusion>
+                        <exclusion>
+                            com/google/common/collect/Iterables.concat:(Ljava/lang/Iterable;)Ljava/lang/Iterable;
+                        </exclusion>
+                        <exclusion>
+                            com/google/common/collect/Iterables.all:(Ljava/lang/Iterable;Lcom/google/common/base/Predicate;)Z
+                        </exclusion>
+                        <exclusion>
+                            com/google/common/collect/Iterables.any:(Ljava/lang/Iterable;Lcom/google/common/base/Predicate;)Z
+                        </exclusion>
+                        <exclusion>
+                            com/google/common/collect/Iterables.skip:(Ljava/lang/Iterable;I)Ljava/lang/Iterable;
+                        </exclusion>
+                        <exclusion>
+                            com/google/common/collect/Iterables.limit:(Ljava/lang/Iterable;I)Ljava/lang/Iterable;
+                        </exclusion>
+                        <exclusion>com/google/common/collect/Iterables.get:(Ljava/lang/Iterable;I)Ljava/lang/Object;
+                        </exclusion>
+                        <exclusion>
+                            com/google/common/collect/Iterables.getFirst:(Ljava/lang/Iterable;Ljava/lang/Object;)Ljava/lang/Object;
+                        </exclusion>
+                        <exclusion>
+                            com/google/common/collect/Iterables.getLast:(Ljava/lang/Iterable;)Ljava/lang/Object;
+                        </exclusion>
+                        <exclusion>
+                            com/google/common/collect/Iterables.cycle:(Ljava/lang/Iterable;)Ljava/lang/Iterable;
+                        </exclusion>
+                        <exclusion>com/google/common/collect/Iterables.cycle:([Ljava/lang/Object;)Ljava/lang/Iterable;
+                        </exclusion>
+                        <exclusion>
+                            com/google/common/collect/Iterables.getOnlyElement:(Ljava/lang/Iterable;Ljava/lang/Object;)Ljava/lang/Object;
+                        </exclusion>
                     </exclusions>
                 </configuration>
             </plugin>
             <plugin>
                 <artifactId>maven-checkstyle-plugin</artifactId>
-                <configuration>
-                    <sourceDirectories>
-                        <sourceDirectory>src/main/java/com/vastdata/trino/plugin/vast</sourceDirectory>
-                    </sourceDirectories>
-                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -519,6 +634,10 @@
                     <source>22</source>
                     <target>22</target>
                     <fork>false</fork>
+                    <compilerArgs>
+                        <arg>--add-modules</arg>
+                        <arg>jdk.incubator.vector</arg>
+                    </compilerArgs>
                 </configuration>
             </plugin>
             <plugin>
@@ -544,7 +663,9 @@
                         -XX:-OmitStackTraceInFastThrow
                         --add-opens=java.base/java.lang=ALL-UNNAMED
                         --add-opens=java.base/java.nio=ALL-UNNAMED
-                        -Djdk.attach.allowAttachSelf</argLine>
+                        --add-modules=jdk.incubator.vector
+                        -Djdk.attach.allowAttachSelf
+                    </argLine>
                 </configuration>
             </plugin>
             <plugin>

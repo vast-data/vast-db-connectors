@@ -6,10 +6,7 @@ package spark.sql.catalog.ndb;
 
 public enum TimestampPrecision
 {
-    SECONDS(0),
-    MILLISECONDS(3),
-    MICROSECONDS(6),
-    NANOSECONDS(9);
+    SECONDS(0), MILLISECONDS(3), MICROSECONDS(6), NANOSECONDS(9);
 
     private final int precisionID;
 

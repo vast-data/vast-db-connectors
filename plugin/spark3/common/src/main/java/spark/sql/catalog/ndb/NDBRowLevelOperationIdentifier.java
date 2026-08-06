@@ -13,7 +13,9 @@ public final class NDBRowLevelOperationIdentifier
 {
     private static final String ROW_LEVEL_OP_IDENTIFIER_SUFFIX = "VAST_DB_ROW_LEVEL_OP";
 
-    private NDBRowLevelOperationIdentifier() {}
+    private NDBRowLevelOperationIdentifier()
+    {
+    }
 
     private static int indexOfSuffix(String tableName)
     {
@@ -27,15 +29,19 @@ public final class NDBRowLevelOperationIdentifier
 
     public static String trimTableNameFromRowLevelOpSuffix(String tableName)
     {
-        return isForRowLevelOp(tableName) ?
-                tableName.substring(0, indexOfSuffix(tableName)).trim() :
-                tableName;
+        return isForRowLevelOp(tableName) ? tableName.substring(0,
+                indexOfSuffix(tableName)).trim() : tableName;
     }
 
-    public static void adaptTableIdentifiersToRowLevelOp(java.util.List<String> origIdentifier, Consumer<String> newIdentifierElementConsumer)
+    public static void adaptTableIdentifiersToRowLevelOp(
+            java.util.List<String> origIdentifier,
+            Consumer<String> newIdentifierElementConsumer)
     {
-        IntStream.range(0, origIdentifier.size() - 1).forEachOrdered(i -> newIdentifierElementConsumer.accept(origIdentifier.get(i)));
-        String adaptedTableName = adaptTableNameToRowLevelOp(origIdentifier.get(origIdentifier.size() - 1));
+        IntStream.range(0, origIdentifier.size() - 1).forEachOrdered(
+                i -> newIdentifierElementConsumer.accept(
+                        origIdentifier.get(i)));
+        String adaptedTableName = adaptTableNameToRowLevelOp(
+                origIdentifier.get(origIdentifier.size() - 1));
         newIdentifierElementConsumer.accept(adaptedTableName);
     }
 

@@ -21,9 +21,12 @@ public class TestWorkFactory
     @Test
     public void testFromCollection()
     {
-        List<String> testCollection = ImmutableList.of("S1", "S2", "S3", "S4", "S5");
-        ArrayList<Object> resultTestCollection = new ArrayList<>(testCollection.size());
-        Supplier<Function<URI, Object>> functionSupplier = WorkFactory.fromCollection(testCollection, (s, uri) -> s);
+        List<String> testCollection = ImmutableList.of("S1", "S2", "S3", "S4",
+                "S5");
+        ArrayList<Object> resultTestCollection = new ArrayList<>(
+                testCollection.size());
+        Supplier<Function<URI, Object>> functionSupplier = WorkFactory.fromCollection(
+                testCollection, (s, uri) -> s);
         for (int i = 0; i < testCollection.size(); i++) {
             resultTestCollection.add(functionSupplier.get().apply(null));
         }

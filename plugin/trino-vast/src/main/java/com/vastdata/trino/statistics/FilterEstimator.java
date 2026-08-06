@@ -27,7 +27,6 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 
 import static com.vastdata.client.schema.ArrowSchemaUtils.VASTDB_ROW_ID_FIELD;
-
 import static io.trino.spi.statistics.StatsUtil.toStatsRepresentation;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.BooleanType.BOOLEAN;
@@ -37,7 +36,6 @@ import static io.trino.spi.type.IntegerType.INTEGER;
 import static io.trino.spi.type.RealType.REAL;
 import static io.trino.spi.type.SmallintType.SMALLINT;
 import static io.trino.spi.type.TinyintType.TINYINT;
-
 import static java.lang.Double.NEGATIVE_INFINITY;
 import static java.lang.Double.POSITIVE_INFINITY;
 import static java.lang.Math.max;
@@ -45,115 +43,168 @@ import static java.lang.Math.min;
 
 public final class FilterEstimator
 {
+    private static final int SORTED_DOMAIN_INDEX = 0;
+    private static final int NONSORTED_DOMAIN_INDEX = 1;
+
     private static final Logger LOG = Logger.get(FilterEstimator.class);
-    private static final VastColumnHandle rowIdHandle = VastColumnHandle.fromField(VASTDB_ROW_ID_FIELD);
+    private static final VastColumnHandle rowIdHandle = VastColumnHandle.fromField(
+            VASTDB_ROW_ID_FIELD);
 
-    private FilterEstimator() {}
-
-    private static boolean isStatsType(Type t) {
-        return t == BOOLEAN || t == TINYINT || t == SMALLINT || t == INTEGER || t == BIGINT || t == REAL || t == DOUBLE
-            || t == DATE || (t instanceof DecimalType) || (t instanceof TimestampType) 
-            || (t instanceof TimestampWithTimeZoneType);
+    private FilterEstimator()
+    {
     }
 
-    private static double estimateOpSelectivity(Range r, ColumnStatistics colStat)
+    private static boolean isStatsType(Type t)
     {
+        return t == BOOLEAN || t == TINYINT || t == SMALLINT || t == INTEGER || t == BIGINT || t == REAL || t == DOUBLE || t == DATE || (t instanceof DecimalType) || (t instanceof TimestampType) || (t instanceof TimestampWithTimeZoneType);
+    }
+
+    private static double estimateOpSelectivity(Range r,
+                                                ColumnStatistics colStat)
+    {
+        // LOG.debug("estimateOpSelectivity: %s, %s", r, colStat);
         if (r.isAll()) {
             return 1.0;
         }
         Optional<DoubleRange> sr = colStat.getRange();
         Estimate distinctCount = colStat.getDistinctValuesCount();
         if (r.isSingleValue()) { // =
-            OptionalDouble v = toStatsRepresentation(r.getType(), r.getSingleValue());
-            if (v.isEmpty() || sr.isEmpty()
-                || (v.getAsDouble() >= sr.orElseThrow().getMin() && v.getAsDouble() <= sr.orElseThrow().getMax())) {
+            OptionalDouble v = toStatsRepresentation(r.getType(),
+                    r.getSingleValue());
+            if (v.isEmpty() || sr.isEmpty() || (v.getAsDouble() >= sr
+                    .orElseThrow()
+                    .getMin() && v.getAsDouble() <= sr
+                    .orElseThrow()
+                    .getMax())) {
                 if (distinctCount.isUnknown()) {
                     return 1.0;
                 }
                 else {
-                    return 1.0/distinctCount.getValue();
+                    return 1.0 / distinctCount.getValue();
                 }
             }
             else {
                 return 0.0;
             }
         }
-        if (!isStatsType(r.getType()) || sr.isEmpty() || distinctCount.isUnknown()) {
+        if (!isStatsType(
+                r.getType()) || sr.isEmpty() || distinctCount.isUnknown()) {
             return 1.0;
         }
-        
-        double rmin = r.isLowUnbounded()? NEGATIVE_INFINITY : toStatsRepresentation(r.getType(), r.getLowBoundedValue()).getAsDouble();
-        double rmax = r.isHighUnbounded()? POSITIVE_INFINITY : toStatsRepresentation(r.getType(), r.getHighBoundedValue()).getAsDouble(); 
+
+        double rmin = r.isLowUnbounded() ?
+                NEGATIVE_INFINITY :
+                toStatsRepresentation(r.getType(),
+                        r.getLowBoundedValue()).orElseThrow();
+        double rmax = r.isHighUnbounded() ?
+                POSITIVE_INFINITY :
+                toStatsRepresentation(r.getType(),
+                        r.getHighBoundedValue()).orElseThrow();
         double cmin = max(rmin, sr.orElseThrow().getMin());
         double cmax = min(rmax, sr.orElseThrow().getMax());
         if (cmin > cmax) {
             return 0.0;
         }
-        double ph = 1.0;
-        if ((rmax == sr.orElseThrow().getMin() && r.isHighInclusive()) || rmin == sr.orElseThrow().getMax() && r.isLowInclusive()) {
-            return 1.0/distinctCount.getValue();
+        if ((rmax == sr
+                .orElseThrow()
+                .getMin() && r.isHighInclusive()) || rmin == sr
+                .orElseThrow()
+                .getMax() && r.isLowInclusive()) {
+            return 1.0 / distinctCount.getValue();
         }
-        return (cmax - cmin)/(sr.orElseThrow().getMax() - sr.orElseThrow().getMin());
+        return (cmax - cmin) / (sr.orElseThrow().getMax() - sr
+                .orElseThrow()
+                .getMin());
     }
 
-    public static double estimateSelectivity(TupleDomain<VastColumnHandle> tupleDomain, 
-                                      TableStatistics statistics, Optional<Long> limit)
+    public static double estimateSelectivity(TupleDomain<VastColumnHandle> tupleDomain,
+                                             TableStatistics statistics,
+                                             Optional<Long> limit)
     {
-        TupleDomain<VastColumnHandle> strippedMetadataTupleDomain = tupleDomain.transformKeys(VastColumnHandle::stripMetadata);
-        Map<VastColumnHandle, Domain> domains = strippedMetadataTupleDomain.getDomains().orElse(Map.of());
+        Map<VastColumnHandle, Domain> domains = tupleDomain
+                .getDomains()
+                .orElse(Map.of());
         LOG.debug("Domains: %s", domains);
         double rv = 1.;
         for (Map.Entry<VastColumnHandle, Domain> entry : domains.entrySet()) {
-            if (rowIdHandle.equals(entry.getKey())) {
+            LOG.debug("Entry: %s", entry);
+            if (rowIdHandle.equals(entry.getKey().stripMetadata())) {
                 continue;
             }
-            ColumnStatistics colStats = statistics.getColumnStatistics().get(entry.getKey());
+            ColumnStatistics colStats = statistics
+                    .getColumnStatistics()
+                    .get(entry.getKey());
+            LOG.debug("colStats: %s", colStats);
             if (null == colStats) {
                 continue;
             }
             Domain dom = entry.getValue();
             double nulls = 0;
-            if (dom.isNullAllowed() ) {
+            if (dom.isNullAllowed()) {
                 Estimate nf = colStats.getNullsFraction();
                 if (!nf.isUnknown()) {
                     nulls = nf.getValue();
                     if (dom.isOnlyNull()) {
+                        LOG.debug("only nulls");
                         rv *= nulls;
                         continue;
                     }
                 }
             }
-            List<Range> orderedRanges = dom.getValues().getRanges().getOrderedRanges();
-            final double colSel = orderedRanges.stream()
-                .mapToDouble(p -> estimateOpSelectivity(p, colStats))
-                .reduce((l, r) -> l + r - l * r)
-                .orElse(1.0);
+            List<Range> orderedRanges = dom
+                    .getValues()
+                    .getRanges()
+                    .getOrderedRanges();
+
+            // Trino normalises TupleDomains.  So the ranges here should always be disjoint.
+            // Because of thie, we don't have to deal with the intersection in the reduction formula.
+            final double colSel = orderedRanges
+                    .stream()
+                    .mapToDouble(p -> estimateOpSelectivity(p, colStats))
+                    .reduce(Double::sum)
+                    .orElse(1.0);
             rv *= colSel + nulls - colSel * nulls;
+            rv = max(rv, 0.0);
+            rv = min(rv, 1.0);
+            LOG.debug("selectivity: %s, %s, %s", rv, colSel, nulls);
         }
-        return (limit.isPresent() && limit.orElseThrow()/statistics.getRowCount().getValue() < rv)? limit.orElseThrow()/statistics.getRowCount().getValue() : rv;
+        LOG.debug("results: %s, %s, %s", limit, rv, statistics.getRowCount());
+        return (limit.isPresent() && limit.orElseThrow() / statistics
+                .getRowCount()
+                .getValue() < rv) ?
+                limit.orElseThrow() / statistics.getRowCount().getValue() :
+                rv;
     }
 
-    public static TupleDomain<VastColumnHandle>[] splitDomains(final TupleDomain<VastColumnHandle> tupleDomain, final List<String> sorted) 
+    public static TupleDomain<VastColumnHandle>[] splitDomains(final TupleDomain<VastColumnHandle> tupleDomain,
+                                                               final List<String> sorted)
     {
+        TupleDomain<VastColumnHandle>[] tupleDomains = new TupleDomain[2];
         if (tupleDomain.isAll()) {
-            return (TupleDomain<VastColumnHandle>[]) new TupleDomain[] {TupleDomain.all(), TupleDomain.all()};
+            tupleDomains[SORTED_DOMAIN_INDEX] = TupleDomain.all();
+            tupleDomains[NONSORTED_DOMAIN_INDEX] = TupleDomain.all();
+            return tupleDomains;
         }
-        Map<VastColumnHandle, Domain> origDomains = tupleDomain.getDomains().orElseThrow();
-        ArrayList<ColumnDomain<VastColumnHandle>> sortedDoms =
-            new ArrayList<>(Collections.nCopies(sorted.size(), (ColumnDomain<VastColumnHandle>) null));
+        Map<VastColumnHandle, Domain> origDomains = tupleDomain
+                .getDomains()
+                .orElseThrow();
+        ArrayList<ColumnDomain<VastColumnHandle>> sortedDoms = new ArrayList<>(
+                Collections.nCopies(sorted.size(), null));
         ArrayList<ColumnDomain<VastColumnHandle>> unsortedDoms = new ArrayList<>();
         for (var entry : origDomains.entrySet()) {
             int idx = sorted.indexOf(entry.getKey().getField().getName());
             if (idx >= 0) {
-                sortedDoms.add(idx, new ColumnDomain<>(entry.getKey(), entry.getValue()));
+                sortedDoms.add(idx,
+                        new ColumnDomain<>(entry.getKey(), entry.getValue()));
             }
             else {
-                unsortedDoms.add(new ColumnDomain<>(entry.getKey(), entry.getValue()));
+                unsortedDoms.add(
+                        new ColumnDomain<>(entry.getKey(), entry.getValue()));
             }
         }
         int nulli = sortedDoms.size();
         for (int i = 0; i < sortedDoms.size(); i++) {
-            if (nulli ==sortedDoms.size() && sortedDoms.get(i) == null) {
+            if (nulli == sortedDoms.size() && sortedDoms.get(i) == null) {
                 nulli = i;
             }
             if (i >= nulli && sortedDoms.get(i) != null) {
@@ -161,31 +212,50 @@ public final class FilterEstimator
             }
         }
         sortedDoms.subList(nulli, sortedDoms.size()).clear();
-        return (TupleDomain<VastColumnHandle>[]) new TupleDomain[] {TupleDomain.fromColumnDomains(Optional.of(sortedDoms)), TupleDomain.fromColumnDomains(Optional.of(unsortedDoms))};
+        tupleDomains[SORTED_DOMAIN_INDEX] = TupleDomain.fromColumnDomains(
+                Optional.of(sortedDoms));
+        tupleDomains[NONSORTED_DOMAIN_INDEX] = TupleDomain.fromColumnDomains(
+                Optional.of(unsortedDoms));
+        return tupleDomains;
     }
 
     public static TupleDomain<VastColumnHandle>[] splitDomainsLike(final TupleDomain<VastColumnHandle> tupleDomain,
                                                                    final TupleDomain<VastColumnHandle> like)
     {
+        TupleDomain<VastColumnHandle>[] tupleDomains = new TupleDomain[2];
         if (like.isAll()) {
-            return (TupleDomain<VastColumnHandle>[]) new TupleDomain[] {TupleDomain.all(), tupleDomain};
+            tupleDomains[SORTED_DOMAIN_INDEX] = TupleDomain.all();
+            tupleDomains[NONSORTED_DOMAIN_INDEX] = tupleDomain;
+            return tupleDomains;
         }
-        Map<VastColumnHandle, Domain> origDomains = tupleDomain.getDomains().orElseThrow();
-        Map<VastColumnHandle, Domain> likeDomains = like.getDomains().orElseThrow();
+        Map<VastColumnHandle, Domain> origDomains = tupleDomain
+                .getDomains()
+                .orElseThrow();
+        Map<VastColumnHandle, Domain> likeDomains = like
+                .getDomains()
+                .orElseThrow();
         ArrayList<ColumnDomain<VastColumnHandle>> sortedDoms = new ArrayList<>();
         ArrayList<ColumnDomain<VastColumnHandle>> unsortedDoms = new ArrayList<>();
         for (var entry : origDomains.entrySet()) {
             if (likeDomains.containsKey(entry.getKey())) {
-                sortedDoms.add(new ColumnDomain<>(entry.getKey(), entry.getValue()));
+                sortedDoms.add(
+                        new ColumnDomain<>(entry.getKey(), entry.getValue()));
             }
             else {
-                unsortedDoms.add(new ColumnDomain<>(entry.getKey(), entry.getValue()));
+                unsortedDoms.add(
+                        new ColumnDomain<>(entry.getKey(), entry.getValue()));
             }
         }
-        return (TupleDomain<VastColumnHandle>[]) new TupleDomain[] {TupleDomain.fromColumnDomains(Optional.of(sortedDoms)), TupleDomain.fromColumnDomains(Optional.of(unsortedDoms))};
+        tupleDomains[SORTED_DOMAIN_INDEX] = TupleDomain.fromColumnDomains(
+                Optional.of(sortedDoms));
+        tupleDomains[NONSORTED_DOMAIN_INDEX] = TupleDomain.fromColumnDomains(
+                Optional.of(unsortedDoms));
+        return tupleDomains;
     }
 
-    private static Domain simplifyDomain(final Domain dom, final VastColumnHandle col, final TableStatistics statistics,
+    private static Domain simplifyDomain(final Domain dom,
+                                         final VastColumnHandle col,
+                                         final TableStatistics statistics,
                                          double limit)
     {
         if (rowIdHandle.equals(col)) {
@@ -199,13 +269,14 @@ public final class FilterEstimator
             return dom;
         }
         double nulls = 0;
-        if (dom.isNullAllowed() ) {
+        if (dom.isNullAllowed()) {
             Estimate nf = colStats.getNullsFraction();
             if (!nf.isUnknown()) {
                 nulls = nf.getValue();
                 if (dom.isOnlyNull()) {
                     if (nulls >= limit) {
-                        LOG.info("Dropping domain (only null) %s, %f, %f", dom, nulls, limit);
+                        LOG.info("Dropping domain (only null) %s, %f, %f", dom,
+                                nulls, limit);
                         return Domain.all(dom.getType());
                     }
                     else {
@@ -214,12 +285,18 @@ public final class FilterEstimator
                 }
             }
         }
-        List<Range> orderedRanges = dom.getValues().getRanges().getOrderedRanges();
-        double colSel = orderedRanges.stream()
-            .mapToDouble(p -> estimateOpSelectivity(p, colStats))
-            .reduce((l, r) -> l + r - l * r)
-            .orElse(1.0);
+        List<Range> orderedRanges = dom
+                .getValues()
+                .getRanges()
+                .getOrderedRanges();
+        double colSel = orderedRanges
+                .stream()
+                .mapToDouble(p -> estimateOpSelectivity(p, colStats))
+                .reduce(Double::sum)
+                .orElse(1.0);
         colSel = colSel + nulls - colSel * nulls;
+        LOG.debug("simplifyDomain: %s, %s, %s, %s", col, colSel, limit,
+                colStats);
         if (colSel >= limit) {
             LOG.info("Dropping domain %s, %f, %f", dom, colSel, limit);
             return Domain.all(dom.getType());
@@ -233,6 +310,8 @@ public final class FilterEstimator
                                                                 final TableStatistics statistics,
                                                                 int limitPercentage)
     {
-        return tupleDomiain.transformDomains((key, domain) -> simplifyDomain(domain, key, statistics, ((double)limitPercentage)/100.0));
+        return tupleDomiain.transformDomains(
+                (key, domain) -> simplifyDomain(domain, key, statistics,
+                        ((double) limitPercentage) / 100.0));
     }
 }

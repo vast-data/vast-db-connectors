@@ -12,7 +12,9 @@ import com.vastdata.mockserver.MockTable;
 import com.vastdata.mockserver.MockView;
 import io.airlift.log.Logger;
 import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
+import org.apache.arrow.vector.types.pojo.Schema;
 
 import java.net.URI;
 import java.util.HashSet;
@@ -23,6 +25,9 @@ import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 
+import static com.vastdata.client.partition.PartitionConstants.PIT_NAME_SUFFIX;
+import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_DEC128_FIELD;
+import static com.vastdata.client.schema.ArrowSchemaUtils.ROW_ID_UINT64_FIELD;
 import static java.lang.String.format;
 
 public class PostHandler
@@ -30,7 +35,8 @@ public class PostHandler
 {
     private static final Logger LOG = Logger.get(PostHandler.class);
 
-    public PostHandler(Map<String, Set<MockMapSchema>> schema, Set<String> openTransactions)
+    public PostHandler(Map<String, Set<MockMapSchema>> schema,
+            Set<String> openTransactions)
     {
         super(schema, openTransactions);
     }
@@ -47,20 +53,27 @@ public class PostHandler
         if (parsedURL.isBaseUrl()) {
             if (getTransactionHeader(he).isPresent()) {
                 LOG.error("POST for base url already includes transaction ID");
-                respondError("POST for base url already includes transaction ID", he);
+                respondError(
+                        "POST for base url already includes transaction ID",
+                        he);
             }
             else {
                 long i = random.nextLong();
                 String txid = Long.toUnsignedString(i);
                 openTransactions.add(txid);
-                he.getResponseHeaders().add(RequestsHeaders.TABULAR_TRANSACTION_ID.getHeaderName(), txid);
+                he
+                        .getResponseHeaders()
+                        .add(RequestsHeaders.TABULAR_TRANSACTION_ID.getHeaderName(),
+                                txid);
                 respondOK(he);
             }
         }
         else if (parsedURL.isBucketURL()) {
             String bucket = parsedURL.getBucket();
             if (!schemaMap.containsKey(bucket)) {
-                LOG.info("Bucket %s does not exist, will create bucket with empty schema", bucket);
+                LOG.info(
+                        "Bucket %s does not exist, will create bucket with empty schema",
+                        bucket);
                 schemaMap.put(bucket, new HashSet<>());
             }
             else {
@@ -76,7 +89,8 @@ public class PostHandler
             else {
                 if (query.equals("schema")) {
                     String schemaName = parsedURL.getSchemaName();
-                    LOG.info("Handling create schema %s for bucket %s", schemaName, bucket);
+                    LOG.info("Handling create schema %s for bucket %s",
+                            schemaName, bucket);
                     Set<MockMapSchema> bucketSchemas = schemaMap.get(bucket);
                     if (bucketSchemas == null) {
                         LOG.info("Initializing schemas set");
@@ -103,28 +117,71 @@ public class PostHandler
                     String schemaName = parsedURL.getSchemaName();
                     String tableName = parsedURL.getTableName();
                     Set<MockMapSchema> mockMapSchemas = schemaMap.get(bucket);
-                    Optional<MockMapSchema> existingSchema = mockMapSchemas.stream().filter(mockSchema -> mockSchema.getName().equals(schemaName)).findAny();
+                    Optional<MockMapSchema> existingSchema = mockMapSchemas
+                            .stream()
+                            .filter(mockSchema -> mockSchema
+                                    .getName()
+                                    .equals(schemaName))
+                            .findAny();
                     if (existingSchema.isPresent()) {
                         if (query.equals("view")) {
-                            LOG.info("Handling create view %s for schema %s", tableName, schemaName);
+                            LOG.info("Handling create view %s for schema %s",
+                                    tableName, schemaName);
                             byte[] bytes = readAllBytes(he.getRequestBody());
-                            VectorSchemaRoot viewDetails = MockSchemaUtil.parseCreateViewRequest(bytes);
-                            MockView mockView = new MockView(tableName, viewDetails);
-                            existingSchema.get().getViews().put(tableName, mockView);
+                            MockSchemaUtil.ParsedViewData parsedViewData = MockSchemaUtil.deserializeCreateViewRequestBody(
+                                    bytes);
+                            VectorSchemaRoot viewDetails = parsedViewData.getViewDetails();
+                            Schema viewDataSchema = parsedViewData.getViewDataSchema();
+                            MockView mockView = new MockView(tableName,
+                                    viewDetails, viewDataSchema);
+                            existingSchema
+                                    .get()
+                                    .getViews()
+                                    .put(tableName, mockView);
                             respondOK(he);
                         }
                         else {
-                            LOG.info("Handling create table %s for schema %s", tableName, schemaName);
+                            LOG.info("Handling create table %s for schema %s",
+                                    tableName, schemaName);
                             Map<String, Field> tableColumnsMap = new LinkedHashMap<>();
-                            List<Field> fields = MockSchemaUtil.parseTableSchema(readAllBytes(he.getRequestBody()));
-                            fields.forEach(f -> tableColumnsMap.put(f.getName(), f));
-                            MockTable mockTable = MockTable.withColumns(tableName, tableColumnsMap);
-                            existingSchema.get().getTables().put(tableName, mockTable);
+                            Schema schema = MockSchemaUtil
+                                    .parseTableSchema(readAllBytes(he
+                                            .getRequestBody()));
+                            List<Field> fields = schema.getFields();
+                            fields.forEach(
+                                    f -> tableColumnsMap.put(f.getName(), f));
+                            MockTable mockTable = MockTable.withColumns(
+                                    tableName, tableColumnsMap);
+                            boolean isPartitionedTable = schema
+                                    .getCustomMetadata() != null && schema
+                                            .getCustomMetadata()
+                                            .containsKey(
+                                                    "VAST:table:partition-key-0");
+                            if (isPartitionedTable) {
+                                String pitTableName = tableName + PIT_NAME_SUFFIX;
+                                Map<String, Field> pitFields = new LinkedHashMap<>();
+                                pitFields
+                                        .put("notARealPitSchema", Field
+                                                .nullable("notARealPitSchema",
+                                                        new ArrowType.Int(32,
+                                                                true)));
+                                existingSchema
+                                        .get()
+                                        .getTables()
+                                        .put(pitTableName, MockTable
+                                                .withColumns(pitTableName, pitFields));
+                            }
+
+                            existingSchema
+                                    .get()
+                                    .getTables()
+                                    .put(tableName, mockTable);
                             respondOK(he);
                         }
                     }
                     else {
-                        respond(format("Schema %s does not exist in bucket %s", schemaName, bucket), he, 404);
+                        respond(format("Schema %s does not exist in bucket %s",
+                                schemaName, bucket), he, 404);
                     }
                     break;
                 }
@@ -132,26 +189,46 @@ public class PostHandler
                     String schemaName = parsedURL.getSchemaName();
                     String tableName = parsedURL.getTableName();
                     Set<MockMapSchema> mockMapSchemas = schemaMap.get(bucket);
-                    Optional<MockMapSchema> existingSchema = mockMapSchemas.stream().filter(mockSchema -> mockSchema.getName().equals(schemaName)).findAny();
+                    Optional<MockMapSchema> existingSchema = mockMapSchemas
+                            .stream()
+                            .filter(mockSchema -> mockSchema
+                                    .getName()
+                                    .equals(schemaName))
+                            .findAny();
                     if (existingSchema.isPresent()) {
-                        if (!existingSchema.get().getTables().containsKey(tableName)) {
-                            respond(format("Table %s does not exist in schema %s", tableName, schemaName), he, 404);
+                        if (!existingSchema
+                                .get()
+                                .getTables()
+                                .containsKey(tableName)) {
+                            respond(format(
+                                    "Table %s does not exist in schema %s",
+                                    tableName, schemaName), he, 404);
                         }
                         else {
-                            List<Field> newFields = MockSchemaUtil.parseTableSchema(readAllBytes(he.getRequestBody()));
-                            Map<String, Field> existingColumns = existingSchema.get().getTables().get(tableName).getColumns();
+                            List<Field> newFields = MockSchemaUtil.parseTableFields(
+                                    readAllBytes(he.getRequestBody()));
+                            Map<String, Field> existingColumns = existingSchema
+                                    .get()
+                                    .getTables()
+                                    .get(tableName)
+                                    .getColumns();
                             for (Field newField : newFields) {
-                                if (existingColumns.containsKey(newField.getName())) {
-                                    respond(format("Column %s already exists in table %s", newField, tableName), he, 409);
+                                if (existingColumns.containsKey(
+                                        newField.getName())) {
+                                    respond(format(
+                                            "Column %s already exists in table %s",
+                                            newField, tableName), he, 409);
                                     return;
                                 }
                             }
-                            newFields.forEach(f -> existingColumns.put(f.getName(), f));
+                            newFields.forEach(
+                                    f -> existingColumns.put(f.getName(), f));
                             respondOK(he);
                         }
                     }
                     else {
-                        respond(format("Schema %s does not exist in bucket %s", schemaName, bucket), he, 404);
+                        respond(format("Schema %s does not exist in bucket %s",
+                                schemaName, bucket), he, 404);
                     }
                     break;
                 }
@@ -159,14 +236,31 @@ public class PostHandler
                     String schemaName = parsedURL.getSchemaName();
                     String tableName = parsedURL.getTableName();
                     Set<MockMapSchema> mockMapSchemas = schemaMap.get(bucket);
-                    Optional<MockMapSchema> existingSchema = mockMapSchemas.stream().filter(mockSchema -> mockSchema.getName().equals(schemaName)).findAny();
+                    Optional<MockMapSchema> existingSchema = mockMapSchemas
+                            .stream()
+                            .filter(mockSchema -> mockSchema
+                                    .getName()
+                                    .equals(schemaName))
+                            .findAny();
                     if (existingSchema.isPresent()) {
-                        MockTable mockTable = existingSchema.get().getTables().get(tableName);
+                        MockTable mockTable = existingSchema
+                                .get()
+                                .getTables()
+                                .get(tableName);
                         if (mockTable == null) {
-                            respond(format("Table %s does not exist in schema %s/%s", tableName, schemaName, bucket), he, 404);
+                            respond(format(
+                                    "Table %s does not exist in schema %s/%s",
+                                    tableName, schemaName, bucket), he, 404);
                         }
                         else {
-                            respondOK(he);
+                            byte[] requestBody = readAllBytes(he.getRequestBody());
+                            int rowCount = MockSchemaUtil.parseRowCountFromArrowIpc(requestBody);
+                            Field rowIdField = mockTable.isSorted()
+                                    ? ROW_ID_DEC128_FIELD
+                                    : ROW_ID_UINT64_FIELD;
+                            byte[] rowIdsResponse = MockSchemaUtil.buildRowIdsArrowIpc(
+                                    rowCount, rowIdField);
+                            respond(rowIdsResponse, he, 200);
                         }
                     }
                     break;

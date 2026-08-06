@@ -15,7 +15,8 @@ public class VastBasicTableMetaData
     public final String handleID;
     public final boolean forImportData;
 
-    public VastBasicTableMetaData(String schemaName, String tableName, String handleID, boolean forImportData)
+    public VastBasicTableMetaData(String schemaName, String tableName,
+            String handleID, boolean forImportData)
     {
         this.schemaName = schemaName;
         this.tableName = tableName;
@@ -33,7 +34,8 @@ public class VastBasicTableMetaData
             return false;
         }
         VastBasicTableMetaData that = (VastBasicTableMetaData) o;
-        return Objects.equals(schemaName, that.schemaName) && Objects.equals(tableName, that.tableName);
+        return Objects.equals(schemaName, that.schemaName) && Objects.equals(
+                tableName, that.tableName);
     }
 
     @Override

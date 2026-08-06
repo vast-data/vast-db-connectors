@@ -32,25 +32,56 @@ public class CreateNDBViewCommand
         extends V2CommandExec
         implements LeafExecNode
 {
-    private static final Logger LOG = LoggerFactory.getLogger(CreateNDBViewCommand.class);
-    private Seq<SparkPlan> children = (Seq<SparkPlan>) Seq$.MODULE$.<SparkPlan>empty();
+    private static final Logger LOG = LoggerFactory.getLogger(
+            CreateNDBViewCommand.class);
     private final SparkViewMetadata sparkViewMetadata;
+    private Seq<SparkPlan> children = (Seq<SparkPlan>) Seq$.MODULE$.<SparkPlan>empty();
 
-    private CreateNDBViewCommand(SparkViewMetadata sparkViewMetadata) {
+    private CreateNDBViewCommand(SparkViewMetadata sparkViewMetadata)
+    {
         super();
         this.sparkViewMetadata = sparkViewMetadata;
+    }
+
+    public static CreateNDBViewCommand instance(final CreateNDBViewPlan plan)
+    {
+        LOG.debug("CreateNDBViewCommand instance from plan: {}", plan);
+        Seq<LogicalPlan> children = plan.children();
+        ResolvedIdentifier resolvedIdentifier = (ResolvedIdentifier) children.apply(
+                0);
+        LogicalPlan queryPlan = children.apply(1);
+        Identifier identifier = resolvedIdentifier.identifier();
+        CreateView originalCreateView = plan.getOriginal();
+        boolean replace = originalCreateView.replace();
+        boolean allowExisting = originalCreateView.allowExisting();
+        String origRawViewSqlDefinition = originalCreateView
+                .originalText()
+                .get();
+        SparkViewMetadata sparkViewMetadata = new SparkViewMetadata(identifier,
+                replace, allowExisting, originalCreateView.comment(),
+                originalCreateView.userSpecifiedColumns(),
+                originalCreateView.properties(), origRawViewSqlDefinition,
+                queryPlan.schema(), plan.getCurrentCatalog(),
+                plan.getCurrentNamespace());
+        LOG.debug("CreateNDBViewCommand sparkViewMetadata: {}",
+                sparkViewMetadata);
+        return new CreateNDBViewCommand(sparkViewMetadata);
     }
 
     @Override
     public Seq<InternalRow> run()
     {
         final java.util.Map<String, String> properties2 = new HashMap<>();
-        sparkViewMetadata.getProperties().foreach(pair -> properties2.put(pair._1(), pair._2()));
+        sparkViewMetadata.getProperties().foreach(
+                pair -> properties2.put(pair._1(), pair._2()));
         try {
             final VastCatalog catalog = InitializedVastCatalog.getVastCatalog();
-            catalog.createView(sparkViewMetadata, sparkViewMetadata.isReplace(), Optional.empty());
+            catalog.createView(sparkViewMetadata, sparkViewMetadata.isReplace(),
+                    Optional.empty());
             LOG.debug("Created view successfully");
-        } catch (final ViewAlreadyExistsException | NoSuchNamespaceException error) {
+        }
+        catch (final ViewAlreadyExistsException |
+                NoSuchNamespaceException error) {
             throw new RuntimeException(error);
         }
         return (Seq<InternalRow>) scala.collection.immutable.Seq$.MODULE$.<InternalRow>empty();
@@ -96,24 +127,5 @@ public class CreateNDBViewCommand
     public int productArity()
     {
         return 0;
-    }
-
-    public static CreateNDBViewCommand instance(final CreateNDBViewPlan plan)
-    {
-        LOG.debug("CreateNDBViewCommand instance from plan: {}", plan);
-        Seq<LogicalPlan> children = plan.children();
-        ResolvedIdentifier resolvedIdentifier = (ResolvedIdentifier) children.apply(0);
-        LogicalPlan queryPlan = children.apply(1);
-        Identifier identifier = resolvedIdentifier.identifier();
-        CreateView originalCreateView = plan.getOriginal();
-        boolean replace = originalCreateView.replace();
-        boolean allowExisting = originalCreateView.allowExisting();
-        String origRawViewSqlDefinition = originalCreateView.originalText().get();
-        SparkViewMetadata sparkViewMetadata = new SparkViewMetadata(
-                identifier, replace, allowExisting, originalCreateView.comment(),
-                originalCreateView.userSpecifiedColumns(), originalCreateView.properties(), origRawViewSqlDefinition,
-                queryPlan.schema(), plan.getCurrentCatalog(), plan.getCurrentNamespace());
-        LOG.debug("CreateNDBViewCommand sparkViewMetadata: {}", sparkViewMetadata);
-        return new CreateNDBViewCommand(sparkViewMetadata);
     }
 }

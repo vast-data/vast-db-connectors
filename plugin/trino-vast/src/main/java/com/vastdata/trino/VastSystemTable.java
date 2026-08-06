@@ -22,7 +22,8 @@ import static io.trino.spi.type.VarcharType.VARCHAR;
 public class VastSystemTable
         implements SystemTable
 {
-    public static final SchemaTableName NAME = new SchemaTableName("system_schema", "release");
+    public static final SchemaTableName NAME = new SchemaTableName(
+            "system_schema", "release");
 
     @Override
     public Distribution getDistribution()
@@ -33,15 +34,18 @@ public class VastSystemTable
     @Override
     public ConnectorTableMetadata getTableMetadata()
     {
-        return new ConnectorTableMetadata(NAME, List.of(
-                new ColumnMetadata("version", VARCHAR),
-                new ColumnMetadata("hash", VARCHAR)));
+        return new ConnectorTableMetadata(NAME,
+                List.of(new ColumnMetadata("version", VARCHAR),
+                        new ColumnMetadata("hash", VARCHAR)));
     }
 
     @Override
-    public RecordCursor cursor(ConnectorTransactionHandle transactionHandle, ConnectorSession session, TupleDomain<Integer> constraint)
+    public RecordCursor cursor(ConnectorTransactionHandle transactionHandle,
+                               ConnectorSession session,
+                               TupleDomain<Integer> constraint)
     {
-        return InMemoryRecordSet.builder(getTableMetadata())
+        return InMemoryRecordSet
+                .builder(getTableMetadata())
                 .addRow(VastVersion.SYS_VERSION, VastVersion.HASH)
                 .build()
                 .cursor();

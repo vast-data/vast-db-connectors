@@ -8,7 +8,9 @@ import com.vastdata.client.error.VastUserException;
 
 public final class VerifyParam
 {
-    private VerifyParam() {}
+    private VerifyParam()
+    {
+    }
 
     public static void verify(boolean condition, String msg)
             throws VastUserException

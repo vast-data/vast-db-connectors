@@ -21,18 +21,22 @@ import java.util.function.Function;
 
 import static java.lang.String.format;
 
-public class EmptyBatchSupplier extends AbstractEmptyBatchSupplier<ColumnarBatch, ColumnVector>
+public class EmptyBatchSupplier
+        extends AbstractEmptyBatchSupplier<ColumnarBatch, ColumnVector>
         implements PartitionReader<ColumnarBatch>
 {
     private static final Function<FieldVector, ColumnVector> vectorFunction = ArrowColumnVector::new;
-    private static final BiFunction<VectorSchemaRoot, Function<FieldVector, ColumnVector>, ColumnarBatch > resultFunction =
-            (root, vectorMapper) -> new ColumnarBatch(
-                    root.getFieldVectors().stream().map(vectorMapper).toArray(ColumnVector[]::new),
-                    0);
+    private static final BiFunction<VectorSchemaRoot, Function<FieldVector, ColumnVector>, ColumnarBatch> resultFunction = (root, vectorMapper) -> new ColumnarBatch(
+            root
+                    .getFieldVectors()
+                    .stream()
+                    .map(vectorMapper)
+                    .toArray(ColumnVector[]::new), 0);
 
-
-    public EmptyBatchSupplier(StructType schema, InputPartition partition) {
-        super(format("%s(%s)", EmptyBatchSupplier.class.getSimpleName(), partition.toString()),
+    public EmptyBatchSupplier(StructType schema, InputPartition partition)
+    {
+        super(format("%s(%s)", EmptyBatchSupplier.class.getSimpleName(),
+                        partition.toString()),
                 new Schema(TypeUtil.sparkSchemaToArrowFieldsList(schema)),
                 vectorFunction, resultFunction);
     }

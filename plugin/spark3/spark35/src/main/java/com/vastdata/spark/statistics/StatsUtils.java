@@ -9,9 +9,9 @@ import com.vastdata.client.error.VastExceptionFactory;
 import com.vastdata.client.error.VastUserException;
 import com.vastdata.client.stats.VastStatistics;
 import com.vastdata.client.tx.SimpleVastTransaction;
-import com.vastdata.client.tx.VastTransactionHandleManager;
 import com.vastdata.client.tx.VastAutocommitTransaction;
 import com.vastdata.client.tx.VastTransactionFactory;
+import com.vastdata.client.tx.VastTransactionHandleManager;
 import com.vastdata.spark.tx.VastSparkTransactionsManager;
 import ndb.NDB;
 import org.apache.spark.sql.catalyst.expressions.Attribute;
@@ -39,32 +39,37 @@ import static java.lang.String.format;
 
 public final class StatsUtils
 {
-    private StatsUtils() {}
-
     private static final Logger LOG = LoggerFactory.getLogger(StatsUtils.class);
 
-    public static Attribute fieldToAttribute(StructField field, StructType schema)
+    private StatsUtils()
+    {
+    }
+
+    public static Attribute fieldToAttribute(StructField field,
+            StructType schema)
     {
         int fieldIndex = (int) schema.getFieldIndex(field.name()).get();
-        return new AttributeReference(field.name(),
-                field.dataType(), field.nullable(), field.metadata(), ExprId.apply(fieldIndex),
+        return new AttributeReference(field.name(), field.dataType(),
+                field.nullable(), field.metadata(), ExprId.apply(fieldIndex),
                 (Seq<String>) Seq$.MODULE$.<String>empty());
     }
 
-    public static Statistics vastTableStatsToCatalystStatistics(VastStatistics tableStats)
+    public static Statistics vastTableStatsToCatalystStatistics(
+            VastStatistics tableStats)
     {
-        return new Statistics(
-                BigInt.apply(tableStats.getSizeInBytes()),
+        return new Statistics(BigInt.apply(tableStats.getSizeInBytes()),
                 Option.apply(BigInt.apply(tableStats.getNumRows())),
-                AttributeMap$.MODULE$.empty(),
-                false
-        );
+                AttributeMap$.MODULE$.empty(), false);
     }
 
-    public static org.apache.spark.sql.connector.read.Statistics sparkCatalystStatsToTableStatistics(Statistics fullStats)
+    public static org.apache.spark.sql.connector.read.Statistics sparkCatalystStatsToTableStatistics(
+            Statistics fullStats)
     {
-        OptionalLong sizeInBytes = OptionalLong.of(fullStats.sizeInBytes().longValue());
-        OptionalLong rowCount = fullStats.rowCount().isEmpty() ? OptionalLong.empty() : OptionalLong.of(fullStats.rowCount().get().longValue());
+        OptionalLong sizeInBytes = OptionalLong.of(
+                fullStats.sizeInBytes().longValue());
+        OptionalLong rowCount = fullStats.rowCount().isEmpty() ?
+                OptionalLong.empty() :
+                OptionalLong.of(fullStats.rowCount().get().longValue());
         Map<NamedReference, ColumnStatistics> columnStats = new HashMap<>();
         fullStats.attributeStats().foreach(entry -> {
             NamedReference ref = FieldReference.apply(entry._1.name());
@@ -74,22 +79,32 @@ public final class StatsUtils
         return new TableLevelStatistics(sizeInBytes, rowCount, columnStats);
     }
 
-    public static VastStatistics getTableLevelStats(VastClient client, String schemaName, String tableName)
+    public static VastStatistics getTableLevelStats(VastClient client,
+            String schemaName, String tableName)
     {
         final String endUser = null;
-        VastTransactionHandleManager<SimpleVastTransaction> transactionsManager = VastSparkTransactionsManager.getInstance(client, new VastTransactionFactory());
-        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
+        VastTransactionHandleManager<SimpleVastTransaction> transactionsManager = VastSparkTransactionsManager.getInstance(
+                client, new VastTransactionFactory());
+        try (VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(
+                transactionsManager,
+                () -> transactionsManager.startTransaction(endUser), endUser)) {
             // compute statistics via RPC
-            VastStatistics tableStats = client.getTableStats(tx, schemaName, tableName, endUser);
+            VastStatistics tableStats = client.getTableStats(tx, schemaName,
+                    tableName, endUser);
             if (tableStats != null) {
-                LOG.debug("Fetched statistics for table {}, statistics: numRows={}, sizeInBytes={}",
-                        tableName, tableStats.getNumRows(), tableStats.getSizeInBytes());
+                LOG.debug(
+                        "Fetched statistics for table {}, statistics: numRows={}, sizeInBytes={}",
+                        tableName, tableStats.getNumRows(),
+                        tableStats.getSizeInBytes());
                 return tableStats;
             }
             else {
-                throw new RuntimeException(format("Failed fetching table level stats: %s.%s", schemaName, tableName));
+                throw new RuntimeException(
+                        format("Failed fetching table level stats: %s.%s",
+                                schemaName, tableName));
             }
-        } catch (Exception e) {
+        }
+        catch (Exception e) {
             throw VastExceptionFactory.toRuntime(e);
         }
     }
@@ -97,7 +112,7 @@ public final class StatsUtils
     public static VastClient getVastClient()
     {
         try {
-             return NDB.getVastClient(NDB.getConfig());
+            return NDB.getVastClient(NDB.getConfig());
         }
         catch (VastUserException e) {
             throw new RuntimeException(e);

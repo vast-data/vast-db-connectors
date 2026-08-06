@@ -18,24 +18,24 @@ import io.airlift.units.Duration;
 import java.util.function.Predicate;
 
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
-import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 public abstract class VastSparkCommonDependenciesFactory
-    implements VastDependenciesFactory
+        implements VastDependenciesFactory
 {
-    @VisibleForTesting protected static final String VAST_SPARK_CLIENT_TAG = "VastSparkPlugin/" + VastVersion.SYS_VERSION;
     public static final String VAST_SPARK_PLUGIN_V_1 = "VastSparkPlugin.v1";
+    @VisibleForTesting protected static final String VAST_SPARK_CLIENT_TAG = "VastSparkPlugin/" + VastVersion.SYS_VERSION;
     protected final ConfigDefaults<HttpClientConfig> HTTP_CLIENT_CONFIG_CONFIG_DEFAULTS = cfg -> {
-        cfg.setConnectTimeout(new Duration(1, MINUTES));
-        cfg.setIdleTimeout(new Duration(3600, SECONDS));
+        cfg.setConnectTimeout(new Duration(200, SECONDS));
+        cfg.setIdleTimeout(new Duration(30, SECONDS));
         cfg.setRequestTimeout(new Duration(360000, SECONDS));
         cfg.setMaxConnectionsPerServer(250);
         cfg.setMaxContentLength(DataSize.of(32, MEGABYTE));
         cfg.setSelectorCount(10);
         cfg.setTimeoutThreads(8);
         cfg.setTimeoutConcurrency(4);
-        cfg.setKeyStorePath(null); // explicit overwrite the keyStorePath (used by jetty sslContextFactory)
+        cfg.setKeyStorePath(
+                null); // explicit overwrite the keyStorePath (used by jetty sslContextFactory)
     };
 
     private final VastConfig vastConfig;
@@ -55,7 +55,8 @@ public abstract class VastSparkCommonDependenciesFactory
     @Override
     public VastRequestHeadersBuilder getHeadersFactory(final String endUser)
     {
-        final VastRequestHeadersBuilder builder = new CommonRequestHeadersBuilder(() -> VAST_SPARK_CLIENT_TAG + "-spark-" + vastConfig.getEngineVersion());
+        final VastRequestHeadersBuilder builder = new CommonRequestHeadersBuilder(
+                () -> VAST_SPARK_CLIENT_TAG + "-spark-" + vastConfig.getEngineVersion());
         if (endUser != null) {
             return builder.withEndUser(endUser);
         }
@@ -72,5 +73,11 @@ public abstract class VastSparkCommonDependenciesFactory
     public ConfigDefaults<HttpClientConfig> getHttpClientConfigConfigDefaults()
     {
         return HTTP_CLIENT_CONFIG_CONFIG_DEFAULTS;
+    }
+
+    @Override
+    public String getClientTag()
+    {
+        return VAST_SPARK_CLIENT_TAG;
     }
 }

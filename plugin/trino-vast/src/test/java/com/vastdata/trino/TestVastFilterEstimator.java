@@ -62,22 +62,28 @@ public class TestVastFilterEstimator
 
     private TableStatistics buildStats()
     {
-        ColumnStatistics csBool = new ColumnStatistics(Estimate.of(0.01), Estimate.of(2), Estimate.unknown(),
-                                                       Optional.of(new DoubleRange(0, 1)));
-        ColumnStatistics csTiny = new ColumnStatistics(Estimate.of(0.01), Estimate.of(200), Estimate.unknown(),
-                                                       Optional.of(new DoubleRange(-111, 111)));
-        ColumnStatistics csSmall = new ColumnStatistics(Estimate.of(0.01), Estimate.of(5000), Estimate.unknown(),
-                                                        Optional.of(new DoubleRange(-11111, 11111)));
-        ColumnStatistics csInt = new ColumnStatistics(Estimate.of(0.01), Estimate.of(5000), Estimate.unknown(),
-                                                        Optional.of(new DoubleRange(-1111111111, 1111111111)));
+        ColumnStatistics csBool = new ColumnStatistics(Estimate.of(0.01),
+                Estimate.of(2), Estimate.unknown(),
+                Optional.of(new DoubleRange(0, 1)));
+        ColumnStatistics csTiny = new ColumnStatistics(Estimate.of(0.01),
+                Estimate.of(200), Estimate.unknown(),
+                Optional.of(new DoubleRange(-111, 111)));
+        ColumnStatistics csSmall = new ColumnStatistics(Estimate.of(0.01),
+                Estimate.of(5000), Estimate.unknown(),
+                Optional.of(new DoubleRange(-11111, 11111)));
+        ColumnStatistics csInt = new ColumnStatistics(Estimate.of(0.01),
+                Estimate.of(5000), Estimate.unknown(),
+                Optional.of(new DoubleRange(-1111111111, 1111111111)));
         return new TableStatistics(Estimate.of(5000),
-                                   Map.of(vcBool, csBool, vcTiny, csTiny, vcSmall, csSmall, vcInt, csInt));
+                Map.of(vcBool, csBool, vcTiny, csTiny, vcSmall, csSmall, vcInt,
+                        csInt));
     }
 
     @Test
     public void testTableWithoutPredicate()
     {
-        double estimate = FilterEstimator.estimateSelectivity(TupleDomain.all(), buildStats(), Optional.empty());
+        double estimate = FilterEstimator.estimateSelectivity(TupleDomain.all(),
+                buildStats(), Optional.empty());
         assertThat(estimate == 1.0);
     }
 
@@ -87,8 +93,10 @@ public class TestVastFilterEstimator
         Range range = Range.range(TINYINT, 10L, false, 20L, false);
         ValueSet valueSet = ValueSet.ofRanges(range);
         Domain domain = Domain.create(valueSet, true);
-        TupleDomain<VastColumnHandle> tupleDomain = TupleDomain.withColumnDomains(Map.of(vcTiny, domain));
-        double estimate = FilterEstimator.estimateSelectivity(tupleDomain, buildStats(), Optional.empty());
+        TupleDomain<VastColumnHandle> tupleDomain = TupleDomain.withColumnDomains(
+                Map.of(vcTiny, domain));
+        double estimate = FilterEstimator.estimateSelectivity(tupleDomain,
+                buildStats(), Optional.empty());
         assertThat(estimate > 0.03995 && estimate < 0.04);
     }
 
@@ -99,8 +107,10 @@ public class TestVastFilterEstimator
         Range range2 = Range.greaterThanOrEqual(SMALLINT, 2000L);
         ValueSet valueSet = ValueSet.ofRanges(range1, range2);
         Domain domain = Domain.create(valueSet, true);
-        TupleDomain<VastColumnHandle> tupleDomain = TupleDomain.withColumnDomains(Map.of(vcSmall, domain));
-        double estimate = FilterEstimator.estimateSelectivity(tupleDomain, buildStats(), Optional.empty());
+        TupleDomain<VastColumnHandle> tupleDomain = TupleDomain.withColumnDomains(
+                Map.of(vcSmall, domain));
+        double estimate = FilterEstimator.estimateSelectivity(tupleDomain,
+                buildStats(), Optional.empty());
         assertThat(estimate > 0.955 && estimate < 0.956);
     }
 
@@ -110,8 +120,10 @@ public class TestVastFilterEstimator
         Range range = Range.equal(INTEGER, 100L);
         ValueSet valueSet = ValueSet.ofRanges(range);
         Domain domain = Domain.create(valueSet, true);
-        TupleDomain<VastColumnHandle> tupleDomain = TupleDomain.withColumnDomains(Map.of(vcInt, domain));
-        double estimate = FilterEstimator.estimateSelectivity(tupleDomain, buildStats(), Optional.empty());
+        TupleDomain<VastColumnHandle> tupleDomain = TupleDomain.withColumnDomains(
+                Map.of(vcInt, domain));
+        double estimate = FilterEstimator.estimateSelectivity(tupleDomain,
+                buildStats(), Optional.empty());
         assertThat(estimate == 0.0002);
     }
 }

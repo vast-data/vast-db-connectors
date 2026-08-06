@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) Vast Data Ltd.
+ * Copyright (C) Vast Data Ltd.
  */
 
 package com.vastdata.client.schema;
@@ -7,7 +7,6 @@ package com.vastdata.client.schema;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.airlift.log.Logger;
-import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.ipc.ArrowStreamWriter;
 import org.apache.arrow.vector.types.pojo.Schema;
@@ -27,8 +26,7 @@ public class VastPayloadSerializer<T>
     private static final Logger LOG = Logger.get(VastPayloadSerializer.class);
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    @SuppressWarnings("rawtypes")
-    private static final Function<Map, byte[]> mapFunction = map -> {
+    @SuppressWarnings("rawtypes") private static final Function<Map, byte[]> mapFunction = map -> {
         try {
             return OBJECT_MAPPER.writeValueAsBytes(map);
         }
@@ -37,26 +35,12 @@ public class VastPayloadSerializer<T>
         }
     };
 
-    private static final RootAllocator allocator = new RootAllocator();
-    private static final Function<Schema, byte[]> schemaFunction = schema -> {
-        try (VectorSchemaRoot vectorSchemaRoot = VectorSchemaRoot.create(schema, allocator)) {
-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            try (ArrowStreamWriter writer = new ArrowStreamWriter(vectorSchemaRoot, null, outputStream)) {
-                writer.start();
-                writer.writeBatch();
-            }
-            catch (IOException e) {
-                throw serializationException("Failed serializing schema", e);
-            }
-            return outputStream.toByteArray();
-        }
-    };
-
     private static final Function<VectorSchemaRoot, byte[]> recordBatchFunction = vectorSchemaRoot -> {
         int rows = vectorSchemaRoot.getRowCount();
         Schema schema = vectorSchemaRoot.getSchema();
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        try (ArrowStreamWriter writer = new ArrowStreamWriter(vectorSchemaRoot, null, outputStream)) {
+        try (ArrowStreamWriter writer = new ArrowStreamWriter(vectorSchemaRoot,
+                null, outputStream)) {
             writer.start();
             writer.writeBatch();
             writer.end();
@@ -64,7 +48,8 @@ public class VastPayloadSerializer<T>
         catch (IOException e) {
             throw serializationException("Failed serializing RecordBatch", e);
         }
-        LOG.debug("Serialized RecordBatch (%d rows, %s) to %d bytes", rows, schema, outputStream.size());
+        LOG.debug("Serialized RecordBatch (%d rows, %s) to %d bytes", rows,
+                schema, outputStream.size());
         return outputStream.toByteArray();
     };
 
@@ -75,20 +60,15 @@ public class VastPayloadSerializer<T>
         this.function = function;
     }
 
-    @SuppressWarnings("rawtypes")
     public static VastPayloadSerializer<Map> getInstanceForMap()
     {
-        return new VastPayloadSerializer<>(mapFunction);
-    }
-
-    public static VastPayloadSerializer<Schema> getInstanceForSchema()
-    {
-        return new VastPayloadSerializer<>(schemaFunction);
+        return new VastPayloadSerializer<>(map -> mapFunction.apply(map));
     }
 
     public static VastPayloadSerializer<VectorSchemaRoot> getInstanceForRecordBatch()
     {
-        return new VastPayloadSerializer<>(recordBatchFunction);
+        Function<VectorSchemaRoot, byte[]> function = vsr -> recordBatchFunction.apply(vsr);
+        return new VastPayloadSerializer<VectorSchemaRoot>(function);
     }
 
     @Override

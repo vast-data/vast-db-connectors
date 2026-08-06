@@ -8,12 +8,14 @@ import java.util.List;
 import java.util.Optional;
 
 public class ImportDataContext
+        implements AutoCloseable
 {
     private final String dest;
     private final List<ImportDataFile> sourceFiles;
     private final Optional<Integer> chunkLimit;
 
-    private ImportDataContext(List<ImportDataFile> sourceFiles, String dest, Optional<Integer> chunkLimit)
+    private ImportDataContext(List<ImportDataFile> sourceFiles, String dest,
+            Optional<Integer> chunkLimit)
     {
         this.sourceFiles = sourceFiles;
         this.dest = dest;
@@ -27,7 +29,8 @@ public class ImportDataContext
 
     public ImportDataContext withChunkLimit(int chunkLimit)
     {
-        return new ImportDataContext(this.sourceFiles, this.dest, Optional.of(chunkLimit));
+        return new ImportDataContext(this.sourceFiles, this.dest,
+                Optional.of(chunkLimit));
     }
 
     public String getDest()
@@ -48,6 +51,14 @@ public class ImportDataContext
     @Override
     public String toString()
     {
-        return String.format("ImportDataContext(files:%s, dest:%s, chunk:%s)", sourceFiles == null ? 0 : sourceFiles.size(), dest, chunkLimit);
+        return String.format("ImportDataContext(files:%s, dest:%s, chunk:%s)",
+                sourceFiles == null ? 0 : sourceFiles.size(), dest, chunkLimit);
+    }
+
+    public void close()
+    {
+        for (ImportDataFile importDataFile : this.sourceFiles) {
+            importDataFile.close();
+        }
     }
 }

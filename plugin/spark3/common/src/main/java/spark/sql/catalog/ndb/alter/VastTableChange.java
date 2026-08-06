@@ -10,4 +10,5 @@ import com.vastdata.client.tx.VastTransaction;
 import java.util.function.BiConsumer;
 
 public interface VastTableChange
-        extends BiConsumer<VastClient, VastTransaction> {}
+        extends BiConsumer<VastClient, VastTransaction>
+{}

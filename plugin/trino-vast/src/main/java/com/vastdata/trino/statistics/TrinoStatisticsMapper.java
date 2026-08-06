@@ -18,23 +18,30 @@ import java.io.IOException;
 
 public final class TrinoStatisticsMapper
 {
-    private TrinoStatisticsMapper() {}
+    private TrinoStatisticsMapper()
+    {
+    }
 
     static ObjectMapper instance()
     {
         return new ObjectMapper()
                 .registerModule(new Jdk8Module())
-                .registerModule(new ParameterNamesModule(JsonCreator.Mode.PROPERTIES))
+                .registerModule(
+                        new ParameterNamesModule(JsonCreator.Mode.PROPERTIES))
                 .registerModule(new SimpleModule()
-                        .addDeserializer(TrinoSerializableTableStatistics.class, new TrinoSerializableTableStatisticsDeserializer())
-                        .addSerializer(Estimate.class, new EstimateSerializer())
-                        );
+                        .addDeserializer(TrinoSerializableTableStatistics.class,
+                                new TrinoSerializableTableStatisticsDeserializer())
+                        .addSerializer(Estimate.class,
+                                new EstimateSerializer()));
     }
 
-    private static class EstimateSerializer extends JsonSerializer<Estimate>
+    private static class EstimateSerializer
+            extends JsonSerializer<Estimate>
     {
         @Override
-        public void serialize(Estimate value, JsonGenerator gen, SerializerProvider serializers)
+        public void serialize(Estimate value,
+                              JsonGenerator gen,
+                              SerializerProvider serializers)
                 throws IOException
         {
             gen.writeNumber(value.getValue());

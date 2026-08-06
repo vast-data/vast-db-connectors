@@ -3,6 +3,7 @@
  */
 package com.vastdata.vdb;
 
+import com.vastdata.client.QueryDataExtraParams;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.error.VastException;
 import com.vastdata.client.schema.CreateTableContext;
@@ -53,14 +54,14 @@ import static org.testng.Assert.assertTrue;
 
 public class TestPredicateIntegration
 {
-    private static final Logger LOG = LoggerFactory.getLogger(TestPredicateIntegration.class);
+    private static final Logger LOG = LoggerFactory.getLogger(
+            TestPredicateIntegration.class);
     private static final String UTF_COLUMN = "utf_column";
     private static final String INT_COLUMN = "int_column";
-
+    private final Set<String> allTables = new HashSet<>();
     private String schemaName;
     private VastSdk sdk;
     private TransactionManager transactionsManager;
-    private final Set<String> allTables = new HashSet<>();
     private URI uri;
 
     @BeforeClass
@@ -68,7 +69,8 @@ public class TestPredicateIntegration
             throws VastException
     {
         if (System.getenv("INTEG_TEST") == null) {
-            throw new SkipException("Environment variable INTEG_TEST must be defined as these are integration tests");
+            throw new SkipException(
+                    "Environment variable INTEG_TEST must be defined as these are integration tests");
         }
         String endpoint = "http://localhost:9090";
         String bucketName = System.getProperty("BUCKET_NAME");
@@ -76,17 +78,16 @@ public class TestPredicateIntegration
         String awsSecretAccessKey = System.getProperty("AWS_SECRET_ACCESS_KEY");
 
         if (bucketName == null || awsAccessKeyId == null || awsSecretAccessKey == null) {
-            throw new IllegalArgumentException("AWS credentials must be provided");
+            throw new IllegalArgumentException(
+                    "AWS credentials and a bucket name must be provided");
         }
         schemaName = bucketName + "/" + "predicate_tests_" + System.currentTimeMillis();
         LOG.info("starting test with schema {}", schemaName);
 
         this.uri = URI.create(endpoint);
 
-        VastSdkConfig config = new VastSdkConfig(uri,
-                uri.toString(),
-                awsAccessKeyId,
-                awsSecretAccessKey);
+        VastSdkConfig config = new VastSdkConfig(uri, uri.toString(),
+                awsAccessKeyId, awsSecretAccessKey);
 
         HttpClient httpClient = new JettyHttpClient();
 
@@ -95,22 +96,30 @@ public class TestPredicateIntegration
 
         VastClient client = this.sdk.getVastClient();
 
-        this.transactionsManager = new TransactionManager(client, new VastTransactionFactory());
+        this.transactionsManager = new TransactionManager(client,
+                new VastTransactionFactory());
         SimpleVastTransaction tx = transactionsManager.startTransaction(null);
-        client.createSchema(tx, schemaName, new VastMetadataUtils().getPropertiesString(Collections.emptyMap()), null);
+        client.createSchema(tx, schemaName,
+                new VastMetadataUtils().getPropertiesString(
+                        Collections.emptyMap()), null);
 
         transactionsManager.commit(tx, null);
     }
 
-    private void buildMainTable(String tableName) throws VastException {
+    private void buildMainTable(String tableName)
+            throws VastException
+    {
         RootAllocator allocator = new RootAllocator();
-        List<Field> fields = List.of(
-                Field.nullable(UTF_COLUMN, new org.apache.arrow.vector.types.pojo.ArrowType.Utf8()),
-                Field.nullable(INT_COLUMN, new org.apache.arrow.vector.types.pojo.ArrowType.Int(32, true))
-        );
+        List<Field> fields = List.of(Field.nullable(UTF_COLUMN,
+                        new org.apache.arrow.vector.types.pojo.ArrowType.Utf8()),
+                Field.nullable(INT_COLUMN,
+                        new org.apache.arrow.vector.types.pojo.ArrowType.Int(32,
+                                true)));
         createTable(tableName, fields);
-        FieldVector c1Vector = buildVarcharVector(UTF_COLUMN, allocator, new String[] {"aaa", "bbb", "ccc"});
-        FieldVector c2Vector = buildIntVector(INT_COLUMN, allocator, new int[] {1, 2, 3});
+        FieldVector c1Vector = buildVarcharVector(UTF_COLUMN, allocator,
+                new String[] {"aaa", "bbb", "ccc"});
+        FieldVector c2Vector = buildIntVector(INT_COLUMN, allocator,
+                new int[] {1, 2, 3});
         VectorSchemaRoot root = VectorSchemaRoot.of(c1Vector, c2Vector);
         insertData(tableName, root);
     }
@@ -121,7 +130,8 @@ public class TestPredicateIntegration
     {
         SimpleVastTransaction tx = transactionsManager.startTransaction(null);
         for (String tableName : allTables) {
-            sdk.getVastClient().dropTable(tx, new DropTableContext(schemaName, tableName), null);
+            sdk.getVastClient().dropTable(tx,
+                    new DropTableContext(schemaName, tableName), null);
         }
         allTables.clear();
         transactionsManager.commit(tx, null);
@@ -142,9 +152,11 @@ public class TestPredicateIntegration
     {
         String tableName = "test-flush-table-cache";
         buildMainTable(tableName);
-        String sql = String.format("SELECT * FROM \"%s\".\"%s\" WHERE %s = 1", schemaName, tableName, INT_COLUMN);
+        String sql = String.format("SELECT * FROM \"%s\".\"%s\" WHERE %s = 1",
+                schemaName, tableName, INT_COLUMN);
         sdk.executeQuery(sql);
-        assertTrue(sdk.flushTableCache(Optional.of(schemaName), Optional.of(tableName)));
+        assertTrue(sdk.flushTableCache(Optional.of(schemaName),
+                Optional.of(tableName)));
     }
 
     @Test
@@ -153,7 +165,9 @@ public class TestPredicateIntegration
     {
         String tableName = "test-simple-full-scan";
         buildMainTable(tableName);
-        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(String.format("select * from \"%s\".\"%s\"", schemaName, tableName)).next();
+        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(
+                String.format("select * from \"%s\".\"%s\"", schemaName,
+                        tableName)).next();
         assertEquals(vectorSchemaRoot.getRowCount(), 3);
     }
 
@@ -163,7 +177,9 @@ public class TestPredicateIntegration
     {
         String tableName = "test-column-only-in-predicate";
         buildMainTable(tableName);
-        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(String.format("select %s from \"%s\".\"%s\" WHERE %s = 'aaa'", INT_COLUMN, schemaName, tableName, UTF_COLUMN)).next();
+        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(
+                String.format("select %s from \"%s\".\"%s\" WHERE %s = 'aaa'",
+                        INT_COLUMN, schemaName, tableName, UTF_COLUMN)).next();
         assertEquals(vectorSchemaRoot.getRowCount(), 1);
     }
 
@@ -173,7 +189,9 @@ public class TestPredicateIntegration
     {
         String tableName = "test-limit";
         buildMainTable(tableName);
-        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(String.format("select * from \"%s\".\"%s\" LIMIT 1", schemaName, tableName)).next();
+        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(
+                String.format("select * from \"%s\".\"%s\" LIMIT 1", schemaName,
+                        tableName)).next();
         assertTrue(vectorSchemaRoot.getRowCount() == 1);
     }
 
@@ -183,9 +201,13 @@ public class TestPredicateIntegration
     {
         String tableName = "test-simple-predicate";
         buildMainTable(tableName);
-        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(String.format("select * from \"%s\".\"%s\" WHERE %s = 'aaa'", schemaName, tableName, UTF_COLUMN)).next();
+        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(
+                String.format("select * from \"%s\".\"%s\" WHERE %s = 'aaa'",
+                        schemaName, tableName, UTF_COLUMN)).next();
         assertTrue(vectorSchemaRoot.getRowCount() == 1);
-        vectorSchemaRoot = sdk.executeQuery(String.format("select * from \"%s\".\"%s\" WHERE %s = 3", schemaName, tableName, INT_COLUMN)).next();
+        vectorSchemaRoot = sdk.executeQuery(
+                String.format("select * from \"%s\".\"%s\" WHERE %s = 3",
+                        schemaName, tableName, INT_COLUMN)).next();
         assertTrue(vectorSchemaRoot.getRowCount() == 1);
     }
 
@@ -195,9 +217,13 @@ public class TestPredicateIntegration
     {
         String tableName = "test-null-predicate";
         buildMainTable(tableName);
-        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(String.format("select * from \"%s\".\"%s\" WHERE %s IS NULL", schemaName, tableName, UTF_COLUMN)).next();
+        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(
+                String.format("select * from \"%s\".\"%s\" WHERE %s IS NULL",
+                        schemaName, tableName, UTF_COLUMN)).next();
         assertTrue(vectorSchemaRoot.getRowCount() == 0);
-        vectorSchemaRoot = sdk.executeQuery(String.format("select * from \"%s\".\"%s\" WHERE %s IS NOT NULL", schemaName, tableName, UTF_COLUMN)).next();
+        vectorSchemaRoot = sdk.executeQuery(String.format(
+                "select * from \"%s\".\"%s\" WHERE %s IS NOT NULL", schemaName,
+                tableName, UTF_COLUMN)).next();
         assertTrue(vectorSchemaRoot.getRowCount() == 3);
     }
 
@@ -209,10 +235,10 @@ public class TestPredicateIntegration
         RootAllocator allocator = new RootAllocator();
         String columnName = "decimal_column";
         List<Field> fields = List.of(
-                Field.nullable(columnName, new ArrowType.Decimal(38, 0, 128))
-        );
+                Field.nullable(columnName, new ArrowType.Decimal(38, 0, 128)));
         createTable(tableName, fields);
-        Decimal256Vector decimalVector = new Decimal256Vector(columnName, fields.get(0).getFieldType(), allocator);
+        Decimal256Vector decimalVector = new Decimal256Vector(columnName,
+                fields.get(0).getFieldType(), allocator);
         BigDecimal decimal1 = BigDecimal.valueOf(3);
         BigDecimal decimal2 = BigDecimal.valueOf(4);
         decimalVector.allocateNew(2);
@@ -221,7 +247,9 @@ public class TestPredicateIntegration
         decimalVector.setValueCount(2);
         insertData(tableName, VectorSchemaRoot.of(decimalVector));
 
-        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(String.format("select * from \"%s\".\"%s\" WHERE %s = 3", schemaName, tableName, columnName)).next();
+        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(
+                String.format("select * from \"%s\".\"%s\" WHERE %s = 3",
+                        schemaName, tableName, columnName)).next();
         assertTrue(vectorSchemaRoot.getRowCount() == 1);
     }
 
@@ -233,17 +261,25 @@ public class TestPredicateIntegration
         RootAllocator allocator = new RootAllocator();
         String columnName = "date_column";
         List<Field> fields = List.of(
-                Field.nullable(columnName, new ArrowType.Date(DateUnit.DAY))
-        );
+                Field.nullable(columnName, new ArrowType.Date(DateUnit.DAY)));
         createTable(tableName, fields);
-        DateDayVector dateVector = new DateDayVector(columnName, fields.get(0).getFieldType(), allocator);
+        DateDayVector dateVector = new DateDayVector(columnName,
+                fields.get(0).getFieldType(), allocator);
         dateVector.allocateNew(2);
-        dateVector.setSafe(0, (int) Date.valueOf("2000-01-01").toLocalDate().toEpochDay());
-        dateVector.setSafe(1, (int) Date.valueOf("2025-01-01").toLocalDate().toEpochDay());
+        dateVector.setSafe(0, (int) Date
+                .valueOf("2000-01-01")
+                .toLocalDate()
+                .toEpochDay());
+        dateVector.setSafe(1, (int) Date
+                .valueOf("2025-01-01")
+                .toLocalDate()
+                .toEpochDay());
         dateVector.setValueCount(2);
         insertData(tableName, VectorSchemaRoot.of(dateVector));
 
-        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(String.format("select * from \"%s\".\"%s\" WHERE %s = '2000-01-01'", schemaName, tableName, columnName)).next();
+        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(String.format(
+                "select * from \"%s\".\"%s\" WHERE %s = '2000-01-01'",
+                schemaName, tableName, columnName)).next();
         assertTrue(vectorSchemaRoot.getRowCount() == 1);
     }
 
@@ -254,20 +290,26 @@ public class TestPredicateIntegration
         String tableName = "test-timestamp-predicate";
         RootAllocator allocator = new RootAllocator();
         String columnName = "timestamp_column";
-        List<Field> fields = List.of(
-                Field.nullable(columnName, new ArrowType.Timestamp(TimeUnit.SECOND, null))
-        );
+        List<Field> fields = List.of(Field.nullable(columnName,
+                new ArrowType.Timestamp(TimeUnit.SECOND, null)));
         createTable(tableName, fields);
-        TimeStampVector timestampVector = new TimeStampSecVector(columnName, fields.get(0).getFieldType(), allocator);
+        TimeStampVector timestampVector = new TimeStampSecVector(columnName,
+                fields.get(0).getFieldType(), allocator);
         timestampVector.allocateNew(2);
-        timestampVector.setSafe(0, LocalDateTime.parse("2024-11-16T12:34:56").toEpochSecond(UTC));
-        timestampVector.setSafe(1, LocalDateTime.parse("2000-11-16T12:34:56").toEpochSecond(UTC));
+        timestampVector.setSafe(0,
+                LocalDateTime.parse("2024-11-16T12:34:56").toEpochSecond(UTC));
+        timestampVector.setSafe(1,
+                LocalDateTime.parse("2000-11-16T12:34:56").toEpochSecond(UTC));
         timestampVector.setValueCount(2);
         insertData(tableName, VectorSchemaRoot.of(timestampVector));
 
-        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(String.format("select * from \"%s\".\"%s\" WHERE %s = '2024-11-16T12:34:56'", schemaName, tableName, columnName)).next();
+        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(String.format(
+                "select * from \"%s\".\"%s\" WHERE %s = '2024-11-16T12:34:56'",
+                schemaName, tableName, columnName)).next();
         assertTrue(vectorSchemaRoot.getRowCount() == 1);
-        vectorSchemaRoot = sdk.executeQuery(String.format("select * from \"%s\".\"%s\" WHERE %s IN ('2024-11-16T12:34:56', '2000-11-16T12:34:56')", schemaName, tableName, columnName)).next();
+        vectorSchemaRoot = sdk.executeQuery(String.format(
+                "select * from \"%s\".\"%s\" WHERE %s IN ('2024-11-16T12:34:56', '2000-11-16T12:34:56')",
+                schemaName, tableName, columnName)).next();
         assertTrue(vectorSchemaRoot.getRowCount() == 2);
     }
 
@@ -277,9 +319,13 @@ public class TestPredicateIntegration
     {
         String tableName = "test_in_predicate";
         buildMainTable(tableName);
-        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(String.format("select * from \"%s\".\"%s\" WHERE %s in (1,2,3)", schemaName, tableName, INT_COLUMN)).next();
+        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(
+                String.format("select * from \"%s\".\"%s\" WHERE %s in (1,2,3)",
+                        schemaName, tableName, INT_COLUMN)).next();
         assertEquals(vectorSchemaRoot.getRowCount(), 3);
-        vectorSchemaRoot = sdk.executeQuery(String.format("select * from \"%s\".\"%s\" WHERE %s in ('aaa', 'bbb', 'ddd')", schemaName, tableName, UTF_COLUMN)).next();
+        vectorSchemaRoot = sdk.executeQuery(String.format(
+                "select * from \"%s\".\"%s\" WHERE %s in ('aaa', 'bbb', 'ddd')",
+                schemaName, tableName, UTF_COLUMN)).next();
         assertEquals(vectorSchemaRoot.getRowCount(), 2);
     }
 
@@ -289,7 +335,9 @@ public class TestPredicateIntegration
     {
         String tableName = "test_or_predicate";
         buildMainTable(tableName);
-        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(String.format("select * from \"%s\".\"%s\" WHERE %s = 1 OR %s = 2", schemaName, tableName, INT_COLUMN, INT_COLUMN)).next();
+        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(String.format(
+                "select * from \"%s\".\"%s\" WHERE %s = 1 OR %s = 2",
+                schemaName, tableName, INT_COLUMN, INT_COLUMN)).next();
         assertEquals(vectorSchemaRoot.getRowCount(), 2);
     }
 
@@ -299,7 +347,9 @@ public class TestPredicateIntegration
     {
         String tableName = "test_and_predicate";
         buildMainTable(tableName);
-        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(String.format("select * from \"%s\".\"%s\" WHERE %s = 1 AND %s = 'aaa'", schemaName, tableName, INT_COLUMN, UTF_COLUMN)).next();
+        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(String.format(
+                "select * from \"%s\".\"%s\" WHERE %s = 1 AND %s = 'aaa'",
+                schemaName, tableName, INT_COLUMN, UTF_COLUMN)).next();
         assertEquals(vectorSchemaRoot.getRowCount(), 1);
     }
 
@@ -309,7 +359,9 @@ public class TestPredicateIntegration
     {
         String tableName = "test_multi_or";
         buildMainTable(tableName);
-        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(String.format("select * from \"%s\".\"%s\" WHERE %s = 1 OR %s = 'aaa'", schemaName, tableName, INT_COLUMN, UTF_COLUMN)).next();
+        VectorSchemaRoot vectorSchemaRoot = sdk.executeQuery(String.format(
+                "select * from \"%s\".\"%s\" WHERE %s = 1 OR %s = 'aaa'",
+                schemaName, tableName, INT_COLUMN, UTF_COLUMN)).next();
         assertEquals(vectorSchemaRoot.getRowCount(), 2);
     }
 
@@ -319,7 +371,9 @@ public class TestPredicateIntegration
     {
         String tableName = "invalid_function_predicate";
         buildMainTable(tableName);
-        sdk.executeQuery(String.format("select * from \"%s\".\"%s\" WHERE abs(%s) = 1", schemaName, tableName, INT_COLUMN)).next();
+        sdk.executeQuery(
+                String.format("select * from \"%s\".\"%s\" WHERE abs(%s) = 1",
+                        schemaName, tableName, INT_COLUMN)).next();
     }
 
     @Test
@@ -331,18 +385,19 @@ public class TestPredicateIntegration
         String tableName = "test_multiple_result_batches";
         RootAllocator allocator = new RootAllocator();
         List<Field> fields = List.of(
-                Field.nullable(INT_COLUMN, new ArrowType.Int(32, true))
-        );
+                Field.nullable(INT_COLUMN, new ArrowType.Int(32, true)));
         createTable(tableName, fields);
         int[] values = IntStream.range(0, batchTotalRows).toArray();
 
         FieldVector c1Vector = buildIntVector(INT_COLUMN, allocator, values);
         VectorSchemaRoot root = VectorSchemaRoot.of(c1Vector);
-        for (int i = 0; i < numOfBatches; i ++) { // more than 512k rows
+        for (int i = 0; i < numOfBatches; i++) { // more than 512k rows
             insertData(tableName, root);
         }
 
-        Iterator<VectorSchemaRoot> iterator = sdk.executeQuery(String.format("select * from \"%s\".\"%s\" WHERE %s >= 0", schemaName, tableName, INT_COLUMN));
+        Iterator<VectorSchemaRoot> iterator = sdk.executeQuery(
+                String.format("select * from \"%s\".\"%s\" WHERE %s >= 0",
+                        schemaName, tableName, INT_COLUMN));
         int totalFetchedRows = 0;
         int numOfBatchesFetched = 0;
         while (iterator.hasNext()) {
@@ -359,7 +414,8 @@ public class TestPredicateIntegration
             throws VastException
     {
         SimpleVastTransaction tx = transactionsManager.startTransaction(null);
-        sdk.getVastClient().insertRows(tx, schemaName, tableName, root, uri, Optional.empty(), null);
+        sdk.getVastClient().insertRows(tx, schemaName, tableName, root, uri,
+                Optional.empty(), new QueryDataExtraParams(), null);
         transactionsManager.commit(tx, null);
     }
 
@@ -367,15 +423,17 @@ public class TestPredicateIntegration
             throws VastException
     {
         SimpleVastTransaction tx = transactionsManager.startTransaction(null);
-        sdk.getVastClient().createTable(tx, new CreateTableContext(
-                schemaName, tableName, columns,
-                null, Collections.emptyMap()), null);
+        sdk.getVastClient().createTable(tx,
+                CreateTableContext.create(schemaName, tableName, columns,
+                        Optional.empty(), Collections.emptyMap(), null, true),
+                null);
         transactionsManager.commit(tx, null);
         this.allTables.add(tableName);
         LOG.info("table {}.{} was created", schemaName, tableName);
     }
 
-    private IntVector buildIntVector(String name, RootAllocator allocator, int[] values)
+    private IntVector buildIntVector(String name, RootAllocator allocator,
+            int[] values)
     {
         IntVector intVector = new IntVector(name, allocator);
         intVector.allocateNew(values.length);
@@ -386,7 +444,8 @@ public class TestPredicateIntegration
         return intVector;
     }
 
-    private VarCharVector buildVarcharVector(String name, RootAllocator allocator, String[] values)
+    private VarCharVector buildVarcharVector(String name,
+            RootAllocator allocator, String[] values)
     {
         VarCharVector varcharVector = new VarCharVector(name, allocator);
         varcharVector.allocateNew(values.length);

@@ -12,6 +12,7 @@ import com.vastdata.client.ParsedURL;
 import com.vastdata.mockserver.MockListBucketsReply;
 import com.vastdata.mockserver.MockMapSchema;
 import com.vastdata.mockserver.MockTable;
+import com.vastdata.mockserver.MockView;
 import io.airlift.log.Logger;
 import org.apache.arrow.vector.types.pojo.Field;
 import vast_flatbuf.tabular.ListSchemasResponse;
@@ -22,6 +23,7 @@ import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -36,7 +38,8 @@ public class GetHandler
 {
     private static final Logger LOG = Logger.get(GetHandler.class);
 
-    public GetHandler(Map<String, Set<MockMapSchema>> schema, Set<String> openTransactions)
+    public GetHandler(Map<String, Set<MockMapSchema>> schema,
+            Set<String> openTransactions)
     {
         super(schema, openTransactions);
     }
@@ -63,7 +66,8 @@ public class GetHandler
                 else {
                     LOG.info("Responding schemas for bucket %s", bucket);
                     Set<MockMapSchema> mockMapSchemas = schemaMap.get(bucket);
-                    FlatBufferBuilder b = MockSchemaUtil.getListSchemasReply(bucket, mockMapSchemas);
+                    FlatBufferBuilder b = MockSchemaUtil.getListSchemasReply(
+                            bucket, mockMapSchemas);
                     respondFlatBuffer(he, b);
                 }
             }
@@ -79,12 +83,20 @@ public class GetHandler
             }
             String schemaName = parsedURL.getSchemaName();
             Headers requestHeaders = he.getRequestHeaders();
-            LOG.info("Responding tables for schema %s, query=%s, headers = %s", schemaName, query,
-                    requestHeaders.entrySet());
-            List<String> exactMatchHeaderValue = requestHeaders.get("tabular-name-exact-match");
-            String exactMatch = (exactMatchHeaderValue == null || exactMatchHeaderValue.isEmpty()) ? null : Iterables.getOnlyElement(exactMatchHeaderValue);
+            LOG.info("Responding tables for schema %s, query=%s, headers = %s",
+                    schemaName, query, requestHeaders.entrySet());
+            List<String> exactMatchHeaderValue = requestHeaders.get(
+                    "tabular-name-exact-match");
+            String exactMatch = (exactMatchHeaderValue == null || exactMatchHeaderValue.isEmpty()) ?
+                    null :
+                    Iterables.getOnlyElement(exactMatchHeaderValue);
             Set<MockMapSchema> mockMapSchemas = schemaMap.get(bucket);
-            Optional<MockMapSchema> existingSchema = mockMapSchemas.stream().filter(mockSchema -> mockSchema.getName().equals(schemaName)).findAny();
+            Optional<MockMapSchema> existingSchema = mockMapSchemas
+                    .stream()
+                    .filter(mockSchema -> mockSchema
+                            .getName()
+                            .equals(schemaName))
+                    .findAny();
             switch (query) {
                 case "table":
                 case "view":
@@ -93,15 +105,18 @@ public class GetHandler
                         LOG.info("mockMapSchema = %s", mockMapSchema);
                         FlatBufferBuilder b;
                         if (query.equals("table")) {
-                            b = MockSchemaUtil.getListTablesReply(bucket, schemaName, mockMapSchema, exactMatch);
+                            b = MockSchemaUtil.getListTablesReply(bucket,
+                                    schemaName, mockMapSchema, exactMatch);
                         }
                         else {
-                            b = MockSchemaUtil.getListViewsReply(bucket, schemaName, mockMapSchema, exactMatch);
+                            b = MockSchemaUtil.getListViewsReply(bucket,
+                                    schemaName, mockMapSchema, exactMatch);
                         }
                         respondFlatBuffer(he, b);
                     }
                     else {
-                        respond(format("Schema %s does not exist in bucket %s", schemaName, bucket), he, 404);
+                        respond(format("Schema %s does not exist in bucket %s",
+                                schemaName, bucket), he, 404);
                     }
                     break;
                 case "schema":
@@ -117,41 +132,80 @@ public class GetHandler
             else {
                 String bucket = parsedURL.getBucket();
                 if (!schemaMap.containsKey(bucket)) {
-                    respond(format("Bucket %s does not exist", bucket), he, 404);
+                    respond(format("Bucket %s does not exist", bucket), he,
+                            404);
                 }
                 String schemaName = parsedURL.getSchemaName();
                 String tableName = parsedURL.getTableName();
                 Set<MockMapSchema> mockMapSchemas = schemaMap.get(bucket);
-                Optional<MockMapSchema> existingSchema = mockMapSchemas.stream().filter(mockSchema -> mockSchema.getName().equals(schemaName)).findAny();
+                Optional<MockMapSchema> existingSchema = mockMapSchemas
+                        .stream()
+                        .filter(mockSchema -> mockSchema
+                                .getName()
+                                .equals(schemaName))
+                        .findAny();
                 if (existingSchema.isPresent()) {
                     if (query.equals("data")) {
-                        MockTable mockTable = existingSchema.get().getTables().get(tableName);
+                        MockTable mockTable = existingSchema
+                                .get()
+                                .getTables()
+                                .get(tableName);
                         if (mockTable == null) {
-                            respond(format("Table %s does not exist in schema %s/%s", tableName, schemaName, bucket), he, 404);
+                            respond(format(
+                                    "Table %s does not exist in schema %s/%s",
+                                    tableName, schemaName, bucket), he, 404);
                         }
                         else {
                             byte[] bytes = readAllBytes(he.getRequestBody());
-                            LOG.info("QUERY_DATA: %s", new String(bytes, Charset.defaultCharset())); //TODO - validate schema
+                            LOG.info("QUERY_DATA: %s", new String(bytes,
+                                    Charset.defaultCharset())); //TODO - validate schema
                             respondError(he);
                         }
                     }
-                    else {
-                        Map<String, MockTable> tables = existingSchema.get().getTables();
-                        LOG.info("Responding columns for table %s, Existing tables: %s, request = %s", tableName, tables, he.getResponseHeaders());
+                    else if (query.equals("columns") || query.equals(
+                            "sorted-columns")) {
+                        Map<String, MockTable> tables = existingSchema
+                                .get()
+                                .getTables();
                         if (tables.containsKey(tableName)) {
-                            MockTable mockTable = tables.get(tableName);
-                            Collection<Field> values = mockTable.getColumns().values();
-                            Optional<byte[]> serializeFields = MockSchemaUtil.serializeFields(values);
-                            if (serializeFields.isPresent()) {
-                                respond(serializeFields.get(), he, 200);
+                            LOG.info(
+                                    "Responding columns for table %s, Existing tables: %s, request = %s",
+                                    tableName, tables, he.getResponseHeaders());
+                            if (query.equals("columns")) {
+                                MockTable mockTable = tables.get(tableName);
+                                respondColumns(mockTable.getColumns().values(),
+                                        he, tableName);
                             }
                             else {
-                                respondError(String.format("Failed serializing fields for table %s", tableName), he);
+                                respondColumns(Collections.emptyList(), he,
+                                        tableName);
                             }
                         }
-                        else {
-                            respond(format("Schema %s does not exist in schema %s", tableName, parsedURL.getFullSchemaPath()), he, 404);
+                        else if (existingSchema
+                                .get()
+                                .getViews()
+                                .containsKey(tableName)) {
+                            Map<String, MockView> views = existingSchema
+                                    .get()
+                                    .getViews();
+                            LOG.info(
+                                    "Responding columns for view %s, Existing views: %s, request = %s",
+                                    tableName, views, he.getResponseHeaders());
+                            MockView mockView = views.get(tableName);
+                            respondColumns(
+                                    mockView.getViewDataSchema().getFields(),
+                                    he, tableName);
                         }
+                        else {
+                            respond(format(
+                                            "Schema %s does not exist in schema %s",
+                                            tableName, parsedURL.getFullSchemaPath()),
+                                    he, 404);
+                        }
+                    }
+                    else if (query.equals("row-column-security")) {
+                        respond(format("No security policy for table: %s",
+                                tableName), he, 404);
                     }
                 }
             }
@@ -159,6 +213,21 @@ public class GetHandler
         else {
             LOG.info("Not a valid parsedURL");
             respondError(he);
+        }
+    }
+
+    private void respondColumns(Collection<Field> fields, HttpExchange he,
+            String tableName)
+            throws IOException
+    {
+        Optional<byte[]> serializedFields = MockSchemaUtil.serializeFields(
+                fields);
+        if (serializedFields.isPresent()) {
+            respond(serializedFields.get(), he, 200);
+        }
+        else {
+            respondError(String.format("Failed serializing fields for table %s",
+                    tableName), he);
         }
     }
 

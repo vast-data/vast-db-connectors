@@ -20,9 +20,12 @@ import static spark.sql.catalog.ndb.SparkConfValidator.SETTING_SPARK_SPECULATION
 
 public final class SparkTestUtils
 {
-    private SparkTestUtils() {}
+    private SparkTestUtils()
+    {
+    }
 
-    private static Map<String, Object> getFullConf(Map<String, Object> extraConfs)
+    private static Map<String, Object> getFullConf(
+            Map<String, Object> extraConfs)
     {
         HashMap<String, Object> tmp = new HashMap<>(DEFAULT_SPARK_CONF);
         tmp.putAll(extraConfs);
@@ -39,26 +42,31 @@ public final class SparkTestUtils
         return getSession(testPort, 1, false, false);
     }
 
-    public static SparkSession getSession(final int testPort, Map<String, Object> extraConfs)
+    public static SparkSession getSession(final int testPort,
+            Map<String, Object> extraConfs)
     {
         return getSession(testPort, 1, false, false, extraConfs);
     }
 
-    public static SparkSession getSession(final int testPort, final int maxFailures, final boolean speculation,
+    public static SparkSession getSession(final int testPort,
+            final int maxFailures, final boolean speculation,
             final boolean disableSparkDuplicateWritesProtection)
     {
-        return getSession(testPort, maxFailures, speculation, disableSparkDuplicateWritesProtection, new HashMap<>());
+        return getSession(testPort, maxFailures, speculation,
+                disableSparkDuplicateWritesProtection, new HashMap<>());
     }
 
-    private static SparkSession getSession(int testPort, int maxFailures, boolean speculation,
-            boolean disableSparkDuplicateWritesProtection, Map<String, Object> tmp)
+    private static SparkSession getSession(int testPort, int maxFailures,
+            boolean speculation, boolean disableSparkDuplicateWritesProtection,
+            Map<String, Object> tmp)
     {
         // force the new configuration to replace the old one
         NDB.clearConfig();
         SparkSession.Builder builder = SparkSession.builder();
         tmp.put(SETTING_SPARK_MAX_FAILURES, maxFailures);
         tmp.put(SETTING_SPARK_SPECULATION, speculation);
-        tmp.put(SETTING_DISABLE_SPARK_DUPLICATE_WRITES_PROTECTION, disableSparkDuplicateWritesProtection);
+        tmp.put(SETTING_DISABLE_SPARK_DUPLICATE_WRITES_PROTECTION,
+                disableSparkDuplicateWritesProtection);
         tmp.put("spark.ndb.endpoint", getEndpointString(testPort));
         Map<String, Object> fullConf = getFullConf(tmp);
         fullConf.forEach((key, value) -> builder.config(key, value.toString()));

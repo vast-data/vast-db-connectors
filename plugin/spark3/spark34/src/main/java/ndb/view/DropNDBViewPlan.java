@@ -22,6 +22,7 @@ public class DropNDBViewPlan
         extends LogicalPlan
 {
     public static final Seq<Attribute> OUTPUT;
+
     static {
         Builder<Attribute, List<Attribute>> b = List.newBuilder();
         Attribute resAttr = new AttributeReference("dropped",
@@ -30,16 +31,22 @@ public class DropNDBViewPlan
         b.addOne(resAttr);
         OUTPUT = b.result();
     }
-    private Seq<LogicalPlan> children;
+
     final boolean ifExists;
     final DropView original;
+    private Seq<LogicalPlan> children;
 
-    private DropNDBViewPlan(final boolean ifExists,
-                            final DropView original) {
+    private DropNDBViewPlan(final boolean ifExists, final DropView original)
+    {
         super();
         this.ifExists = ifExists;
         this.original = original;
         this.children = (Seq<LogicalPlan>) original.children().toSeq();
+    }
+
+    public static DropNDBViewPlan instance(final DropView plan)
+    {
+        return new DropNDBViewPlan(plan.ifExists(), plan);
     }
 
     @Override
@@ -60,7 +67,9 @@ public class DropNDBViewPlan
     }
 
     @Override
-    public LogicalPlan withNewChildrenInternal(IndexedSeq<LogicalPlan> newChildren) {
+    public LogicalPlan withNewChildrenInternal(
+            IndexedSeq<LogicalPlan> newChildren)
+    {
         {
             this.children = newChildren;
             return this;
@@ -83,10 +92,5 @@ public class DropNDBViewPlan
     public int productArity()
     {
         return 0;
-    }
-
-    public static DropNDBViewPlan instance(final DropView plan)
-    {
-        return new DropNDBViewPlan(plan.ifExists(), plan);
     }
 }

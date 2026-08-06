@@ -18,29 +18,14 @@ import static java.lang.String.format;
 public class VastErrorHandler
         extends DefaultHandler
 {
+    public static final String ERROR = "Error";
+    public static final String MESSAGE = "Message";
+    public static final String RESOURCE = "Resource";
+    public static final String CODE = "Code";
+    public static final String REQUEST_ID = "RequestId";
     private static final Logger LOG = Logger.get(VastErrorHandler.class);
-    private final StringBuilder resultBuilder = new StringBuilder();
-    private final StringBuilder text = new StringBuilder();
     private static final Map<String, BiConsumer<StringBuilder, String>> fieldHandlers = new HashMap<>();
     private static final BiConsumer<StringBuilder, String> DO_NOTHING = (builder, value) -> {};
-    private static BiConsumer<StringBuilder, String> getEntryAdder(String entryName)
-    {
-        return (builder, value) -> {
-            if (!Strings.isNullOrEmpty(value)) {
-                builder.append(format("%s: %s. ", entryName, value));
-            }
-        };
-    }
-
-    public static final String ERROR = "Error";
-
-    public static final String MESSAGE = "Message";
-
-    public static final String RESOURCE = "Resource";
-
-    public static final String CODE = "Code";
-
-    public static final String REQUEST_ID = "RequestId";
 
     static {
         fieldHandlers.put(ERROR, DO_NOTHING);
@@ -50,8 +35,22 @@ public class VastErrorHandler
         fieldHandlers.put(REQUEST_ID, getEntryAdder(REQUEST_ID));
     }
 
+    private final StringBuilder resultBuilder = new StringBuilder();
+    private final StringBuilder text = new StringBuilder();
+
+    private static BiConsumer<StringBuilder, String> getEntryAdder(
+            String entryName)
+    {
+        return (builder, value) -> {
+            if (!Strings.isNullOrEmpty(value)) {
+                builder.append(format("%s: %s. ", entryName, value));
+            }
+        };
+    }
+
     @Override
-    public void startElement(String uri, String localName, String qName, Attributes attributes)
+    public void startElement(String uri, String localName, String qName,
+            Attributes attributes)
     {
         text.setLength(0);
     }
@@ -68,7 +67,8 @@ public class VastErrorHandler
         String entryValue = sanitize(text.toString());
         if (!Strings.isNullOrEmpty(entryValue)) {
             if (!fieldHandlers.containsKey(localName)) {
-                LOG.warn("Unexpected key: %s, value: %s", localName, entryValue);
+                LOG.warn("Unexpected key: %s, value: %s", localName,
+                        entryValue);
             }
             else {
                 fieldHandlers.get(localName).accept(resultBuilder, entryValue);

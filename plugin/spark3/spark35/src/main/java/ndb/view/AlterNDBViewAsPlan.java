@@ -14,7 +14,7 @@ import scala.PartialFunction;
 import scala.collection.immutable.IndexedSeq;
 import scala.collection.immutable.Seq;
 
-import static ndb.NDBParser.EMPTY_LOGICAL_PLAN_SEQ;
+import static ndb.SparkPlannerUtil.EMPTY_LOGICAL_PLAN_SEQ;
 
 public class AlterNDBViewAsPlan
         extends LogicalPlan
@@ -27,6 +27,24 @@ public class AlterNDBViewAsPlan
         super();
         originalText = original.originalText();
         this.children = (Seq<LogicalPlan>) original.children().toSeq();
+    }
+
+    public static AlterNDBViewAsPlan instance(final AlterViewAs plan)
+    {
+        Function1<LogicalPlan, LogicalPlan> resolveViewFunc = p -> {
+            if (p instanceof UnresolvedView) {
+                UnresolvedView uv = (UnresolvedView) p;
+                return new UnresolvedTableOrView(uv.multipartIdentifier(),
+                        uv.commandName(), uv.allowTemp());
+            }
+            else {
+                return p;
+            }
+        };
+        PartialFunction<LogicalPlan, LogicalPlan> transformer = PartialFunction.fromFunction(
+                resolveViewFunc);
+        return new AlterNDBViewAsPlan(
+                (AlterViewAs) plan.resolveOperators(transformer));
     }
 
     @Override
@@ -47,7 +65,9 @@ public class AlterNDBViewAsPlan
     }
 
     @Override
-    public LogicalPlan withNewChildrenInternal(IndexedSeq<LogicalPlan> newChildren) {
+    public LogicalPlan withNewChildrenInternal(
+            IndexedSeq<LogicalPlan> newChildren)
+    {
         {
             this.children = newChildren;
             return this;
@@ -70,21 +90,6 @@ public class AlterNDBViewAsPlan
     public int productArity()
     {
         return 0;
-    }
-
-    public static AlterNDBViewAsPlan instance(final AlterViewAs plan)
-    {
-        Function1<LogicalPlan, LogicalPlan> resolveViewFunc = p -> {
-            if (p instanceof UnresolvedView) {
-                UnresolvedView uv = (UnresolvedView) p;
-                return new UnresolvedTableOrView(uv.multipartIdentifier(), uv.commandName(), uv.allowTemp());
-            }
-            else {
-                return p;
-            }
-        };
-        PartialFunction<LogicalPlan, LogicalPlan> transformer = PartialFunction.fromFunction(resolveViewFunc);
-        return new AlterNDBViewAsPlan((AlterViewAs) plan.resolveOperators(transformer));
     }
 
     @Override

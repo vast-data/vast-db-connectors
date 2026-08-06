@@ -11,13 +11,16 @@ import io.airlift.log.Logger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class KeepAliveRequestExecutor implements Consumer<VastTransaction>
+public class KeepAliveRequestExecutor
+        implements Consumer<VastTransaction>
 {
-    private static final Logger LOG = Logger.get(KeepAliveRequestExecutor.class);
+    private static final Logger LOG = Logger.get(
+            KeepAliveRequestExecutor.class);
 
     private final Supplier<VastClient> vastClientSupplier;
 
-    public KeepAliveRequestExecutor(Supplier<VastClient> vastClientSupplier) {
+    public KeepAliveRequestExecutor(Supplier<VastClient> vastClientSupplier)
+    {
         this.vastClientSupplier = vastClientSupplier;
     }
 

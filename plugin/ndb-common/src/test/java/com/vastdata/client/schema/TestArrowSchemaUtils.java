@@ -32,9 +32,12 @@ public class TestArrowSchemaUtils
         String fileNamePrefix = "src/file";
         String colAName = "colA";
         String colBName = "colB";
-        Field colAField = new Field(colAName, FieldType.notNullable(ArrowType.Utf8.INSTANCE), null);
-        Field colBField = new Field(colBName, FieldType.notNullable(ArrowType.Utf8.INSTANCE), null);
-        Map<String, Field> fieldsMap = ImmutableMap.of(colAName, colAField, colBName, colBField);
+        Field colAField = new Field(colAName,
+                FieldType.notNullable(ArrowType.Utf8.INSTANCE), null);
+        Field colBField = new Field(colBName,
+                FieldType.notNullable(ArrowType.Utf8.INSTANCE), null);
+        Map<String, Field> fieldsMap = ImmutableMap.of(colAName, colAField,
+                colBName, colBField);
 
         List<String> resultFileNameExpectation = new ArrayList<>(numOfFiles);
         List<ImportDataFile> importDataFiles = new ArrayList<>(numOfFiles);
@@ -42,7 +45,8 @@ public class TestArrowSchemaUtils
             String fileName = format("%s%d", fileNamePrefix, i);
             String valName = format("val%d", i);
             resultFileNameExpectation.add(fileName);
-            ImportDataFile importFile = new ImportDataFile(bucket, fileName, ImmutableMap.of(colAName, valName, colBName, valName));
+            ImportDataFile importFile = new ImportDataFile(bucket, fileName,
+                    ImmutableMap.of(colAName, valName, colBName, valName));
             importFile.setFieldsDefaultValues(fieldsMap);
             importDataFiles.add(importFile);
         }
@@ -50,13 +54,15 @@ public class TestArrowSchemaUtils
         ByteBuffer byteBuffer = new ArrowSchemaUtils().newImportDataRequest(
                 new ImportDataContext(importDataFiles, "bucket/schema/table"),
                 new RootAllocator());
-        ImportDataRequest root = ImportDataRequest.getRootAsImportDataRequest(byteBuffer);
+        ImportDataRequest root = ImportDataRequest.getRootAsImportDataRequest(
+                byteBuffer);
         List<String> collectedFiles = new ArrayList<>();
         for (int i = 0; i < root.s3FilesLength(); i++) {
             S3File s3File = root.s3Files(i);
             String fileName = s3File.fileName();
             collectedFiles.add(fileName);
-            assertTrue(s3File.partitionsLength() > 0, "Expected to have partitions vector");
+            assertTrue(s3File.partitionsLength() > 0,
+                    "Expected to have partitions vector");
         }
         collectedFiles.sort(String::compareTo);
         assertEquals(collectedFiles, resultFileNameExpectation);

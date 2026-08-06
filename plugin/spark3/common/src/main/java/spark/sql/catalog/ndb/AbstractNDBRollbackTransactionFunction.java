@@ -4,7 +4,8 @@
 
 package spark.sql.catalog.ndb;
 
-public abstract class AbstractNDBRollbackTransactionFunction extends AbstractNDBFunction
+public abstract class AbstractNDBRollbackTransactionFunction
+        extends AbstractNDBFunction
 {
 
     @Override

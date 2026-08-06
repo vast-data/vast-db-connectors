@@ -16,16 +16,21 @@ import org.apache.spark.sql.types.Decimal;
 
 public final class SparkStatisticsMapper
 {
-    private SparkStatisticsMapper() {}
+    private SparkStatisticsMapper()
+    {
+    }
 
     static ObjectMapper instance(Table table)
     {
         return new ObjectMapper()
                 .registerModule(new Jdk8Module())
                 .registerModule(new DefaultScalaModule())
-                .registerModule(new ParameterNamesModule(JsonCreator.Mode.PROPERTIES))
+                .registerModule(
+                        new ParameterNamesModule(JsonCreator.Mode.PROPERTIES))
                 .registerModule(new SimpleModule()
-                        .addDeserializer(Statistics.class, new SparkStatisticsDeserializer(table.schema()))
-                        .addSerializer(Decimal.class, SparkDecimalSerializer.getInstance()));
+                        .addDeserializer(Statistics.class,
+                                new SparkStatisticsDeserializer(table.schema()))
+                        .addSerializer(Decimal.class,
+                                SparkDecimalSerializer.getInstance()));
     }
 }

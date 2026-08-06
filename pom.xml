@@ -10,7 +10,7 @@
 
     <groupId>ndb</groupId>
     <artifactId>ndb-root</artifactId>
-    <version>5.4.0</version>
+    <version>5.5.0</version>
 
     <name>ndb-root</name>
     <description>NDB</description>
@@ -45,7 +45,7 @@
         <dep.errorprone.version>2.11.0</dep.errorprone.version>
         <dep.jackson.version>2.15.1</dep.jackson.version>
         <dep.testng.version>6.10</dep.testng.version>
-        <dep.arrow.version>13.0.0</dep.arrow.version>
+        <dep.arrow.version>18.0.0</dep.arrow.version>
     </properties>
 
     <modules>
@@ -219,7 +219,6 @@
                     <artifactId>exec-maven-plugin</artifactId>
                     <version>1.6.0</version>
                 </plugin>
-
                 <plugin>
                     <groupId>org.gaul</groupId>
                     <artifactId>modernizer-maven-plugin</artifactId>
@@ -378,6 +377,18 @@
                 <artifactId>provisio-maven-plugin</artifactId>
                 <version>1.0.18</version>
                 <extensions>true</extensions>
+            </plugin>
+            <plugin>
+                <groupId>org.gaul</groupId>
+                <artifactId>modernizer-maven-plugin</artifactId>
+                <version>2.2.0</version>
+                <executions>
+                    <execution>
+                        <configuration>
+                            <skip>true</skip>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

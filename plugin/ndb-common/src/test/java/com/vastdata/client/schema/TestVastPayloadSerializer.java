@@ -19,14 +19,18 @@ public class TestVastPayloadSerializer
     @Test
     public void testApplyNull()
     {
-        Optional<byte[]> apply = VastPayloadSerializer.getInstanceForMap().apply(null);
+        Optional<byte[]> apply = VastPayloadSerializer
+                .getInstanceForMap()
+                .apply(null);
         assertFalse(apply.isPresent());
     }
 
     @Test
     public void testApplyEmptyMap()
     {
-        Optional<byte[]> apply = VastPayloadSerializer.getInstanceForMap().apply(ImmutableMap.of());
+        Optional<byte[]> apply = VastPayloadSerializer
+                .getInstanceForMap()
+                .apply(ImmutableMap.of());
         assertTrue(apply.isPresent());
         assertEquals(new String(apply.get(), StandardCharsets.UTF_8), "{}");
     }
@@ -34,8 +38,11 @@ public class TestVastPayloadSerializer
     @Test
     public void testApplySimpleMap()
     {
-        Optional<byte[]> apply = VastPayloadSerializer.getInstanceForMap().apply(ImmutableMap.of("akey", "avalue"));
+        Optional<byte[]> apply = VastPayloadSerializer
+                .getInstanceForMap()
+                .apply(ImmutableMap.of("akey", "avalue"));
         assertTrue(apply.isPresent());
-        assertEquals(new String(apply.get(), StandardCharsets.UTF_8), "{\"akey\":\"avalue\"}");
+        assertEquals(new String(apply.get(), StandardCharsets.UTF_8),
+                "{\"akey\":\"avalue\"}");
     }
 }

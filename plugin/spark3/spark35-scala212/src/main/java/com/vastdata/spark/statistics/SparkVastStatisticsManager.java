@@ -4,17 +4,25 @@
 
 package com.vastdata.spark.statistics;
 
-import com.vastdata.client.stats.VastStatisticsStorage;
 import com.vastdata.client.error.VastUserException;
+import com.vastdata.client.stats.VastStatisticsStorage;
 import com.vastdata.spark.VastTable;
 import ndb.NDB;
 import org.apache.spark.sql.catalyst.plans.logical.Statistics;
 
 import java.util.Optional;
 
-public class SparkVastStatisticsManager implements VastStatisticsStorage<VastTable, Statistics>
+public class SparkVastStatisticsManager
+        implements VastStatisticsStorage<VastTable, Statistics>
 {
     private static SparkVastStatisticsManager instance = null;
+    private final VastStatisticsStorage<VastTable, Statistics> storage;
+
+    private SparkVastStatisticsManager(
+            VastStatisticsStorage<VastTable, Statistics> storage)
+    {
+        this.storage = storage;
+    }
 
     public static SparkVastStatisticsManager getInstance()
     {
@@ -28,23 +36,20 @@ public class SparkVastStatisticsManager implements VastStatisticsStorage<VastTab
     {
         if (instance == null) {
             try {
-                initInstance(new SparkPersistentStatistics(NDB.getVastClient(NDB.getConfig()), NDB.getConfig()));
+                initInstance(new SparkPersistentStatistics(
+                        NDB.getVastClient(NDB.getConfig()), NDB.getConfig()));
             }
             catch (VastUserException e) {
-                throw new RuntimeException("Failed initializing default instance", e);
+                throw new RuntimeException(
+                        "Failed initializing default instance", e);
             }
         }
     }
 
-    protected static synchronized void initInstance(VastStatisticsStorage<VastTable, Statistics> statisticsStorage)
+    protected static synchronized void initInstance(
+            VastStatisticsStorage<VastTable, Statistics> statisticsStorage)
     {
         instance = new SparkVastStatisticsManager(statisticsStorage);
-    }
-
-    private final VastStatisticsStorage<VastTable, Statistics> storage;
-
-    private SparkVastStatisticsManager(VastStatisticsStorage<VastTable, Statistics> storage) {
-        this.storage = storage;
     }
 
     @Override

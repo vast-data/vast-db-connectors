@@ -13,7 +13,9 @@ public final class VastMockS3ServerStarter
 {
     private static final Logger LOG = Logger.get(VastMockS3ServerStarter.class);
 
-    private VastMockS3ServerStarter() {}
+    private VastMockS3ServerStarter()
+    {
+    }
 
     public static void fromEnv()
     {
@@ -23,7 +25,8 @@ public final class VastMockS3ServerStarter
             //Valid values: int
             try {
                 if (Objects.isNull(mockServerPort)) {
-                    LOG.error("Failed starting mock server because port configuration is missing");
+                    LOG.error(
+                            "Failed starting mock server because port configuration is missing");
                 }
                 else {
                     try {
@@ -35,7 +38,8 @@ public final class VastMockS3ServerStarter
                 }
             }
             catch (NumberFormatException noANumber) {
-                LOG.error(noANumber, "Failed starting mock server because of invalid port configuration");
+                LOG.error(noANumber,
+                        "Failed starting mock server because of invalid port configuration");
             }
         }
     }

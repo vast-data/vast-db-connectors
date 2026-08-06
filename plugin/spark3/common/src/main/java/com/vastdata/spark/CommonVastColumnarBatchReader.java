@@ -4,8 +4,10 @@
 package com.vastdata.spark;
 
 import com.google.common.collect.Streams;
+import com.vastdata.ShapingLoggerFactory;
 import com.vastdata.client.ArrowQueryDataSchemaHelper;
 import com.vastdata.client.FlatBufferSerializer;
+import com.vastdata.client.QueryDataExtraParams;
 import com.vastdata.client.QueryDataPagination;
 import com.vastdata.client.QueryDataResponseHandler;
 import com.vastdata.client.VastClient;
@@ -17,19 +19,18 @@ import com.vastdata.client.executor.VastRetryConfig;
 import com.vastdata.client.schema.EnumeratedSchema;
 import com.vastdata.client.tx.SimpleVastTransaction;
 import com.vastdata.client.tx.VastTraceToken;
+import com.vastdata.spark.adaptor.ArrowToSparkResultAdaptor;
 import com.vastdata.spark.adaptor.SparkVectorAdaptorFactory;
 import com.vastdata.spark.tx.VastSparkTransactionsManager;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.types.pojo.Schema;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -43,11 +44,12 @@ import static java.util.Objects.requireNonNull;
 
 class CommonVastColumnarBatchReader<T extends AutoCloseable>
 {
-    private static final Logger LOG = LoggerFactory.getLogger(CommonVastColumnarBatchReader.class);
-
-    private final VastClient vastClient;
+    private static final Logger LOG = LoggerFactory.getLogger(
+            CommonVastColumnarBatchReader.class);
     protected final Optional<Integer> limit;
     protected final VastSplitContext split;
+    private final VastClient vastClient;
+    private final VastConfig vastConfig;
     private final List<URI> dataEndpoints;
     private final VastRetryConfig retryConfig;
     private final QueryDataPagination pagination;
@@ -61,15 +63,17 @@ class CommonVastColumnarBatchReader<T extends AutoCloseable>
     private final Schema projectionSchema;
     private final boolean forAlter;
     private final BufferAllocator allocator;
-    private final Function<VectorSchemaRoot, T> arrowToSparkResultAdaptor;
+    private final ArrowToSparkResultAdaptor<T> arrowToSparkResultAdaptor;
     private final Function<T, Integer> batchSizeFunction;
     private final VastSparkTransactionsManager transactionsManager;
     private final boolean autoClosable;
     private final VastSchedulingInfo schedulingInfo;
-    private final Map<String, String> extraQueryParams;
-    private Optional<Integer> pageSize;
+    private final QueryDataExtraParams extraQueryParams;
+    private final String endUser;
     private final boolean enableSortedProjections;
     private final int compression;
+    private final ArrayList<Long> pageSizes = new ArrayList<>();
+    private Optional<Integer> pageSize;
     private QueryDataResponseParser parser;
     private T current;
     private long totalRows;
@@ -77,29 +81,32 @@ class CommonVastColumnarBatchReader<T extends AutoCloseable>
     private long totalIdleGetTime;
     private long totalFetchTime;
     private int emptyPages = 0;
-    private final ArrayList<Long> pageSizes = new ArrayList<>();
     private long lastAccessTime = -1;
 
-
-    CommonVastColumnarBatchReader(VastClient vastClient, Integer limit, VastSplitContext split, VastConfig config,
-            FlatBufferSerializer projectionSerializer, FlatBufferSerializer predicateSerializer,
-            SimpleVastTransaction tx, VastTraceToken token,
-            String schemaName, String tableName, EnumeratedSchema enumeratedSchema,
-            Schema projectionSchema, boolean forAlter, BufferAllocator allocator,
-            Function<VectorSchemaRoot, T> arrowToSparkResultAdaptor,
+    CommonVastColumnarBatchReader(VastClient vastClient, Integer limit,
+            VastSplitContext split, VastConfig config,
+            FlatBufferSerializer projectionSerializer,
+            FlatBufferSerializer predicateSerializer, SimpleVastTransaction tx,
+            VastTraceToken token, String schemaName, String tableName,
+            EnumeratedSchema enumeratedSchema, Schema projectionSchema,
+            boolean forAlter, BufferAllocator allocator,
+            ArrowToSparkResultAdaptor<T> arrowToSparkResultAdaptor,
             Function<T, Integer> batchSizeFunction,
-            VastSparkTransactionsManager transactionsManager, boolean autoClosable,
-            VastSchedulingInfo schedulingInfo, Map<String, String> extraQueryParams)
+            VastSparkTransactionsManager transactionsManager,
+            boolean autoClosable, VastSchedulingInfo schedulingInfo,
+            QueryDataExtraParams extraQueryParams, String endUser)
     {
         this.vastClient = vastClient;
+        this.vastConfig = config;
         this.limit = Optional.ofNullable(limit);
         this.split = split;
         dataEndpoints = config.getDataEndpoints();
-        retryConfig = new VastRetryConfig(config.getRetryMaxCount(), config.getRetrySleepDuration());
+        retryConfig = new VastRetryConfig(config.getRetryMaxCount(),
+                config.getRetrySleepDuration());
         pageSize = Optional.of(config.getQueryDataRowsPerPage());
         enableSortedProjections = config.isEnableSortedProjections();
         compression = config.getCompression();
-        pagination = new QueryDataPagination(config.getNumOfSubSplits());
+        pagination = new QueryDataPagination(split.getNumOfSubSplits());
         this.projectionSerializer = projectionSerializer;
         this.predicateSerializer = predicateSerializer;
         this.tx = tx;
@@ -116,30 +123,56 @@ class CommonVastColumnarBatchReader<T extends AutoCloseable>
         this.autoClosable = autoClosable;
         this.schedulingInfo = schedulingInfo;
         this.extraQueryParams = extraQueryParams;
-        LOG.info("{} new batch reader: {} ", token, split);
+        this.endUser = endUser;
+        LOG.debug("{} new batch reader: {}, user: {}", token, split, endUser);
+    }
+
+    public static IllegalStateException verifyBufferAllocation(
+            String traceToken, BufferAllocator allocator)
+    {
+        IllegalStateException allocationException = null;
+        long allocated = allocator.getAllocatedMemory();
+        if (allocated != 0) {
+            String msg = format("%s: %d bytes are not freed: %s", traceToken,
+                    allocated, allocator.toVerboseString());
+            LOG.error(msg);
+            allocationException = new IllegalStateException(
+                    msg); // TODO: consider disabling via config/session
+        }
+        return allocationException;
     }
 
     private void fetchNextBatch()
     {
-        final String endUser = null;
         try {
-            AtomicReference<URI> usedDataEndpoint = new AtomicReference<>(); // can be used for sending UPDATE/DELETE to the same endpoint as SELECT
-            VastDebugConfig debugConfig = new VastDebugConfig(false, false); // TODO: allow setting via config
+            VastDebugConfig debugConfig = new VastDebugConfig(false, false,
+                    false); // TODO: allow setting via config
 
-            Optional<Long> currentLimit = limit.map(value -> Math.max(0, value - totalRows));
+            Optional<Long> currentLimit = limit.map(
+                    value -> Math.max(0, value - totalRows));
             if (currentLimit.isPresent() && currentLimit.get() < pageSize.get()) {
                 pageSize = currentLimit.map(Math::toIntExact);
             }
             Optional<String> bigCatalogSearchPath = Optional.empty();
+            ShapingLoggerFactory shapingLoggerFactory = new ShapingLoggerFactory(
+                    vastConfig);
             Supplier<QueryDataResponseHandler> handlerSupplier = () -> {
-                ArrowQueryDataSchemaHelper schemaHelper = ArrowQueryDataSchemaHelper.deconstruct(token, projectionSchema, new SparkVectorAdaptorFactory());
-                parser = new QueryDataResponseParser(token, schemaHelper, debugConfig, pagination, currentLimit, allocator);
-                return new QueryDataResponseHandler(parser::parse, token);
+                ArrowQueryDataSchemaHelper schemaHelper = ArrowQueryDataSchemaHelper.deconstruct(
+                        token, projectionSchema,
+                        new SparkVectorAdaptorFactory());
+                parser = new QueryDataResponseParser(shapingLoggerFactory,
+                        token, schemaHelper, debugConfig, pagination,
+                        currentLimit, allocator);
+                return new QueryDataResponseHandler(shapingLoggerFactory,
+                        parser::parse, token);
             };
-            vastClient.queryData(
-                    tx, token, schemaName, tableName, enumeratedSchema.getSchema(),
-                    projectionSerializer, predicateSerializer, handlerSupplier, usedDataEndpoint, split, schedulingInfo, dataEndpoints,
-                    retryConfig, pageSize, bigCatalogSearchPath, pagination, enableSortedProjections, compression, extraQueryParams, endUser);
+
+            vastClient.queryData(tx, token, schemaName, tableName,
+                    enumeratedSchema.getSchema(), projectionSerializer,
+                    predicateSerializer, handlerSupplier, split, schedulingInfo,
+                    dataEndpoints, retryConfig, pageSize, bigCatalogSearchPath,
+                    pagination, enableSortedProjections, compression,
+                    extraQueryParams, endUser);
         }
         catch (Exception e) {
             throw toRuntime(e);
@@ -148,7 +181,7 @@ class CommonVastColumnarBatchReader<T extends AutoCloseable>
 
     public boolean next()
     {
-        if (lastAccessTime > 0 ) {
+        if (lastAccessTime > 0) {
             long now = System.currentTimeMillis();
             long idleFetch = now - lastAccessTime;
             LOG.debug("{} Time between get & next: {}", token, idleFetch);
@@ -165,20 +198,24 @@ class CommonVastColumnarBatchReader<T extends AutoCloseable>
                             current.close();
                         }
                         catch (Exception e) {
-                            throw new RuntimeException(format("%s Failed closing current batch", token), e);
+                            throw new RuntimeException(
+                                    format("%s Failed closing current batch",
+                                            token), e);
                         }
                         current = null;
                     }
                     AtomicLong pageSizeInBytes = new AtomicLong(0);
                     if (root.getRowCount() > 0) {
-                        root.getFieldVectors().forEach(vector -> pageSizeInBytes.addAndGet(vector.getBufferSize()));
+                        root.getFieldVectors().forEach(
+                                vector -> pageSizeInBytes.addAndGet(
+                                        vector.getBufferSize()));
                         long sizeInBytes = pageSizeInBytes.get();
                         pageSizes.add(sizeInBytes);
                     }
                     else {
                         emptyPages++;
                     }
-                    current = arrowToSparkResultAdaptor.apply(root);
+                    current = arrowToSparkResultAdaptor.adapt(root);
                     totalRows += batchSizeFunction.apply(current);
                     return true;
                 }
@@ -211,8 +248,10 @@ class CommonVastColumnarBatchReader<T extends AutoCloseable>
 
     public void close()
     {
-        LOG.info("{} close: {} totalRows={}, totalFetchTime={}, totalIdleFetchTime={}, totalIdleGetTime={}",
-                token, split, totalRows, totalFetchTime, totalIdleFetchTime, totalIdleGetTime);
+        LOG.debug(
+                "{} close: {} totalRows={}, totalFetchTime={}, totalIdleFetchTime={}, totalIdleGetTime={}",
+                token, split, totalRows, totalFetchTime, totalIdleFetchTime,
+                totalIdleGetTime);
         final String endUser = null;
         Optional<RuntimeException> toThrow = Optional.empty();
         if (autoClosable) {
@@ -220,7 +259,8 @@ class CommonVastColumnarBatchReader<T extends AutoCloseable>
                 this.transactionsManager.commit(this.tx, endUser);
             }
             catch (RuntimeException any) {
-                LOG.error(format("%s: Failed committing transaction: %s", this.token, this.tx), any);
+                LOG.error(format("%s: Failed committing transaction: %s",
+                        this.token, this.tx), any);
                 toThrow = Optional.of(any);
             }
         }
@@ -229,7 +269,8 @@ class CommonVastColumnarBatchReader<T extends AutoCloseable>
                 current.close();
             }
             catch (Exception e) {
-                throw new RuntimeException(format("%s Failed closing current batch", token), e);
+                throw new RuntimeException(
+                        format("%s Failed closing current batch", token), e);
             }
             current = null;
         }
@@ -237,9 +278,10 @@ class CommonVastColumnarBatchReader<T extends AutoCloseable>
             Streams.stream(parser).forEach(VectorSchemaRoot::close);
         }
         if (!forAlter) {
-            IllegalStateException allocationException = verifyBufferAllocation(token.toString(), allocator);
+            IllegalStateException allocationException = verifyBufferAllocation(
+                    token.toString(), allocator);
             if (allocationException != null) {
-                if (!toThrow.isPresent()) {
+                if (toThrow.isEmpty()) {
                     toThrow = Optional.of(allocationException);
                 }
                 else {
@@ -250,19 +292,6 @@ class CommonVastColumnarBatchReader<T extends AutoCloseable>
         toThrow.ifPresent(e -> {
             throw e;
         });
-    }
-
-    @Nullable
-    public static IllegalStateException verifyBufferAllocation(String traceToken, BufferAllocator allocator)
-    {
-        IllegalStateException allocationException = null;
-        long allocated = allocator.getAllocatedMemory();
-        if (allocated != 0) {
-            String msg = format("%s: %d bytes are not freed: %s", traceToken, allocated, allocator.toVerboseString());
-            LOG.error(msg);
-            allocationException = new IllegalStateException(msg); // TODO: consider disabling via config/session
-        }
-        return allocationException;
     }
 
     public long getTotalFetchTime()

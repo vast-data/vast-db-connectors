@@ -13,12 +13,16 @@ import static io.trino.spi.type.BigintType.BIGINT;
 import static org.apache.arrow.vector.types.pojo.ArrowType.ArrowTypeID.Int;
 import static org.apache.arrow.vector.types.pojo.ArrowType.Decimal;
 
-public final class ArrowTypeToTrinoRowIDTypeFunction implements Function<ArrowType, Type>
+public final class ArrowTypeToTrinoRowIDTypeFunction
+        implements Function<ArrowType, Type>
 {
     public static final ArrowTypeToTrinoRowIDTypeFunction INSTANCE = new ArrowTypeToTrinoRowIDTypeFunction();
-    private static final DecimalType DECIMAL_38_0_TYPE = DecimalType.createDecimalType(38, 0);
+    private static final DecimalType DECIMAL_38_0_TYPE = DecimalType.createDecimalType(
+            38, 0);
 
-    private ArrowTypeToTrinoRowIDTypeFunction() {}
+    private ArrowTypeToTrinoRowIDTypeFunction()
+    {
+    }
 
     @Override
     public Type apply(ArrowType arrowType)
@@ -33,6 +37,7 @@ public final class ArrowTypeToTrinoRowIDTypeFunction implements Function<ArrowTy
                 return DECIMAL_38_0_TYPE;
             }
         }
-        throw new IllegalArgumentException("Unsupported arrow type for ROW_ID field: " + arrowType);
+        throw new IllegalArgumentException(
+                "Unsupported arrow type for ROW_ID field: " + arrowType);
     }
 }

@@ -28,9 +28,13 @@ class WorkSubmitter<T>
     private final BooleanSupplier circuitBreaker;
     private final LinkedBlockingDeque<WorkExecutor<T>> workQueue;
 
-    WorkSubmitter(Supplier<Function<URI, T>> workSupplier, Predicate<T> successConsumer, BiConsumer<Throwable, URI> exceptionsHandler,
-            Consumer<WorkExecutor<T>> retryConsumer, Supplier<RetryStrategy> retryStrategySupplier,
-            BooleanSupplier circuitBreaker, LinkedBlockingDeque<WorkExecutor<T>> workQueue)
+    WorkSubmitter(Supplier<Function<URI, T>> workSupplier,
+            Predicate<T> successConsumer,
+            BiConsumer<Throwable, URI> exceptionsHandler,
+            Consumer<WorkExecutor<T>> retryConsumer,
+            Supplier<RetryStrategy> retryStrategySupplier,
+            BooleanSupplier circuitBreaker,
+            LinkedBlockingDeque<WorkExecutor<T>> workQueue)
     {
         this.workSupplier = workSupplier;
         this.successConsumer = successConsumer;
@@ -50,27 +54,36 @@ class WorkSubmitter<T>
         try {
             while ((nextWork = workSupplier.get()) != null) {
                 if (!circuitBreaker.getAsBoolean()) {
-                    LOG.info("Received signal to finish submitting work prematurely");
+                    LOG.info(
+                            "Received signal to finish submitting work prematurely");
                     return;
                 }
-                WorkExecutor<T> workExecutor = new WorkExecutor<>(nextWork, successConsumer, exceptionsHandler, retryStrategySupplier.get(), retryConsumer);
+                WorkExecutor<T> workExecutor = new WorkExecutor<>(nextWork,
+                        successConsumer, exceptionsHandler,
+                        retryStrategySupplier.get(), retryConsumer);
                 try {
-                    while (!workQueue.offer(workExecutor, 5, TimeUnit.SECONDS)) {
+                    while (!workQueue.offer(workExecutor, 5,
+                            TimeUnit.SECONDS)) {
                         LOG.debug("Work queue is full, waiting for space");
                         if (!circuitBreaker.getAsBoolean()) {
-                            LOG.info("Received signal to finish submitting work prematurely");
+                            LOG.info(
+                                    "Received signal to finish submitting work prematurely");
                             return;
                         }
                     }
                 }
                 catch (InterruptedException e) {
-                    throw new RuntimeException("Interrupted while waiting to submit next work", e);
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException(
+                            "Interrupted while waiting to submit next work", e);
                 }
                 submitted++;
             }
         }
         finally {
-            LOG.debug("Work submitting thread is exiting. Submitted %s work objects", submitted);
+            LOG.debug(
+                    "Work submitting thread is exiting. Submitted %s work objects",
+                    submitted);
         }
     }
 }

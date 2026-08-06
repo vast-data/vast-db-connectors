@@ -14,10 +14,11 @@ import java.util.function.Supplier;
 public class NDBTransactionCloser
         implements Consumer<VastTransaction>
 {
-    private VastTransactionHandleManager<SimpleVastTransaction> txManager = null;
     private final Supplier<VastTransactionHandleManager<SimpleVastTransaction>> txManagerSupplier;
+    private VastTransactionHandleManager<SimpleVastTransaction> txManager = null;
 
-    NDBTransactionCloser(Supplier<VastTransactionHandleManager<SimpleVastTransaction>> txManagerSupplier)
+    NDBTransactionCloser(
+            Supplier<VastTransactionHandleManager<SimpleVastTransaction>> txManagerSupplier)
     {
         this.txManagerSupplier = txManagerSupplier;
     }
@@ -30,8 +31,7 @@ public class NDBTransactionCloser
 
     private VastTransactionHandleManager<SimpleVastTransaction> getTxManager()
     {
-        if (txManager == null)
-        {
+        if (txManager == null) {
             initTxManager();
         }
         return txManager;
@@ -39,8 +39,7 @@ public class NDBTransactionCloser
 
     private synchronized void initTxManager()
     {
-        if (txManager == null)
-        {
+        if (txManager == null) {
             txManager = txManagerSupplier.get();
         }
     }

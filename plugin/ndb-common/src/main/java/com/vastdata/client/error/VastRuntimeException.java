@@ -5,7 +5,8 @@
 package com.vastdata.client.error;
 
 public class VastRuntimeException
-        extends RuntimeException implements VastErrorTypeSupplier
+        extends RuntimeException
+        implements VastErrorTypeSupplier
 {
     private final ErrorType errorType;
 

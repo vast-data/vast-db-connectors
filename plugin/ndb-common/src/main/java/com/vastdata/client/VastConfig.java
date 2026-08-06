@@ -11,6 +11,8 @@ import io.airlift.configuration.Config;
 import io.airlift.configuration.ConfigDescription;
 import io.airlift.configuration.ConfigSecuritySensitive;
 import io.airlift.log.Logger;
+import io.airlift.units.DataSize;
+import org.apache.commons.lang3.builder.ReflectionToStringBuilder;
 
 import javax.validation.constraints.Max;
 import javax.validation.constraints.Min;
@@ -19,19 +21,18 @@ import javax.validation.constraints.NotNull;
 
 import java.io.Serializable;
 import java.net.URI;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import static java.time.temporal.ChronoUnit.MINUTES;
+
 public class VastConfig
         implements Serializable
 {
-    private static final Logger LOG = Logger.get(VastConfig.class);
-
     public static final int MIN_SUB_SPLITS = 1;
     public static final int MAX_SUB_SPLITS = 64;
-
-    private static final Splitter SPLITTER = Splitter.on(',').trimResults().omitEmptyStrings();
     public static final String DYNAMIC_FILTER_COMPACTION_THRESHOLD = "dynamic_filter_compaction_threshold";
     public static final String DYNAMIC_FILTER_PUSHDOWN_THRESHOLD = "dynamic_filter_pushdown_threshold";
     public static final String MIN_MAX_COMPACTION_MIN_VALUES_THRESHOLD = "min_max_compaction_min_values_threshold";
@@ -42,53 +43,79 @@ public class VastConfig
     public static final int SPLIT_SIZE_MULTIPLIER_DEFAULT = 3;
     public static final int NUM_OF_SUB_SPLITS_DEFAULT = 20;
     public static final int ROW_GROUPS_PER_SUB_SPLIT_DEFAULT = 8;
+    public static final int DEFAULT_QUERY_DATA_ROWS_PER_PAGE = 128 * 1024; // should be a multiple of a row group size (2 ** 16 rows)
+    public static final int DEFAULT_RETRY_MAX_COUNT = 600;
+    public static final int DEFAULT_DYNAMIC_FILTER_MAX_VALUES_THRESHOLD = 10000;
+    public static final int DEFAULT_MAX_ROWS_PER_INSERT = (int) Math.pow(2, 19);
     // queryDataRowsPerSplit must be a multiple of (2^16 * numOfSubSplits * rowGroupsPerSubSplit)
-    public static final long QUERY_DATA_ROWS_PER_SPLIT_DEFAULT = (long) Math.pow(2, 16) * NUM_OF_SUB_SPLITS_DEFAULT * ROW_GROUPS_PER_SUB_SPLIT_DEFAULT;
-
+    public static final long QUERY_DATA_ROWS_PER_SPLIT_DEFAULT = (long) Math.pow(
+            2,
+            16) * NUM_OF_SUB_SPLITS_DEFAULT * ROW_GROUPS_PER_SUB_SPLIT_DEFAULT;
+    public static final String ENABLE_END_USER_IMPERSONATION = "enable_end_user_impersonation";
+    public static final String ENABLE_ROW_COLUMN_SECURITY = "enable_row_column_security";
+    public static final String ENABLE_ACCESS_CONTROL = "enable_access_control";
+    private static final Logger LOG = Logger.get(VastConfig.class);
+    private static final long KB = 1024L;
+    private static final long MB = 1024L * KB;
+    private static final Splitter SPLITTER = Splitter
+            .on(',')
+            .trimResults()
+            .omitEmptyStrings();
+    private final int maxColumnSize = 128 * 1024;
     private URI endpoint = URI.create("http://localhost:9090");
     private List<URI> dataEndpoints; // optional endpoints for data-related queries
     private String accessKeyId;
     private String secretAccessKey;
     private String region = "vast";
-
     private boolean enableCustomSchemaSeparator;
     private String customSchemaSeparator = "|";
-
     private int numOfSplits = 1;
     private int numOfSubSplits = NUM_OF_SUB_SPLITS_DEFAULT;
     private int rowGroupsPerSubSplit = ROW_GROUPS_PER_SUB_SPLIT_DEFAULT;
     private long queryDataRowsPerSplit = QUERY_DATA_ROWS_PER_SPLIT_DEFAULT;
+    private int queryDataRowsPerPage = DEFAULT_QUERY_DATA_ROWS_PER_PAGE; // should be a multiple of a row group size (2 ** 16 rows)
+    private int queryDataRowsPerBatch = 128 * 1024; // should be a multiple of a row group size (2 ** 16 rows)
+    private long maxRequestBodySize = 5 * MB; // must be <= Mooktze largest buffer size (see `src/plasma/execution/silo.cpp`)
+    private int insertBufferTargetRowCountPerPartitionFlush = (int) Math.pow(2,
+            16);
 
-    private int queryDataRowsPerPage = 128 * 1024; // should be a multiple of a row group size (2 ** 16 rows)
-    private int maxColumnSize = 128 * 1024;
-    private long maxRequestBodySize = 5 * 1024 * 1024; // must be <= Mooktze largest buffer size (see `src/plasma/execution/silo.cpp`)
-    private long advisoryPartitionSize = 256 *1024 * 1024;
+    private long bufferingBufferSizeSoftLimitInBytes = DataSize
+            .valueOf("100MB")
+            .toBytes();
+
+    private int bufferingBufferOpenVsrTargetRowCount = (int) Math.pow(2, 12);
+    private int bufferingBufferOpenVsrRowCountPreallocation = (int) Math.pow(2,
+            12);
+
+    private long advisoryPartitionSize = 256 * MB;
     private boolean adaptivePartitioning = true;
     private int splitSizeMultiplier = SPLIT_SIZE_MULTIPLIER_DEFAULT;
 
-    private int retryMaxCount = 600; // 10 minutes of retries in case we can't connect to VAST
+    private int retryMaxCount = DEFAULT_RETRY_MAX_COUNT; // 10 minutes of retries in case we can't connect to VAST
     private int retrySleepDuration = 1000;
     private boolean parallelImport = true;
     private int dynamicFilteringWaitTimeout = 2 * 1000;
+    private int dynamicFilteringWaitTimeoutFactor = 2;
 
     private int dynamicFilterCompactionThreshold = 1000;
     private int dynamicFilterPushdownThreshold = 99;
     private int dynamicFilterElysiumCompactionMultiplier = 10;
-    private int dynamicFilterMaxValuesThreshold = 10000;
+    private int dynamicFilterMaxValuesThreshold = DEFAULT_DYNAMIC_FILTER_MAX_VALUES_THRESHOLD;
     private int minMaxCompactionMinValuesThreshold = 15;
 
     private String engineVersion = "NA";
 
     private boolean enablePredicatePushdown = true;
     private boolean matchSubstringPushdown = true;
-    private boolean complexPredicatePushdown = false;
-    private boolean expressionProjectionPushdown = false;
+    private boolean complexPredicatePushdown;
+    private boolean expressionProjectionPushdown;
     private boolean enableSortedProjections = true;
-    private boolean onlyOrderedPushdown = false;
+    private boolean reportPartitioning; // Spark only
+    private boolean onlyOrderedPushdown;
 
-    private int maxRowCountPerInsert = Integer.MAX_VALUE;
-    private int maxRowCountPerUpdate = 2048;
-    private int maxRowCountPerDelete = 2048;
+    private int maxRowCountPerInsert = DEFAULT_MAX_ROWS_PER_INSERT;
+    private int maxRowCountPerUpdate = 64 * 1024;
+    private int maxRowCountPerDelete = 64 * 1024;
 
     private int importChunkLimit = EvenSizeWithLimitChunkifier.CHUNK_SIZE_LIMIT;
 
@@ -96,15 +123,46 @@ public class VastConfig
     private boolean keepFilterAfterPushdown = true;
     private boolean vastTransactionKeepAliveEnabled = TX_KEEP_ALIVE_ENABLED_DEFAULT;
     private int vastTransactionKeepAliveIntervalSeconds = TX_KEEP_ALIVE_INTERVAL_DEFAULT;
-    private boolean estimateSplitsFromRowIdPredicate = false;
+    private boolean estimateSplitsFromRowIdPredicate;
     private boolean estimateSplitsFromElysium = true;
+    private int minRowsForPartitionSplitEstimation = 1000000;
 
-    private Long seedForShufflingEndpoints = null;
+    private Long seedForShufflingEndpoints;
     private boolean useColumnHistogram = true; // Relevant for spark only
 
-    private int compression = 0;
+    private int compression;
     private int compressionMinSavings = 30;
     private int compressionLevel = 1;
+
+    private boolean enableAccessControl;
+    private boolean enableRowColumnSecurity;
+    private boolean enableEndUserImpersonation;
+    private boolean partitionedInsert = true;
+
+    private int maxInsertBuckets = 1000;
+
+    private boolean enableZeroRowsOptimization;
+    private boolean enablePrefillOptimization;
+    private boolean enableServerStatsCollection;
+
+    private long insertPartitionSize = 4 * 1024 * 1024;
+    private boolean insertExactPartitioning = true;
+
+    private int shapingLoggerThreshold;
+    private Duration shapingLoggerDuration = Duration.of(1, MINUTES);
+    private int shapingLoggerNumberOfSamples = 3;
+
+    private int nodeIoExecutorNumThreads = 64;
+    private int bufferedInserterMaxWritePermits = 64;
+    private int bufferedInserterMaxJobPermits = 32;
+
+    private long memoryLimiterMaxAllowed = DataSize.valueOf("100TB").toBytes(); // using 100TB which is actually limitless
+    private Duration memoryLimiterHangingValidationInterval = Duration.of(1, MINUTES);
+    private Duration memoryLimiterHangingReleasePeriod = Duration.of(1, MINUTES);
+    private int memoryLimitMaxNumRunnerFactor = 5;
+    private boolean enableMemoryLimit = true;
+
+    private Duration metricDumperInterval = Duration.of(15, MINUTES);
 
     public VastConfig()
     {
@@ -124,13 +182,18 @@ public class VastConfig
 
     public List<URI> getDataEndpoints()
     {
-        return Optional.ofNullable(dataEndpoints).orElse(ImmutableList.of(endpoint));
+        return Optional
+                .ofNullable(dataEndpoints)
+                .orElse(ImmutableList.of(endpoint));
     }
 
     @Config("data_endpoints")
     public VastConfig setDataEndpoints(String dataEndpoints)
     {
-        this.dataEndpoints = SPLITTER.splitToStream(dataEndpoints).map(URI::create).collect(Collectors.toList());
+        this.dataEndpoints = SPLITTER
+                .splitToStream(dataEndpoints)
+                .map(URI::create)
+                .collect(Collectors.toList());
         return this;
     }
 
@@ -140,12 +203,12 @@ public class VastConfig
     }
 
     @Config("enable_custom_schema_separator")
-    public VastConfig setEnableCustomSchemaSeparator(boolean enableCustomSchemaSeparator)
+    public VastConfig setEnableCustomSchemaSeparator(
+            boolean enableCustomSchemaSeparator)
     {
         this.enableCustomSchemaSeparator = enableCustomSchemaSeparator;
         return this;
     }
-
 
     @NotEmpty
     public String getCustomSchemaSeparator()
@@ -268,21 +331,74 @@ public class VastConfig
         return maxRequestBodySize;
     }
 
-    public long getMaxColumnSize()
-    {
-        return maxColumnSize;
-    }
-
-    @Config(("max_request_body_size"))
+    @Config("max_request_body_size")
     public VastConfig setMaxRequestBodySize(long maxRequestBodySize)
     {
         this.maxRequestBodySize = maxRequestBodySize;
         return this;
     }
 
+    public DataSize getBufferingBufferSizeSoftLimit()
+    {
+        return DataSize.succinctBytes(bufferingBufferSizeSoftLimitInBytes);
+    }
+
+    @Config("write-buffering.soft-limit")
+    public VastConfig setBufferingBufferSizeSoftLimit(DataSize value)
+    {
+        this.bufferingBufferSizeSoftLimitInBytes = value.toBytes();
+        return this;
+    }
+
+    public long getBufferingBufferSizeSoftLimitInBytes()
+    {
+        return bufferingBufferSizeSoftLimitInBytes;
+    }
+
+    public int getBufferingBufferOpenVsrTargetRowCount()
+    {
+        return bufferingBufferOpenVsrTargetRowCount;
+    }
+
+    @Config("write-buffering.open-vsr-target-row-count")
+    public VastConfig setBufferingBufferOpenVsrTargetRowCount(int value)
+    {
+        this.bufferingBufferOpenVsrTargetRowCount = value;
+        return this;
+    }
+
+    public int getBufferingBufferOpenVsrRowCountPreallocation()
+    {
+        return bufferingBufferOpenVsrRowCountPreallocation;
+    }
+
+    @Config("write-buffering.open-vsr-row-count-preallocation")
+    public VastConfig setBufferingBufferOpenVsrRowCountPreallocation(int value)
+    {
+        this.bufferingBufferOpenVsrRowCountPreallocation = value;
+        return this;
+    }
+
+    public int getInsertBufferTargetRowCountPerPartitionFlush()
+    {
+        return insertBufferTargetRowCountPerPartitionFlush;
+    }
+
+    @Config("write-buffering.partition-flush-target-row-count")
+    public VastConfig setInsertBufferTargetRowCountPerPartitionFlush(int value)
+    {
+        this.insertBufferTargetRowCountPerPartitionFlush = value;
+        return this;
+    }
+
+    public long getMaxColumnSize()
+    {
+        return maxColumnSize;
+    }
+
     public long getAdvisoryPartitionSize()
     {
-        return this.adaptivePartitioning? this.advisoryPartitionSize : -1;
+        return this.adaptivePartitioning ? this.advisoryPartitionSize : -1;
     }
 
     @Config("advisory_partition_size")
@@ -306,7 +422,7 @@ public class VastConfig
 
     public int getSplitSizeMultiplier()
     {
-        return this.adaptivePartitioning? this.splitSizeMultiplier : 1;
+        return this.adaptivePartitioning ? this.splitSizeMultiplier : 1;
     }
 
     @Config("split_size_multiplier")
@@ -347,6 +463,13 @@ public class VastConfig
         return parallelImport;
     }
 
+    @Config("parallel_import")
+    public VastConfig setParallelImport(boolean parallelImport)
+    {
+        this.parallelImport = parallelImport;
+        return this;
+    }
+
     @NotNull
     public int getDynamicFilteringWaitTimeout()
     {
@@ -354,17 +477,28 @@ public class VastConfig
     }
 
     @Config("dynamic_filtering_wait_timeout")
-    @ConfigDescription("Duration to wait for completion of dynamic filters during split generation")
-    public VastConfig setDynamicFilteringWaitTimeout(int dynamicFilteringWaitTimeout)
+    @ConfigDescription(
+            "Duration to wait for completion of dynamic filters during split generation")
+    public VastConfig setDynamicFilteringWaitTimeout(
+            int dynamicFilteringWaitTimeout)
     {
         this.dynamicFilteringWaitTimeout = dynamicFilteringWaitTimeout;
         return this;
     }
 
-    @Config("parallel_import")
-    public VastConfig setParallelImport(boolean parallelImport)
+    @NotNull
+    @ConfigDescription(
+            "Factor to multiply dynamic filtering wait timeout per sorted / partition column")
+    public int getDynamicFilteringWaitTimeoutFactor()
     {
-        this.parallelImport = parallelImport;
+        return dynamicFilteringWaitTimeoutFactor;
+    }
+
+    @Config("dynamic_filtering_wait_timeout_factor")
+    public VastConfig setDynamicFilteringWaitTimeoutFactor(
+            int dynamicFilteringWaitTimeoutFactor)
+    {
+        this.dynamicFilteringWaitTimeoutFactor = dynamicFilteringWaitTimeoutFactor;
         return this;
     }
 
@@ -374,7 +508,8 @@ public class VastConfig
     }
 
     @Config(DYNAMIC_FILTER_COMPACTION_THRESHOLD)
-    public VastConfig setDynamicFilterCompactionThreshold(int dynamicFilterCompactionThreshold)
+    public VastConfig setDynamicFilterCompactionThreshold(
+            int dynamicFilterCompactionThreshold)
     {
         this.dynamicFilterCompactionThreshold = dynamicFilterCompactionThreshold;
         return this;
@@ -386,9 +521,13 @@ public class VastConfig
     }
 
     @Config("dynamic_filter_elysium_compaction_multiplier")
-    public VastConfig setDynamicFilterElysiumCompactionMultiplier(int dynamicFilterElysiumCompactionMultiplier)
+    public VastConfig setDynamicFilterElysiumCompactionMultiplier(
+            int dynamicFilterElysiumCompactionMultiplier)
     {
-        this.dynamicFilterElysiumCompactionMultiplier = dynamicFilterElysiumCompactionMultiplier > 0? dynamicFilterElysiumCompactionMultiplier : 0;
+        this.dynamicFilterElysiumCompactionMultiplier =
+                dynamicFilterElysiumCompactionMultiplier > 0 ?
+                        dynamicFilterElysiumCompactionMultiplier :
+                        0;
         return this;
     }
 
@@ -398,7 +537,8 @@ public class VastConfig
     }
 
     @Config(DYNAMIC_FILTER_PUSHDOWN_THRESHOLD)
-    public VastConfig setDynamicFilterPushdownThreshold(int dynamicFilterPushdownThreshold)
+    public VastConfig setDynamicFilterPushdownThreshold(
+            int dynamicFilterPushdownThreshold)
     {
         this.dynamicFilterPushdownThreshold = dynamicFilterPushdownThreshold;
         return this;
@@ -410,7 +550,8 @@ public class VastConfig
     }
 
     @Config(MIN_MAX_COMPACTION_MIN_VALUES_THRESHOLD)
-    public VastConfig setMinMaxCompactionMinValuesThreshold(int minMaxCompactionMinValuesThreshold)
+    public VastConfig setMinMaxCompactionMinValuesThreshold(
+            int minMaxCompactionMinValuesThreshold)
     {
         this.minMaxCompactionMinValuesThreshold = minMaxCompactionMinValuesThreshold;
         return this;
@@ -422,7 +563,8 @@ public class VastConfig
     }
 
     @Config("dynamic_filter_max_values_threshold")
-    public VastConfig setDynamicFilterMaxValuesThreshold(int dynamicFilterMaxValuesThreshold)
+    public VastConfig setDynamicFilterMaxValuesThreshold(
+            int dynamicFilterMaxValuesThreshold)
     {
         this.dynamicFilterMaxValuesThreshold = dynamicFilterMaxValuesThreshold;
         return this;
@@ -433,6 +575,7 @@ public class VastConfig
         return engineVersion;
     }
 
+    @Config("engine_version")
     public VastConfig setEngineVersion(String engineVersion)
     {
         this.engineVersion = engineVersion;
@@ -445,7 +588,8 @@ public class VastConfig
     }
 
     @Config("enable_predicate_pushdown")
-    public VastConfig setPredicatePushdownEnabled(boolean enablePredicatePushdown)
+    public VastConfig setPredicatePushdownEnabled(
+            boolean enablePredicatePushdown)
     {
         this.enablePredicatePushdown = enablePredicatePushdown;
         return this;
@@ -469,7 +613,8 @@ public class VastConfig
     }
 
     @Config("complex_predicate_pushdown")
-    public VastConfig setComplexPredicatePushdown(boolean complexPredicatePushdown)
+    public VastConfig setComplexPredicatePushdown(
+            boolean complexPredicatePushdown)
     {
         this.complexPredicatePushdown = complexPredicatePushdown;
         return this;
@@ -481,7 +626,8 @@ public class VastConfig
     }
 
     @Config("expression_projection_pushdown")
-    public VastConfig setExpressionProjectionPushdown(boolean expressionProjectionPushdown)
+    public VastConfig setExpressionProjectionPushdown(
+            boolean expressionProjectionPushdown)
     {
         this.expressionProjectionPushdown = expressionProjectionPushdown;
         return this;
@@ -493,9 +639,22 @@ public class VastConfig
     }
 
     @Config("enable_sorted_projections")
-    public VastConfig setEnableSortedProjections(boolean enableSortedProjections)
+    public VastConfig setEnableSortedProjections(
+            boolean enableSortedProjections)
     {
         this.enableSortedProjections = enableSortedProjections;
+        return this;
+    }
+
+    public boolean isReportPartitioning()
+    {
+        return reportPartitioning;
+    }
+
+    @Config("report_partitioning")
+    public VastConfig setReportPartitioning(boolean reportPartitioning)
+    {
+        this.reportPartitioning = reportPartitioning;
         return this;
     }
 
@@ -564,10 +723,14 @@ public class VastConfig
     }
 
     @Min(1000)
-    public long getMaxStatisticsFilesSupportedPerSession() {return maxStatisticsFilesSupportedPerSession;}
+    public long getMaxStatisticsFilesSupportedPerSession()
+    {
+        return maxStatisticsFilesSupportedPerSession;
+    }
 
     @Config("max_statistics_files_supported_per_session")
-    public VastConfig setMaxStatisticsFilesSupportedPerSession(long maxStatisticsFilesSupportedPerSession)
+    public VastConfig setMaxStatisticsFilesSupportedPerSession(
+            long maxStatisticsFilesSupportedPerSession)
     {
         this.maxStatisticsFilesSupportedPerSession = maxStatisticsFilesSupportedPerSession;
         return this;
@@ -579,7 +742,8 @@ public class VastConfig
     }
 
     @Config("keep_filter_after_pushdown")
-    public VastConfig setKeepFilterAfterPushdown(boolean keepFilterAfterPushdown)
+    public VastConfig setKeepFilterAfterPushdown(
+            boolean keepFilterAfterPushdown)
     {
         this.keepFilterAfterPushdown = keepFilterAfterPushdown;
         return this;
@@ -591,7 +755,8 @@ public class VastConfig
     }
 
     @Config("vast_transaction_keep_alive_enabled")
-    public VastConfig setVastTransactionKeepAliveEnabled(boolean vastTransactionKeepAliveEnabled)
+    public VastConfig setVastTransactionKeepAliveEnabled(
+            boolean vastTransactionKeepAliveEnabled)
     {
         this.vastTransactionKeepAliveEnabled = vastTransactionKeepAliveEnabled;
         return this;
@@ -603,7 +768,8 @@ public class VastConfig
     }
 
     @Config("vast_transaction_keep_alive_interval_seconds")
-    public VastConfig setVastTransactionKeepAliveIntervalSeconds(int vastTransactionKeepAliveIntervalSeconds)
+    public VastConfig setVastTransactionKeepAliveIntervalSeconds(
+            int vastTransactionKeepAliveIntervalSeconds)
     {
         this.vastTransactionKeepAliveIntervalSeconds = vastTransactionKeepAliveIntervalSeconds;
         return this;
@@ -615,9 +781,23 @@ public class VastConfig
     }
 
     @Config("estimate_splits_from_elysium")
-    public VastConfig setEstimateSplitsFromElysium(boolean estimateSplitsFromElysium)
+    public VastConfig setEstimateSplitsFromElysium(
+            boolean estimateSplitsFromElysium)
     {
         this.estimateSplitsFromElysium = estimateSplitsFromElysium;
+        return this;
+    }
+
+    public int getMinRowsForPartitionSplitEstimation()
+    {
+        return minRowsForPartitionSplitEstimation;
+    }
+
+    @Config("min_rows_for_partition_split_estimation")
+    public VastConfig setMinRowsForPartitionSplitEstimation(
+            int minRowsForPartitionSplitEstimation)
+    {
+        this.minRowsForPartitionSplitEstimation = minRowsForPartitionSplitEstimation;
         return this;
     }
 
@@ -627,7 +807,8 @@ public class VastConfig
     }
 
     @Config("estimate_splits_from_row_id_predicate")
-    public VastConfig setEstimateSplitsFromRowIdPredicate(boolean estimateSplitsFromRowIdPredicate)
+    public VastConfig setEstimateSplitsFromRowIdPredicate(
+            boolean estimateSplitsFromRowIdPredicate)
     {
         this.estimateSplitsFromRowIdPredicate = estimateSplitsFromRowIdPredicate;
         return this;
@@ -659,7 +840,7 @@ public class VastConfig
 
     public int getCompression()
     {
-	return this.compression;
+        return this.compression;
     }
 
     @Config("compression")
@@ -676,7 +857,7 @@ public class VastConfig
 
     public int getCompressionMinSavings()
     {
-	return this.compressionMinSavings;
+        return this.compressionMinSavings;
     }
 
     @Config("compression_min_savings")
@@ -685,14 +866,15 @@ public class VastConfig
         if (savings > 99) {
             this.compressionMinSavings = 99;
         }
-        else
+        else {
             this.compressionMinSavings = Math.max(savings, 1);
+        }
         return this;
     }
 
     public int getCompressionLevel()
     {
-	return this.compressionLevel;
+        return this.compressionLevel;
     }
 
     @Config("compression_level")
@@ -702,52 +884,301 @@ public class VastConfig
         return this;
     }
 
+    public boolean getEnableAccessControl()
+    {
+        return enableAccessControl;
+    }
+
+    @Config(ENABLE_ACCESS_CONTROL)
+    public VastConfig setEnableAccessControl(final boolean enableAccessControl)
+    {
+        this.enableAccessControl = enableAccessControl;
+        return this;
+    }
+
+    public boolean getEnableRowColumnSecurity()
+    {
+        return enableRowColumnSecurity;
+    }
+
+    @Config(ENABLE_ROW_COLUMN_SECURITY)
+    public VastConfig setEnableRowColumnSecurity(
+            final boolean enableRowColumnSecurity)
+    {
+        this.enableRowColumnSecurity = enableRowColumnSecurity;
+        return this;
+    }
+
+    public boolean getEnableEndUserImpersonation()
+    {
+        return enableEndUserImpersonation;
+    }
+
+    @Config(ENABLE_END_USER_IMPERSONATION)
+    public VastConfig setEnableEndUserImpersonation(
+            final boolean enableEndUserImpersonation)
+    {
+        this.enableEndUserImpersonation = enableEndUserImpersonation;
+        return this;
+    }
+
+    public boolean isRowColumnSecurityEnabled()
+    {
+        if (enableRowColumnSecurity && !enableAccessControl) {
+            LOG.warn(
+                    "Skipping row-column-security because vast-security-control is disabled");
+        }
+        return enableAccessControl && enableRowColumnSecurity;
+    }
+
+    public boolean isEndUserImpersonationEnabled()
+    {
+        if (enableEndUserImpersonation && !enableAccessControl) {
+            LOG.warn(
+                    "Skipping end-user-impersonation because vast-security-control is disabled");
+        }
+        return enableAccessControl && enableEndUserImpersonation;
+    }
+
+    public boolean getPartitionedInsert()
+    {
+        return this.partitionedInsert;
+    }
+
+    @Config("partitioned_insert")
+    public VastConfig setPartitionedInsert(boolean enabled)
+    {
+        this.partitionedInsert = enabled;
+        return this;
+    }
+
+    public int getMaxInsertBuckets()
+    {
+        return this.maxInsertBuckets;
+    }
+
+    @Config("max_insert_buckets")
+    public VastConfig setMaxInsertBuckets(int maxInsertBuckets)
+    {
+        this.maxInsertBuckets = maxInsertBuckets;
+        return this;
+    }
+
+    public long getInsertPartitionSize()
+    {
+        return this.insertPartitionSize;
+    }
+
+    @Config("insert_partition_size")
+    public VastConfig setInsertPartitionSize(long insertPartitionSize)
+    {
+        this.insertPartitionSize = insertPartitionSize;
+        return this;
+    }
+
+    public boolean getInsertExactPartitioning()
+    {
+        return this.insertExactPartitioning;
+    }
+
+    @Config("insert_exact_partitioning")
+    public VastConfig setInsertExactPartitioning(
+            boolean insertExactPartitioning)
+    {
+        this.insertExactPartitioning = insertExactPartitioning;
+        return this;
+    }
+
+    public boolean isEnableZeroRowsOptimization()
+    {
+        return enableZeroRowsOptimization;
+    }
+
+    @Config("enable_zero_rows_optimization")
+    public VastConfig setEnableZeroRowsOptimization(
+            boolean enableZeroRowsOptimization)
+    {
+        this.enableZeroRowsOptimization = enableZeroRowsOptimization;
+        return this;
+    }
+
+    public boolean isEnablePrefillOptimization()
+    {
+        return enablePrefillOptimization;
+    }
+
+    @Config("enable_prefill_optimization")
+    public VastConfig setEnablePrefillOptimization(
+            boolean enablePrefillOptimization)
+    {
+        this.enablePrefillOptimization = enablePrefillOptimization;
+        return this;
+    }
+
+    public boolean isEnableServerStatsCollection()
+    {
+        return enableServerStatsCollection;
+    }
+
+    @Config("enable_server_stats_collection")
+    public VastConfig setEnableServerStatsCollection(
+            boolean enableServerStatsCollection)
+    {
+        this.enableServerStatsCollection = enableServerStatsCollection;
+        return this;
+    }
+
+    public int getShapingLoggerThreshold()
+    {
+        return shapingLoggerThreshold;
+    }
+
+    @Config("shaping_logger_threshold")
+    public VastConfig setShapingLoggerThreshold(int shapingLoggerThreshold)
+    {
+        this.shapingLoggerThreshold = shapingLoggerThreshold;
+        return this;
+    }
+
+    public Duration getShapingLoggerDuration()
+    {
+        return shapingLoggerDuration;
+    }
+
+    @Config("shaping_logger_duration")
+    public VastConfig setShapingLoggerDuration(io.airlift.units.Duration value)
+    {
+        this.shapingLoggerDuration = Duration.ofMillis(value.toMillis());
+        return this;
+    }
+
+    public int getShapingLoggerNumberOfSamples()
+    {
+        return shapingLoggerNumberOfSamples;
+    }
+
+    @Config("shaping_logger_number_of_samples")
+    public VastConfig setShapingLoggerNumberOfSamples(
+            int shapingLoggerNumberOfSamples)
+    {
+        this.shapingLoggerNumberOfSamples = shapingLoggerNumberOfSamples;
+        return this;
+    }
+
+    public int getNodeIoExecutorNumThreads()
+    {
+        return nodeIoExecutorNumThreads;
+    }
+
+    @Config("node.io-executor.num-threads")
+    @ConfigDescription("Number of threads in the IO executor pool")
+    public VastConfig setNodeIoExecutorNumThreads(int nThreads)
+    {
+        this.nodeIoExecutorNumThreads = nThreads;
+        return this;
+    }
+
+    public int getBufferedInserterMaxWritePermits()
+    {
+        return bufferedInserterMaxWritePermits;
+    }
+
+    @Config("write-buffering.max-write-permits")
+    @ConfigDescription("Max in-flight writes per buffered inserter")
+    public VastConfig setBufferedInserterMaxWritePermits(int nPermits)
+    {
+        this.bufferedInserterMaxWritePermits = nPermits;
+        return this;
+    }
+
+    public int getBufferedInserterMaxJobPermits()
+    {
+        return bufferedInserterMaxJobPermits;
+    }
+
+    @Config("write-buffering.max-job-permits")
+    @ConfigDescription("Max in-flight jobs per buffered inserter")
+    public VastConfig setBufferedInserterMaxJobPermits(int nPermits)
+    {
+        this.bufferedInserterMaxJobPermits = nPermits;
+        return this;
+    }
+
+    public DataSize getMemoryLimiterMaxAllowed()
+    {
+        return DataSize.succinctBytes(memoryLimiterMaxAllowed);
+    }
+
+    @Config("memory_limiter_max_allowed")
+    public VastConfig setMemoryLimiterMaxAllowed(DataSize memoryLimiterMaxAllowed)
+    {
+        this.memoryLimiterMaxAllowed = memoryLimiterMaxAllowed.toBytes();
+        return this;
+    }
+
+    public Duration getMemoryLimiterHangingValidationInterval()
+    {
+        return memoryLimiterHangingValidationInterval;
+    }
+
+    @Config("memory_limiter_hanging_validation_interval")
+    public VastConfig setMemoryLimiterHangingValidationInterval(io.airlift.units.Duration memoryLimiterHangingValidationInterval)
+    {
+        this.memoryLimiterHangingValidationInterval = Duration.ofMillis(memoryLimiterHangingValidationInterval.toMillis());
+        return this;
+    }
+
+    public Duration getMemoryLimiterHangingReleasePeriod()
+    {
+        return memoryLimiterHangingReleasePeriod;
+    }
+
+    @Config("memory_limiter_hanging_release_period")
+    public VastConfig setMemoryLimiterHangingReleasePeriod(io.airlift.units.Duration memoryLimiterHangingReleasePeriod)
+    {
+        this.memoryLimiterHangingReleasePeriod = Duration.ofMillis(memoryLimiterHangingReleasePeriod.toMillis());
+        return this;
+    }
+
+    public boolean getEnableMemoryLimit()
+    {
+        return enableMemoryLimit;
+    }
+
+    @Config("memory_limit_enabled")
+    public VastConfig setEnableMemoryLimit(boolean enableMemoryLimit)
+    {
+        this.enableMemoryLimit = enableMemoryLimit;
+        return this;
+    }
+
+    public int getMemoryLimitMaxNumRunnerFactor()
+    {
+        return memoryLimitMaxNumRunnerFactor;
+    }
+
+    @Config("memory_limit_max_num_runner_factor")
+    public VastConfig setMemoryLimitMaxNumRunnerFactor(int memoryLimitMaxNumRunnerFactor)
+    {
+        this.memoryLimitMaxNumRunnerFactor = memoryLimitMaxNumRunnerFactor;
+        return this;
+    }
+
+    public Duration getMetricDumperInterval()
+    {
+        return metricDumperInterval;
+    }
+
+    @Config("metric_dumper_interval")
+    public VastConfig setMetricDumperInterval(io.airlift.units.Duration metricDumperInterval)
+    {
+        this.metricDumperInterval = Duration.ofMillis(metricDumperInterval.toMillis());
+        return this;
+    }
+
     @Override
     public String toString()
     {
-        return "VastConfig{" +
-                "endpoint=" + endpoint +
-                ", dataEndpoints=" + dataEndpoints +
-                ", accessKeyId='" + accessKeyId + '\'' +
-                ", secretAccessKey='" + secretAccessKey + '\'' +
-                ", region='" + region + '\'' +
-                ", enableCustomSchemaSeparator=" + enableCustomSchemaSeparator +
-                ", customSchemaSeparator='" + customSchemaSeparator + '\'' +
-                ", numOfSplits=" + numOfSplits +
-                ", numOfSubSplits=" + numOfSubSplits +
-                ", rowGroupsPerSubSplit=" + rowGroupsPerSubSplit +
-                ", queryDataRowsPerSplit=" + queryDataRowsPerSplit +
-                ", queryDataRowsPerPage=" + queryDataRowsPerPage +
-                ", maxRequestBodySize=" + maxRequestBodySize +
-                ", advisoryPartitionSize=" + advisoryPartitionSize +
-                ", adaptivePartitioning=" + adaptivePartitioning +
-                ", retryMaxCount=" + retryMaxCount +
-                ", retrySleepDuration=" + retrySleepDuration +
-                ", parallelImport=" + parallelImport +
-                ", dynamicFilteringWaitTimeout=" + dynamicFilteringWaitTimeout +
-                ", dynamicFilterCompactionThreshold=" + dynamicFilterCompactionThreshold +
-                ", dynamicFilterMaxValuesThreshold=" + dynamicFilterMaxValuesThreshold +
-                ", minMaxCompactionMinValuesThreshold=" + minMaxCompactionMinValuesThreshold +
-                ", engineVersion='" + engineVersion + '\'' +
-                ", enablePredicatePushdown=" + enablePredicatePushdown +
-                ", matchSubstringPushdown=" + matchSubstringPushdown +
-                ", complexPredicatePushdown=" + complexPredicatePushdown +
-                ", expressionProjectionPushdown=" + expressionProjectionPushdown +
-                ", enableSortedProjections=" + enableSortedProjections +
-                ", maxRowCountPerInsert=" + maxRowCountPerInsert +
-                ", maxRowCountPerUpdate=" + maxRowCountPerUpdate +
-                ", maxRowCountPerDelete=" + maxRowCountPerDelete +
-                ", importChunkLimit=" + importChunkLimit +
-                ", maxStatisticsFilesSupportedPerSession=" + maxStatisticsFilesSupportedPerSession +
-                ", keepFilterAfterPushdown=" + keepFilterAfterPushdown +
-                ", vastTransactionKeepAliveEnabled=" + vastTransactionKeepAliveEnabled +
-                ", vastTransactionKeepAliveIntervalSeconds=" + vastTransactionKeepAliveIntervalSeconds +
-                ", estimateSplitsFromRowIdPredicate=" + estimateSplitsFromRowIdPredicate +
-                ", seedForShufflingEndpoints=" + seedForShufflingEndpoints +
-                ", useColumnHistogram=" + useColumnHistogram +
-                ", compression=" + compression +
-                ", compressionMinSavings=" + compressionMinSavings +
-                ", compressionLevel=" + compressionLevel +
-                '}';
+        return ReflectionToStringBuilder.toString(this);
     }
 }

@@ -34,32 +34,45 @@ public class TestPushdown
     public void testParseSubstringMatch()
     {
         Variable variable = new Variable("i", VARCHAR);
-        VastColumnHandle column = VastColumnHandle.fromField(Field.nullable(variable.getName(), ArrowType.Utf8.INSTANCE));
-        Map<String, ColumnHandle> assignments = Map.of(variable.getName(), column);
+        VastColumnHandle column = VastColumnHandle.fromField(
+                Field.nullable(variable.getName(), ArrowType.Utf8.INSTANCE));
+        Map<String, ColumnHandle> assignments = Map.of(variable.getName(),
+                column);
 
         ConnectorExpression expr = Constant.TRUE;
-        assertThat(tryParseSubstringMatch(expr, Set.of(), assignments)).isEqualTo(Optional.empty());
+        assertThat(
+                tryParseSubstringMatch(expr, Set.of(), assignments)).isEqualTo(
+                Optional.empty());
 
         // no support for `IS NULL` expression
         expr = new Call(BOOLEAN, IS_NULL_FUNCTION_NAME, List.of(variable));
-        assertThat(tryParseSubstringMatch(expr, Set.of(), assignments)).isEqualTo(Optional.empty());
+        assertThat(
+                tryParseSubstringMatch(expr, Set.of(), assignments)).isEqualTo(
+                Optional.empty());
 
         // no support for escaped LIKE expression
-        expr = new Call(BOOLEAN, LIKE_FUNCTION_NAME, List.of(variable, constant("%123%"), constant("#")));
-        assertThat(tryParseSubstringMatch(expr, Set.of(), assignments)).isEqualTo(Optional.empty());
+        expr = new Call(BOOLEAN, LIKE_FUNCTION_NAME,
+                List.of(variable, constant("%123%"), constant("#")));
+        assertThat(
+                tryParseSubstringMatch(expr, Set.of(), assignments)).isEqualTo(
+                Optional.empty());
 
         // substring LIKE expression
-        expr = new Call(BOOLEAN, LIKE_FUNCTION_NAME, List.of(variable, constant("%123%")));
+        expr = new Call(BOOLEAN, LIKE_FUNCTION_NAME,
+                List.of(variable, constant("%123%")));
         VastSubstringMatch match = new VastSubstringMatch(column, "123");
-        assertThat(tryParseSubstringMatch(expr, Set.of(), assignments)).isEqualTo(Optional.of(match));
-        assertThat(tryParseSubstringMatch(expr, Set.of("another"), assignments)).isEqualTo(Optional.of(match));
-        assertThat(tryParseSubstringMatch(expr, Set.of(variable.getName()), assignments)).isEqualTo(Optional.empty());
+        assertThat(
+                tryParseSubstringMatch(expr, Set.of(), assignments)).isEqualTo(
+                Optional.of(match));
+        assertThat(tryParseSubstringMatch(expr, Set.of("another"),
+                assignments)).isEqualTo(Optional.of(match));
+        assertThat(tryParseSubstringMatch(expr, Set.of(variable.getName()),
+                assignments)).isEqualTo(Optional.empty());
     }
 
     public static Object[][] unsupportedPatterns()
     {
-        return new Object[][] {
-                {"%123"},
+        return new Object[][] {{"%123"},
                 {"123%"},
                 {"%1\\2\\3%"},
                 {"%%"},
@@ -67,8 +80,7 @@ public class TestPushdown
                 {"%"},
                 {""},
                 {"%12%34%"},
-                {"%12_34%"},
-        };
+                {"%12_34%"}};
     }
 
     @ParameterizedTest
@@ -76,9 +88,10 @@ public class TestPushdown
     public void testParseUnsupportedPatterns(String pattern)
     {
         Variable variable = new Variable("i", VARCHAR);
-        Call expr = new Call(BOOLEAN, LIKE_FUNCTION_NAME, List.of(
-                variable, constant(pattern)));
-        assertThat(tryParseSubstringMatch(expr, Set.of(), Map.of())).isEqualTo(Optional.empty());
+        Call expr = new Call(BOOLEAN, LIKE_FUNCTION_NAME,
+                List.of(variable, constant(pattern)));
+        assertThat(tryParseSubstringMatch(expr, Set.of(), Map.of())).isEqualTo(
+                Optional.empty());
     }
 
     private static Constant constant(String value)

@@ -15,13 +15,19 @@ import static ndb.NDBParser.EMPTY_LOGICAL_PLAN_SEQ;
 public class RenameNDBViewPlan
         extends LogicalPlan
 {
-    private Seq<LogicalPlan> children;
     final RenameTable original;
+    private Seq<LogicalPlan> children;
 
-    private RenameNDBViewPlan(final RenameTable original) {
+    private RenameNDBViewPlan(final RenameTable original)
+    {
         super();
         this.original = original;
         this.children = (Seq<LogicalPlan>) original.children().toSeq();
+    }
+
+    public static RenameNDBViewPlan instance(final RenameTable plan)
+    {
+        return new RenameNDBViewPlan(plan);
     }
 
     @Override
@@ -42,7 +48,9 @@ public class RenameNDBViewPlan
     }
 
     @Override
-    public LogicalPlan withNewChildrenInternal(IndexedSeq<LogicalPlan> newChildren) {
+    public LogicalPlan withNewChildrenInternal(
+            IndexedSeq<LogicalPlan> newChildren)
+    {
         {
             this.children = newChildren;
             return this;
@@ -65,11 +73,6 @@ public class RenameNDBViewPlan
     public int productArity()
     {
         return 0;
-    }
-
-    public static RenameNDBViewPlan instance(final RenameTable plan)
-    {
-        return new RenameNDBViewPlan(plan);
     }
 
     @Override

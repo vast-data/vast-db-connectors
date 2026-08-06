@@ -57,20 +57,60 @@ import java.util.function.Predicate;
 import static com.vastdata.spark.statistics.StatsUtils.fieldToAttribute;
 import static java.lang.String.format;
 
-public class SparkStatisticsDeserializer extends JsonDeserializer<Statistics> {
-    private static final Logger LOG = LoggerFactory.getLogger(SparkStatisticsDeserializer.class);
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().registerModule(new Jdk8Module())
+public class SparkStatisticsDeserializer
+        extends JsonDeserializer<Statistics>
+{
+    private static final Logger LOG = LoggerFactory.getLogger(
+            SparkStatisticsDeserializer.class);
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+            .registerModule(new Jdk8Module())
             .registerModule(new DefaultScalaModule())
-            .registerModule(new ParameterNamesModule(JsonCreator.Mode.PROPERTIES));
+            .registerModule(
+                    new ParameterNamesModule(JsonCreator.Mode.PROPERTIES));
+    // used as a container of (key, value) pairs (not used for lookup).
+    private static final Map<Predicate<DataType>, Function<String, Object>> typesMap = new HashMap<>();
+
+    static {
+        typesMap.put(dataType -> dataType instanceof IntegerType,
+                new TypedValueReader(Integer.class));
+        typesMap.put(dataType -> dataType instanceof LongType,
+                new TypedValueReader(Long.class));
+        typesMap.put(dataType -> dataType instanceof ShortType,
+                new TypedValueReader(Short.class));
+        typesMap.put(dataType -> dataType instanceof DoubleType,
+                new TypedValueReader(Double.class));
+        typesMap.put(dataType -> dataType instanceof FloatType,
+                new TypedValueReader(Float.class));
+        typesMap.put(dataType -> dataType instanceof ByteType,
+                new TypedValueReader(Byte.class));
+        typesMap.put(dataType -> dataType instanceof BooleanType,
+                new TypedValueReader(Boolean.class));
+        typesMap.put(dataType -> dataType instanceof DecimalType,
+                new DecimalValueReader());
+        typesMap.put(dataType -> dataType instanceof DateType,
+                new TypedValueReader(Integer.class));
+        typesMap.put(dataType -> dataType instanceof TimestampType,
+                new TypedValueReader(Long.class));
+        typesMap.put(dataType -> dataType instanceof TimestampNTZType,
+                new TypedValueReader(Long.class));
+        typesMap.put(dataType -> dataType instanceof StringType,
+                new TypedValueReader(UTF8String.class));
+        typesMap.put(dataType -> dataType instanceof CharType,
+                new TypedValueReader(UTF8String.class));
+        typesMap.put(dataType -> dataType instanceof BinaryType,
+                new TypedValueReader(byte[].class));
+    }
 
     private final StructType schema;
 
-    public SparkStatisticsDeserializer(StructType schema) {
+    public SparkStatisticsDeserializer(StructType schema)
+    {
         this.schema = schema;
     }
 
     @Override
-    public Statistics deserialize(JsonParser jp, DeserializationContext deserializationContext)
+    public Statistics deserialize(JsonParser jp,
+            DeserializationContext deserializationContext)
             throws IOException
     {
         JsonNode node = jp.getCodec().readTree(jp);
@@ -92,26 +132,37 @@ public class SparkStatisticsDeserializer extends JsonDeserializer<Statistics> {
             try {
                 // Spark adds '#' in column name attribute, we need to strip it in order to match colum
                 Attribute attribute = fieldToAttribute(structField, schema);
-                Option<BigInt> distinctCount = getOptionBigIntFromNode(statsNode.get("distinctCount"));
-                Option<BigInt> nullCount = getOptionBigIntFromNode(statsNode.get("nullCount"));
-                Option<Object> avgLen = getLongValueByKeyName(statsNode, "avgLen");
-                Option<Object> maxLen = getLongValueByKeyName(statsNode, "maxLen");
+                Option<BigInt> distinctCount = getOptionBigIntFromNode(
+                        statsNode.get("distinctCount"));
+                Option<BigInt> nullCount = getOptionBigIntFromNode(
+                        statsNode.get("nullCount"));
+                Option<Object> avgLen = getLongValueByKeyName(statsNode,
+                        "avgLen");
+                Option<Object> maxLen = getLongValueByKeyName(statsNode,
+                        "maxLen");
                 DataType dataType = structField.dataType();
-                Option<Object> min = getDataTypeValueByKeyName(statsNode, "min", dataType);
-                Option<Object> max = getDataTypeValueByKeyName(statsNode, "max", dataType);
-                ColumnStat colStats = new ColumnStat(distinctCount, min, max, nullCount, avgLen, maxLen, Option.empty(), 0);
+                Option<Object> min = getDataTypeValueByKeyName(statsNode, "min",
+                        dataType);
+                Option<Object> max = getDataTypeValueByKeyName(statsNode, "max",
+                        dataType);
+                ColumnStat colStats = new ColumnStat(distinctCount, min, max,
+                        nullCount, avgLen, maxLen, Option.empty(), 0);
 
                 builder.$plus$eq(Tuple2.apply(attribute, colStats));
             }
             catch (Throwable any) {
-                throw new RuntimeException(format("Failed parsing column %s stats node of type %s: %s", key, structField, statsNode), any);
+                throw new RuntimeException(
+                        format("Failed parsing column %s stats node of type %s: %s",
+                                key, structField, statsNode), any);
             }
         };
         columnStatistics.fields().forEachRemaining(entryConsumer);
-        return new Statistics(sizeInBytes, rowCount, AttributeMap$.MODULE$.apply(builder.result()), false);
+        return new Statistics(sizeInBytes, rowCount,
+                AttributeMap$.MODULE$.apply(builder.result()), false);
     }
 
-    private Option<Object> getDataTypeValueByKeyName(JsonNode statsNode, String keyName, DataType dataType)
+    private Option<Object> getDataTypeValueByKeyName(JsonNode statsNode,
+            String keyName, DataType dataType)
     {
         JsonNode node = statsNode.get(keyName);
         if (node == null) {
@@ -122,13 +173,16 @@ public class SparkStatisticsDeserializer extends JsonDeserializer<Statistics> {
                 return getValueFromNode(node, dataType);
             }
             catch (Exception any) {
-                LOG.error("Failed parsing key: {}, of node: {}, of type: {}, defaulting to empty", keyName, dataType, statsNode);
+                LOG.error(
+                        "Failed parsing key: {}, of node: {}, of type: {}, defaulting to empty",
+                        keyName, dataType, statsNode);
                 return Option.empty();
             }
         }
     }
 
-    private Option<Object> getLongValueByKeyName(JsonNode statsNode, String keyName)
+    private Option<Object> getLongValueByKeyName(JsonNode statsNode,
+            String keyName)
     {
         JsonNode node = statsNode.get(keyName);
         if (node == null) {
@@ -139,7 +193,9 @@ public class SparkStatisticsDeserializer extends JsonDeserializer<Statistics> {
                 return Option.apply(node.asLong());
             }
             catch (Exception any) {
-                LOG.error("Failed parsing key: {}, of node: {}, defaulting to empty", keyName, statsNode);
+                LOG.error(
+                        "Failed parsing key: {}, of node: {}, defaulting to empty",
+                        keyName, statsNode);
                 return Option.empty();
             }
         }
@@ -149,13 +205,15 @@ public class SparkStatisticsDeserializer extends JsonDeserializer<Statistics> {
     {
         if (node == null) {
             return Option.empty();
-        } else {
-//            TODO: verify the value is long compatible
+        }
+        else {
+            //            TODO: verify the value is long compatible
             return Option.apply(BigInt.apply(node.asLong()));
         }
     }
 
-    private Option<Object> getValueFromNode(JsonNode valueNode, DataType dataType)
+    private Option<Object> getValueFromNode(JsonNode valueNode,
+            DataType dataType)
     {
         String content = valueNode.toString();
         Object x = extractValue(dataType, content);
@@ -169,39 +227,24 @@ public class SparkStatisticsDeserializer extends JsonDeserializer<Statistics> {
 
     private Function<String, Object> getTypeHandler(DataType dataType)
     {
-        for (Map.Entry<Predicate<DataType>, Function<String, Object>> entry: typesMap.entrySet()) {
+        for (Map.Entry<Predicate<DataType>, Function<String, Object>> entry : typesMap.entrySet()) {
             if (entry.getKey().test(dataType)) {
                 return entry.getValue();
             }
         }
-        throw new UnsupportedOperationException(format("Unsupported type: %s", dataType));
-    }
-
-    // used as a container of (key, value) pairs (not used for lookup).
-    private static final Map<Predicate<DataType>, Function<String, Object>> typesMap = new HashMap<>();
-    static {
-        typesMap.put(dataType -> dataType instanceof IntegerType, new TypedValueReader(Integer.class));
-        typesMap.put(dataType -> dataType instanceof LongType, new TypedValueReader(Long.class));
-        typesMap.put(dataType -> dataType instanceof ShortType, new TypedValueReader(Short.class));
-        typesMap.put(dataType -> dataType instanceof DoubleType, new TypedValueReader(Double.class));
-        typesMap.put(dataType -> dataType instanceof FloatType, new TypedValueReader(Float.class));
-        typesMap.put(dataType -> dataType instanceof ByteType, new TypedValueReader(Byte.class));
-        typesMap.put(dataType -> dataType instanceof BooleanType, new TypedValueReader(Boolean.class));
-        typesMap.put(dataType -> dataType instanceof DecimalType, new DecimalValueReader());
-        typesMap.put(dataType -> dataType instanceof DateType, new TypedValueReader(Integer.class));
-        typesMap.put(dataType -> dataType instanceof TimestampType, new TypedValueReader(Long.class));
-        typesMap.put(dataType -> dataType instanceof TimestampNTZType, new TypedValueReader(Long.class));
-        typesMap.put(dataType -> dataType instanceof StringType, new TypedValueReader(UTF8String.class));
-        typesMap.put(dataType -> dataType instanceof CharType, new TypedValueReader(UTF8String.class));
-        typesMap.put(dataType -> dataType instanceof BinaryType, new TypedValueReader(byte[].class));
+        throw new UnsupportedOperationException(
+                format("Unsupported type: %s", dataType));
     }
 
     private static class TypedValueReader
-            implements Function<String, Object> {
-        private static final Logger TYPE_READER_LOG = LoggerFactory.getLogger(TypedValueReader.class);
+            implements Function<String, Object>
+    {
+        private static final Logger TYPE_READER_LOG = LoggerFactory.getLogger(
+                TypedValueReader.class);
         private final Class<?> valueType;
 
-        private TypedValueReader(Class<?> valueType) {
+        private TypedValueReader(Class<?> valueType)
+        {
             this.valueType = valueType;
         }
 
@@ -211,17 +254,22 @@ public class SparkStatisticsDeserializer extends JsonDeserializer<Statistics> {
             try {
                 Object o = OBJECT_MAPPER.readValue(content, valueType);
                 if (TYPE_READER_LOG.isDebugEnabled()) {
-                    TYPE_READER_LOG.debug("TYPE_READER_LOG for class {} read value: {}", this.valueType, o);
+                    TYPE_READER_LOG.debug(
+                            "TYPE_READER_LOG for class {} read value: {}",
+                            this.valueType, o);
                 }
                 return o;
             }
             catch (JsonProcessingException e) {
-                throw new RuntimeException(format("Failed parsing value node: %s, with expected type: %s", content, valueType), e);
+                throw new RuntimeException(
+                        format("Failed parsing value node: %s, with expected type: %s",
+                                content, valueType), e);
             }
         }
     }
 
-    private static class DecimalValueReader extends TypedValueReader
+    private static class DecimalValueReader
+            extends TypedValueReader
     {
 
         private DecimalValueReader()

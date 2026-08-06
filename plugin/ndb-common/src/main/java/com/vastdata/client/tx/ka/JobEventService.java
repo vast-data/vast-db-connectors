@@ -26,7 +26,8 @@ import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public final class JobEventService implements Runnable
+public final class JobEventService
+        implements Runnable
 {
     private static final Logger LOG = Logger.get(JobEventService.class);
 
@@ -48,20 +49,44 @@ public final class JobEventService implements Runnable
     };
 
     private static final ScheduledExecutorService daemon;
+    private static final AtomicBoolean wasScheduled = new AtomicBoolean(false);
+    private static JobEventService instance;
 
     static {
-        ThreadFactory threadFactory = new ThreadFactoryBuilder().setDaemon(true).setNameFormat("JobEventService").build();
-        ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1, threadFactory);
+        ThreadFactory threadFactory = new ThreadFactoryBuilder()
+                .setDaemon(true)
+                .setNameFormat("JobEventService")
+                .build();
+        ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(
+                1, threadFactory);
         executor.setRemoveOnCancelPolicy(true);
         daemon = executor;
     }
 
-    private static JobEventService instance = null;
+    private final Consumer<? super VastTransaction> keepAliveAction;
+    private final boolean enabled;
+    private final int interval;
+    private final ConcurrentHashMap<VastTransaction, AtomicInteger> activeTransactions = new ConcurrentHashMap<>(
+            1);
+    // TODO - make notify events lock-less
+    private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+    private final ReentrantReadWriteLock.WriteLock wLock = lock.writeLock();
+    private final ReentrantReadWriteLock.ReadLock rLock = lock.readLock();
 
-    public static synchronized JobEventService createInstance(Supplier<VastClient> vastClientSupplier, VastConfig vastConf)
+    JobEventService(VastConfig vastConf,
+            Consumer<? super VastTransaction> action)
+    {
+        this.enabled = vastConf.getVastTransactionKeepAliveEnabled();
+        this.interval = vastConf.getVastTransactionKeepAliveIntervalSeconds();
+        this.keepAliveAction = action;
+    }
+
+    public static synchronized JobEventService createInstance(
+            Supplier<VastClient> vastClientSupplier, VastConfig vastConf)
     {
         if (instance == null) {
-            instance = new JobEventService(vastConf, new KeepAliveRequestExecutor(vastClientSupplier));
+            instance = new JobEventService(vastConf,
+                    new KeepAliveRequestExecutor(vastClientSupplier));
         }
         return instance;
     }
@@ -69,25 +94,6 @@ public final class JobEventService implements Runnable
     public static Optional<JobEventService> getInstance()
     {
         return Optional.ofNullable(instance);
-    }
-
-    private static final AtomicBoolean wasScheduled = new AtomicBoolean(false);
-
-    private final Consumer<? super VastTransaction> keepAliveAction;
-    private final boolean enabled;
-    private final int interval;
-
-    private final ConcurrentHashMap<VastTransaction, AtomicInteger> activeTransactions = new ConcurrentHashMap<>(1);
-    // TODO - make notify events lock-less
-    private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
-    private final ReentrantReadWriteLock.WriteLock wLock = lock.writeLock();
-    private final ReentrantReadWriteLock.ReadLock rLock = lock.readLock();
-
-    JobEventService(VastConfig vastConf, Consumer<? super VastTransaction> action)
-    {
-        this.enabled = vastConf.getVastTransactionKeepAliveEnabled();
-        this.interval = vastConf.getVastTransactionKeepAliveIntervalSeconds();
-        this.keepAliveAction = action;
     }
 
     @Override
@@ -98,8 +104,11 @@ public final class JobEventService implements Runnable
         try {
             Set<VastTransaction> txForKA = null;
             if (wLock.tryLock(1, TimeUnit.SECONDS)) {
-                activeTransactions.entrySet().removeIf(e -> e.getValue().get() <= 0);
-                LOG.info("Acquired lock, current keep-alive backlog: %s", activeTransactions);
+                activeTransactions
+                        .entrySet()
+                        .removeIf(e -> e.getValue().get() <= 0);
+                LOG.info("Acquired lock, current keep-alive backlog: %s",
+                        activeTransactions);
                 txForKA = new HashSet<>(activeTransactions.keySet());
                 wLock.unlock();
             }
@@ -111,6 +120,7 @@ public final class JobEventService implements Runnable
             }
         }
         catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             throw new RuntimeException(e);
         }
         LOG.info("Exiting. Run took: %s ns", System.nanoTime() - startTime);
@@ -120,8 +130,11 @@ public final class JobEventService implements Runnable
     {
         if (this.enabled) {
             if (!wasScheduled.getAndSet(true)) {
-                LOG.info("Scheduling self to run in background with interval: %s seconds", interval);
-                daemon.scheduleAtFixedRate(this, interval, interval, TimeUnit.SECONDS);
+                LOG.info(
+                        "Scheduling self to run in background with interval: %s seconds",
+                        interval);
+                daemon.scheduleAtFixedRate(this, interval, interval,
+                        TimeUnit.SECONDS);
             }
         }
     }
@@ -138,10 +151,13 @@ public final class JobEventService implements Runnable
                     activeTransactions.compute(newTx, REF_COUNT_INCREASE);
                 }
                 else {
-                    LOG.error("Failed acquiring lock for tx activity end event: %s", newTx);
+                    LOG.error(
+                            "Failed acquiring lock for tx activity end event: %s",
+                            newTx);
                 }
             }
             catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
                 throw new RuntimeException(e);
             }
             finally {
@@ -160,15 +176,19 @@ public final class JobEventService implements Runnable
             try {
                 if (rLock.tryLock(1, TimeUnit.SECONDS)) {
                     locked = true;
-                    if (activeTransactions.computeIfPresent(tx, REF_COUNT_DECREASE) == null) {
+                    if (activeTransactions.computeIfPresent(tx,
+                            REF_COUNT_DECREASE) == null) {
                         LOG.warn("Transaction %s was not found", tx);
                     }
                 }
                 else {
-                    LOG.error("Failed acquiring lock for tx activity end event: %s", tx);
+                    LOG.error(
+                            "Failed acquiring lock for tx activity end event: %s",
+                            tx);
                 }
             }
             catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
                 throw new RuntimeException(e);
             }
             finally {
@@ -189,10 +209,12 @@ public final class JobEventService implements Runnable
                 return new ConcurrentHashMap<>(activeTransactions);
             }
             else {
-                throw new RuntimeException("Failed acquiring write lock for 1 sec");
+                throw new RuntimeException(
+                        "Failed acquiring write lock for 1 sec");
             }
         }
         catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             throw new RuntimeException(e);
         }
         finally {

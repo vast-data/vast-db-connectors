@@ -11,14 +11,18 @@ import com.vastdata.client.tx.VastTransaction;
 
 import java.util.stream.Stream;
 
-public class DropColumn extends AbstractColumnsChange
+public class DropColumn
+        extends AbstractColumnsChange
 {
-    DropColumn(Stream<TableColumnLifecycleContext> columns) {
+    DropColumn(Stream<TableColumnLifecycleContext> columns)
+    {
         super(columns);
     }
 
     @Override
-    protected void executeAction(VastClient vastClient, VastTransaction vastTransaction, TableColumnLifecycleContext columnCtx)
+    protected void executeAction(VastClient vastClient,
+            VastTransaction vastTransaction,
+            TableColumnLifecycleContext columnCtx)
             throws VastException
     {
         vastClient.dropColumn(vastTransaction, columnCtx, null);

@@ -6,23 +6,18 @@ package com.vastdata.trino.predicate;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableSet;
 import com.vastdata.trino.VastColumnHandle;
 import io.trino.spi.predicate.Domain;
 
-import java.util.Objects;
+import static com.google.common.base.MoreObjects.toStringHelper;
 
-public class ColumnDomain
+public record ColumnDomain(VastColumnHandle column, Domain domain)
         implements ComplexPredicate
 {
-    private final VastColumnHandle column;
-    private final Domain domain;
-
     @JsonCreator
-    public ColumnDomain(
-            @JsonProperty("column") VastColumnHandle column,
-            @JsonProperty("domain") Domain domain)
+    public ColumnDomain(@JsonProperty("column") VastColumnHandle column,
+                        @JsonProperty("domain") Domain domain)
     {
         this.column = column;
         this.domain = domain;
@@ -47,28 +42,9 @@ public class ColumnDomain
     }
 
     @Override
-    public boolean equals(Object o)
-    {
-        if (this == o) {
-            return true;
-        }
-        if (o == null || getClass() != o.getClass()) {
-            return false;
-        }
-        ColumnDomain that = (ColumnDomain) o;
-        return Objects.equals(column, that.column) && Objects.equals(domain, that.domain);
-    }
-
-    @Override
-    public int hashCode()
-    {
-        return Objects.hash(column, domain);
-    }
-
-    @Override
     public String toString()
     {
-        return MoreObjects.toStringHelper(this)
+        return toStringHelper(this)
                 .add("column", column.getField())
                 .add("domain", domain)
                 .toString();

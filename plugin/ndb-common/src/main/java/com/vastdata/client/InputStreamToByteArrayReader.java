@@ -12,25 +12,8 @@ import java.util.List;
 
 public class InputStreamToByteArrayReader
 {
-
     public static final int DEFAULT_BUFFER_SIZE = 8192;
     public static final int MAX_BUFFER_SIZE = Integer.MAX_VALUE - 8;
-
-
-    public byte[] readAllBytes(InputStream inputStream)
-    {
-        return readNBytes(inputStream, Integer.MAX_VALUE);
-    }
-
-    public byte[] readNBytes(InputStream inputStream, Integer length)
-    {
-        try {
-            return readBytesFromStream(inputStream, length);
-        }
-        catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
 
     private static byte[] readBytesFromStream(InputStream is, int remaining)
             throws IOException
@@ -57,7 +40,8 @@ public class InputStreamToByteArrayReader
                 total += nread;
                 if (result == null) {
                     result = buf;
-                } else {
+                }
+                else {
                     if (bufs == null) {
                         bufs = new ArrayList<>();
                         bufs.add(result);
@@ -67,14 +51,16 @@ public class InputStreamToByteArrayReader
             }
             // if the last call to read returned -1 or the number of bytes
             // requested have been read then break
-        } while (n >= 0 && remaining > 0);
+        }
+        while (n >= 0 && remaining > 0);
 
         if (bufs == null) {
             if (result == null) {
                 return new byte[0];
             }
             return result.length == total ?
-                    result : Arrays.copyOf(result, total);
+                    result :
+                    Arrays.copyOf(result, total);
         }
 
         result = new byte[total];
@@ -88,5 +74,20 @@ public class InputStreamToByteArrayReader
         }
 
         return result;
+    }
+
+    public byte[] readAllBytes(InputStream inputStream)
+    {
+        return readNBytes(inputStream, Integer.MAX_VALUE);
+    }
+
+    public byte[] readNBytes(InputStream inputStream, Integer length)
+    {
+        try {
+            return readBytesFromStream(inputStream, length);
+        }
+        catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 }

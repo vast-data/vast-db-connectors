@@ -4,12 +4,11 @@
 
 package com.vastdata.client;
 
-import com.vastdata.client.tx.VastTransaction;
 import com.google.common.collect.Multimap;
 import com.vastdata.client.tx.VastTraceToken;
+import com.vastdata.client.tx.VastTransaction;
 
 import java.util.List;
-
 
 public interface VastRequestHeadersBuilder
 {
@@ -33,5 +32,7 @@ public interface VastRequestHeadersBuilder
 
     VastRequestHeadersBuilder withTraceToken(VastTraceToken traceToken);
 
-    VastRequestHeadersBuilder withSorting(List<Integer> sorted_columns);
+    VastRequestHeadersBuilder withSorting(List<Integer> sortedColumns);
+
+    VastRequestHeadersBuilder withNonAcid();
 }

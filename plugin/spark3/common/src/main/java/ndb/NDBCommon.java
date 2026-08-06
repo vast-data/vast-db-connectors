@@ -9,8 +9,8 @@ import com.vastdata.client.VastConfig;
 import com.vastdata.client.VastDependenciesFactory;
 import com.vastdata.client.VastVersion;
 import com.vastdata.client.error.VastUserException;
-import com.vastdata.spark.error.SparkExceptionFactory;
 import com.vastdata.client.tx.VastAutocommitTransaction;
+import com.vastdata.spark.error.SparkExceptionFactory;
 import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.HttpClientConfig;
 import io.airlift.http.client.jetty.JettyHttpClient;
@@ -25,13 +25,13 @@ import java.util.function.UnaryOperator;
 
 public abstract class NDBCommon
 {
-    protected static Logger LOG = null;
     public static final String TRANSACTION_KEY = "tx";
-
-    protected static final AtomicBoolean isInitialized = new AtomicBoolean(false);
+    protected static final AtomicBoolean isInitialized = new AtomicBoolean(
+            false);
     public static BiConsumer<Boolean, UnaryOperator<Optional<String>>> alterTransaction = (cancelOnFailure, f) -> {
         throw new IllegalStateException("Env supplier is unset");
     };
+    protected static Logger LOG = null;
     protected static Supplier<VastConfig> vastConfigSupplier = null;
     protected static Function<VastConfig, VastDependenciesFactory> dependencyFactoryFunction = null;
     protected static Runnable initRoutine = null;
@@ -47,11 +47,13 @@ public abstract class NDBCommon
         httpClient = null;
     }
 
-    protected static void setCommonConfig(VastConfig vastConfig, Function<VastConfig, VastDependenciesFactory> dependencyFactoryFunction)
+    protected static void setCommonConfig(VastConfig vastConfig,
+            Function<VastConfig, VastDependenciesFactory> dependencyFactoryFunction)
     {
         HttpClientConfig httpConfig = new HttpClientConfig();
         dependenciesFactory = dependencyFactoryFunction.apply(vastConfig);
-        dependenciesFactory.getHttpClientConfigConfigDefaults().setDefaults(httpConfig);
+        dependenciesFactory.getHttpClientConfigConfigDefaults().setDefaults(
+                httpConfig);
         HttpClient tmpHttpClient = new JettyHttpClient("ndb", httpConfig);
         config = vastConfig;
         httpClient = tmpHttpClient;
@@ -61,7 +63,8 @@ public abstract class NDBCommon
     protected static void init()
     {
         if (!isInitialized.get()) {
-            LOG.info("Initializing NDB: system={}, hash={}", VastVersion.SYS_VERSION, VastVersion.HASH);
+            LOG.info("Initializing NDB: system={}, hash={}",
+                    VastVersion.SYS_VERSION, VastVersion.HASH);
             initCommonConfig(vastConfigSupplier.get());
         }
         else {
@@ -129,7 +132,8 @@ public abstract class NDBCommon
     {
         if (vastClient == null) {
             initCommonConfig(vastConfig);
-            vastClient = new VastClient(getHTTPClient(), vastConfig, dependencyFactoryFunction.apply(vastConfig));
+            vastClient = new VastClient(getHTTPClient(), vastConfig,
+                    dependencyFactoryFunction.apply(vastConfig));
         }
     }
 

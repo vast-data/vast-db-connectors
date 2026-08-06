@@ -19,8 +19,10 @@ class WorkExecutor<T>
     private final RetryStrategy retryStrategy;
     private final Consumer<WorkExecutor<T>> retryConsumer;
 
-    protected WorkExecutor(Function<URI, T> work, Predicate<T> successConsumer, BiConsumer<Throwable, URI> exceptionsConsumer,
-            RetryStrategy retryStrategy, Consumer<WorkExecutor<T>> retryConsumer)
+    protected WorkExecutor(Function<URI, T> work, Predicate<T> successConsumer,
+            BiConsumer<Throwable, URI> exceptionsConsumer,
+            RetryStrategy retryStrategy,
+            Consumer<WorkExecutor<T>> retryConsumer)
     {
         this.work = work;
         this.successConsumer = successConsumer;

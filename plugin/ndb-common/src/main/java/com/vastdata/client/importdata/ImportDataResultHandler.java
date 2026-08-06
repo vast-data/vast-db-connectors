@@ -18,17 +18,23 @@ public final class ImportDataResultHandler
 {
     private static final Logger LOG = Logger.get(ImportDataResultHandler.class);
 
-    private static final Function<ImportDataResult, Optional<ImportDataFailure>> RESULT_VERIFIER = result -> result.getFailCount() > 0 ?
-            Optional.of(ImportDataFailure.fromSuccessfulRequest(result))
-            : Optional.empty();
+    private static final Function<ImportDataResult, Optional<ImportDataFailure>> RESULT_VERIFIER = result ->
+            result.getFailCount() > 0 ?
+                    Optional.of(
+                            ImportDataFailure.fromSuccessfulRequest(result)) :
+                    Optional.empty();
 
-    private ImportDataResultHandler() {}
+    private ImportDataResultHandler()
+    {
+    }
 
-    static boolean handleResponse(VastResponse vastResponse, ImportDataResult procedureResult, VastTraceToken traceToken)
+    static boolean handleResponse(VastResponse vastResponse,
+            ImportDataResult procedureResult, VastTraceToken traceToken)
             throws ImportDataFailure
     {
         int status = vastResponse.getStatus();
-        LOG.debug("ImportData(%s): procedure ended: %s", traceToken, vastResponse);
+        LOG.debug("ImportData(%s): procedure ended: %s", traceToken,
+                vastResponse);
         byte[] responseBytes = vastResponse.getBytes();
         LOG.debug(new String(responseBytes, StandardCharsets.UTF_8));
         if (status == HttpStatus.OK.code()) {
@@ -36,11 +42,13 @@ public final class ImportDataResultHandler
             return true;
         }
         else if (status == HttpStatus.SERVICE_UNAVAILABLE.code()) {
-            LOG.warn("ImportData(%s): Service unavailable during execution: %s", traceToken, vastResponse);
+            LOG.warn("ImportData(%s): Service unavailable during execution: %s",
+                    traceToken, vastResponse);
             return false;
         }
         else {
-            LOG.error("ImportData(%s): procedure failed with status %s", traceToken, status);
+            LOG.error("ImportData(%s): procedure failed with status %s",
+                    traceToken, status);
             throw ImportDataFailure.fromFailedRequest(vastResponse);
         }
     }
@@ -48,7 +56,8 @@ public final class ImportDataResultHandler
     private static void handleSuccess(ImportDataResult procedureResult)
             throws ImportDataFailure
     {
-        Optional<ImportDataFailure> failure = RESULT_VERIFIER.apply(procedureResult);
+        Optional<ImportDataFailure> failure = RESULT_VERIFIER.apply(
+                procedureResult);
         if (failure.isPresent()) {
             throw failure.get();
         }

@@ -6,12 +6,14 @@ package com.vastdata.trino.block;
 
 import java.util.function.Function;
 
-class Int128ApiBlockWrapper implements Int128ArrayBlockApi
+class Int128ApiBlockWrapper
+        implements Int128ArrayBlockApi
 {
     private final Function<Integer, Long> dictIdFirstFunction;
     private final Function<Integer, Long> dictIdSecondFunction;
 
-    public Int128ApiBlockWrapper(Function<Integer, Long> dictIdFirstFunction, Function<Integer, Long> dictIdSecondFunction)
+    public Int128ApiBlockWrapper(Function<Integer, Long> dictIdFirstFunction,
+                                 Function<Integer, Long> dictIdSecondFunction)
     {
         this.dictIdFirstFunction = dictIdFirstFunction;
         this.dictIdSecondFunction = dictIdSecondFunction;

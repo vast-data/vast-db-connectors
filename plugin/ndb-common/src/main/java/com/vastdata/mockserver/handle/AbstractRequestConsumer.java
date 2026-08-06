@@ -36,10 +36,78 @@ public abstract class AbstractRequestConsumer
 
     protected final Set<String> openTransactions;
 
-    protected AbstractRequestConsumer(Map<String, Set<MockMapSchema>> schema, Set<String> openTransactions)
+    protected AbstractRequestConsumer(Map<String, Set<MockMapSchema>> schema,
+            Set<String> openTransactions)
     {
         this.schemaMap = schema;
         this.openTransactions = openTransactions;
+    }
+
+    protected static byte[] readAllBytes(InputStream is)
+            throws IOException
+    {
+        return readBytesFromStream(is, Integer.MAX_VALUE);
+    }
+
+    private static byte[] readBytesFromStream(InputStream is, int remaining)
+            throws IOException
+    {
+        List<byte[]> bufs = null;
+        byte[] result = null;
+        int total = 0;
+        int n;
+        do {
+            byte[] buf = new byte[Math.min(remaining, DEFAULT_BUFFER_SIZE)];
+            int nread = 0;
+
+            // read to EOF which may read more or less than buffer size
+            while ((n = is.read(buf, nread,
+                    Math.min(buf.length - nread, remaining))) > 0) {
+                nread += n;
+                remaining -= n;
+            }
+
+            if (nread > 0) {
+                if (MAX_BUFFER_SIZE - total < nread) {
+                    throw new OutOfMemoryError("Required array size too large");
+                }
+                total += nread;
+                if (result == null) {
+                    result = buf;
+                }
+                else {
+                    if (bufs == null) {
+                        bufs = new ArrayList<>();
+                        bufs.add(result);
+                    }
+                    bufs.add(buf);
+                }
+            }
+            // if the last call to read returned -1 or the number of bytes
+            // requested have been read then break
+        }
+        while (n >= 0 && remaining > 0);
+
+        if (bufs == null) {
+            if (result == null) {
+                return new byte[0];
+            }
+            return result.length == total ?
+                    result :
+                    Arrays.copyOf(result, total);
+        }
+
+        result = new byte[total];
+        int offset = 0;
+        remaining = total;
+        for (byte[] b : bufs) {
+            int count = Math.min(b.length, remaining);
+            System.arraycopy(b, 0, result, offset, count);
+            offset += count;
+            remaining -= count;
+        }
+
+        return result;
     }
 
     @Override
@@ -55,7 +123,8 @@ public abstract class AbstractRequestConsumer
                 respondError(format, httpExchange);
             }
             catch (IOException ex) {
-                LOG.error(ex, String.format("Failed replying with error: %s", format));
+                LOG.error(ex, String.format("Failed replying with error: %s",
+                        format));
             }
         }
     }
@@ -100,81 +169,24 @@ public abstract class AbstractRequestConsumer
             throws IOException
     {
         he.getResponseHeaders().put("tabular-next-key", ImmutableList.of("0"));
-        he.getResponseHeaders().put("tabular-is-truncated", ImmutableList.of("false"));
+        he
+                .getResponseHeaders()
+                .put("tabular-is-truncated", ImmutableList.of("false"));
         he.sendResponseHeaders(rCode, bytes.length);
         try (OutputStream os = he.getResponseBody()) {
             os.write(bytes);
         }
     }
 
-    protected static byte[] readAllBytes(InputStream is)
-            throws IOException
-    {
-        return readBytesFromStream(is, Integer.MAX_VALUE);
-    }
-    
-    private static byte[] readBytesFromStream(InputStream is, int remaining)
-            throws IOException
-    {
-        List<byte[]> bufs = null;
-        byte[] result = null;
-        int total = 0;
-        int n;
-        do {
-            byte[] buf = new byte[Math.min(remaining, DEFAULT_BUFFER_SIZE)];
-            int nread = 0;
-
-            // read to EOF which may read more or less than buffer size
-            while ((n = is.read(buf, nread,
-                    Math.min(buf.length - nread, remaining))) > 0) {
-                nread += n;
-                remaining -= n;
-            }
-
-            if (nread > 0) {
-                if (MAX_BUFFER_SIZE - total < nread) {
-                    throw new OutOfMemoryError("Required array size too large");
-                }
-                total += nread;
-                if (result == null) {
-                    result = buf;
-                } else {
-                    if (bufs == null) {
-                        bufs = new ArrayList<>();
-                        bufs.add(result);
-                    }
-                    bufs.add(buf);
-                }
-            }
-            // if the last call to read returned -1 or the number of bytes
-            // requested have been read then break
-        } while (n >= 0 && remaining > 0);
-
-        if (bufs == null) {
-            if (result == null) {
-                return new byte[0];
-            }
-            return result.length == total ?
-                    result : Arrays.copyOf(result, total);
-        }
-
-        result = new byte[total];
-        int offset = 0;
-        remaining = total;
-        for (byte[] b : bufs) {
-            int count = Math.min(b.length, remaining);
-            System.arraycopy(b, 0, result, offset, count);
-            offset += count;
-            remaining -= count;
-        }
-
-        return result;
-    }
-
     protected Optional<String> getTransactionHeader(HttpExchange he)
     {
-        return he.getRequestHeaders().containsKey(RequestsHeaders.TABULAR_TRANSACTION_ID.getHeaderName()) ?
-                Optional.of(Iterables.getOnlyElement(he.getRequestHeaders().get(RequestsHeaders.TABULAR_TRANSACTION_ID.getHeaderName()))) :
+        return he
+                .getRequestHeaders()
+                .containsKey(
+                        RequestsHeaders.TABULAR_TRANSACTION_ID.getHeaderName()) ?
+                Optional.of(Iterables.getOnlyElement(he
+                                                     .getRequestHeaders()
+                                                     .get(RequestsHeaders.TABULAR_TRANSACTION_ID.getHeaderName()))) :
                 Optional.empty();
     }
 

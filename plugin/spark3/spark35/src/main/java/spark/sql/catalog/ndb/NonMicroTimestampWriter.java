@@ -16,14 +16,17 @@ import java.util.function.UnaryOperator;
 public class NonMicroTimestampWriter
         extends ArrowFieldWriter
 {
-    private static final Logger LOG = LoggerFactory.getLogger(NonMicroTimestampWriter.class);
+    private static final Logger LOG = LoggerFactory.getLogger(
+            NonMicroTimestampWriter.class);
 
     private final TimeStampVector vector;
     private final UnaryOperator<Long> sparkTimestampToVastValueAdaptor;
 
-    public NonMicroTimestampWriter(TimeStampVector vector) {
+    public NonMicroTimestampWriter(TimeStampVector vector)
+    {
         this.vector = vector;
-        sparkTimestampToVastValueAdaptor = SparkVectorAdaptorUtil.getSparkTimestampToVastValueAdaptor(vector);
+        sparkTimestampToVastValueAdaptor = SparkVectorAdaptorUtil.getSparkTimestampToVastValueAdaptor(
+                vector);
     }
 
     @Override
@@ -42,7 +45,8 @@ public class NonMicroTimestampWriter
     public void setValue(SpecializedGetters input, int ordinal)
     {
         long originalValue = input.getLong(ordinal);
-        Long adaptedValue = this.sparkTimestampToVastValueAdaptor.apply(originalValue);
+        Long adaptedValue = this.sparkTimestampToVastValueAdaptor.apply(
+                originalValue);
         vector.setSafe(count(), adaptedValue);
     }
 }

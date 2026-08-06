@@ -29,8 +29,11 @@ import org.apache.spark.sql.types.StructType;
 import org.apache.spark.sql.util.CaseInsensitiveStringMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import spark.sql.catalog.ndb.VastCatalogUtils;
 
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -38,55 +41,59 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.function.Supplier;
 
+import static com.vastdata.client.schema.VastMetadataUtils.SORTED_BY_PROPERTY;
 import static org.apache.spark.sql.connector.catalog.TableCapability.ACCEPT_ANY_SCHEMA;
 import static org.apache.spark.sql.connector.catalog.TableCapability.BATCH_READ;
 import static org.apache.spark.sql.connector.catalog.TableCapability.BATCH_WRITE;
 
 public class VastTable
-        implements SupportsRead, SupportsWrite, SupportsDeleteV2, SupportsRowLevelOperations, SupportsReportStatistics
+        implements SupportsRead, SupportsWrite, SupportsDeleteV2,
+        SupportsRowLevelOperations, SupportsReportStatistics
 {
-    private static final Logger LOG = LoggerFactory.getLogger(VastTable.class);
-
     // defaults are set high in order to prevent the Spark compiler making bad descisions such as broadcasting over a table which we do not know it's size
     public static final Integer defaultSizeInBytes = 99999999;
     public static final Integer defaultNumRows = 99999999;
-    public static final Statistics DEFAULT_TABLE_LEVEL_STATS = new TableLevelStatistics(OptionalLong.of(defaultSizeInBytes), OptionalLong.of(defaultNumRows), new HashMap<>());
-
+    public static final Statistics DEFAULT_TABLE_LEVEL_STATS = new TableLevelStatistics(
+            OptionalLong.of(defaultSizeInBytes),
+            OptionalLong.of(defaultNumRows), new HashMap<>());
     public static final String HANDLE_ID_PROPERTY = "handleID";
-    public static final ImmutableSet<TableCapability> FULL_CAPABILITIES = ImmutableSet.of(BATCH_READ, BATCH_WRITE, ACCEPT_ANY_SCHEMA);
-    public static final ImmutableSet<TableCapability> RW_ONLY_CAPABILITIES = ImmutableSet.of(BATCH_READ, BATCH_WRITE);
-
+    public static final ImmutableSet<TableCapability> FULL_CAPABILITIES = ImmutableSet.of(
+            BATCH_READ, BATCH_WRITE, ACCEPT_ANY_SCHEMA);
+    public static final ImmutableSet<TableCapability> RW_ONLY_CAPABILITIES = ImmutableSet.of(
+            BATCH_READ, BATCH_WRITE);
+    private static final Logger LOG = LoggerFactory.getLogger(VastTable.class);
     private final Supplier<VastClient> clientSupplier;
     private final VastTableMetaData tableMD;
     private final SupportsDeleteV2 deleteDelegate;
-    private boolean forDelete = false;
+    private final VastCatalogUtils vastCatalogUtils;
     private final String name;
     private final boolean isPredicatePushdownEnabled;
+    private boolean forDelete = false;
 
-    public VastTable(String schemaName, String tableName,  String handleID, StructType schema,
-                     Supplier<VastClient> clientSupplier, boolean forImportData, boolean isPredicatePushdownEnabled)
+    public VastTable(VastCatalogUtils vastCatalogUtils, String schemaName,
+            String tableName, String handleID, StructType schema,
+            Supplier<VastClient> clientSupplier, boolean forImportData,
+            boolean isPredicatePushdownEnabled)
     {
-        this.tableMD = new VastTableMetaData(schemaName, tableName, handleID, schema, forImportData);
+        this.tableMD = new VastTableMetaData(schemaName, tableName, handleID,
+                schema, forImportData);
         this.clientSupplier = clientSupplier;
-        this.deleteDelegate = new VastDelete(this, clientSupplier);
+        this.deleteDelegate = new VastDelete(this, vastCatalogUtils,
+                clientSupplier);
         this.name = schemaName + "/" + tableName;
         this.isPredicatePushdownEnabled = isPredicatePushdownEnabled;
+        this.vastCatalogUtils = vastCatalogUtils;
         if (!isPredicatePushdownEnabled) {
             LOG.warn("Predicate pushdown is disabled for table: {}", name);
         }
     }
 
-    public VastTable(String schemaName, String tableName,  String handleID, StructType schema,
-                     Supplier<VastClient> clientSupplier, boolean forImportData)
-    {
-        this(schemaName, tableName, handleID, schema, clientSupplier, forImportData, true);
-    }
-
     @Override
     public ScanBuilder newScanBuilder(CaseInsensitiveStringMap options)
     {
-        LOG.debug("newScanBuilder({}.{}) {}", tableMD.schemaName, tableMD.tableName, options.asCaseSensitiveMap());
-        VastScanBuilder builder = new VastScanBuilder(this);
+        LOG.debug("newScanBuilder({}.{}) {}", tableMD.schemaName,
+                tableMD.tableName, options.asCaseSensitiveMap());
+        VastScanBuilder builder = new VastScanBuilder(this, vastCatalogUtils);
         if (!isPredicatePushdownEnabled) {
             builder.disablePredicatePushdown();
         }
@@ -111,7 +118,6 @@ public class VastTable
         return forDelete ? FULL_CAPABILITIES : RW_ONLY_CAPABILITIES;
     }
 
-
     @Override
     public boolean canDeleteWhere(Predicate[] filters)
     {
@@ -125,9 +131,12 @@ public class VastTable
     }
 
     @Override
-    public RowLevelOperationBuilder newRowLevelOperationBuilder(RowLevelOperationInfo info)
+    public RowLevelOperationBuilder newRowLevelOperationBuilder(
+            RowLevelOperationInfo info)
     {
-        LOG.debug("newRowLevelOperationBuilder({}.{}) {}, {}", tableMD.schemaName, tableMD.tableName, info.command(), info.options().asCaseSensitiveMap());
+        LOG.debug("newRowLevelOperationBuilder({}.{}) {}, {}",
+                tableMD.schemaName, tableMD.tableName, info.command(),
+                info.options().asCaseSensitiveMap());
         if (info.command().equals(RowLevelOperation.Command.DELETE)) {
             forDelete = true;
         }
@@ -137,8 +146,10 @@ public class VastTable
     @Override
     public WriteBuilder newWriteBuilder(LogicalWriteInfo info)
     {
-        LOG.debug("newWriteBuilder({}.{}) {}, {}, {}", tableMD.schemaName, tableMD.tableName, info.queryId(), info.schema(), info.options().asCaseSensitiveMap());
-        return new VastWriteBuilder(clientSupplier.get(),this);
+        LOG.debug("newWriteBuilder({}.{}) {}, {}, {}", tableMD.schemaName,
+                tableMD.tableName, info.queryId(), info.schema(),
+                info.options().asCaseSensitiveMap());
+        return new VastWriteBuilder(clientSupplier.get(), this);
     }
 
     public String getSchemaName()
@@ -159,13 +170,19 @@ public class VastTable
     @Override
     public Statistics estimateStatistics()
     {
-        LOG.debug("estimateStatistics() is called for table {} in schema {}", this.tableMD.tableName, this.tableMD.schemaName);
-        Optional<org.apache.spark.sql.catalyst.plans.logical.Statistics> cachedStats = SparkVastStatisticsManager.getInstance().getTableStatistics(this);
-        return cachedStats.map(StatsUtils::sparkCatalystStatsToTableStatistics).orElse(DEFAULT_TABLE_LEVEL_STATS);
+        LOG.debug("estimateStatistics() is called for table {} in schema {}",
+                this.tableMD.tableName, this.tableMD.schemaName);
+        Optional<org.apache.spark.sql.catalyst.plans.logical.Statistics> cachedStats = SparkVastStatisticsManager
+                .getInstance()
+                .getTableStatistics(this);
+        return cachedStats
+                .map(StatsUtils::sparkCatalystStatsToTableStatistics)
+                .orElse(DEFAULT_TABLE_LEVEL_STATS);
     }
 
     @Override
-    public StructType readSchema() {
+    public StructType readSchema()
+    {
         return this.schema();
     }
 
@@ -192,5 +209,14 @@ public class VastTable
     public Map<String, String> properties()
     {
         return ImmutableMap.of(HANDLE_ID_PROPERTY, this.tableMD.handleID);
+    }
+
+    public Set<String> getNonUpdatableColumns()
+    {
+        String sortedByProp = properties().get(SORTED_BY_PROPERTY);
+        Set<String> nonUpdateCols = (sortedByProp != null && !sortedByProp.isEmpty())
+                ? new HashSet<>(Arrays.asList(sortedByProp.split(",")))
+                : new HashSet<>();
+        return nonUpdateCols;
     }
 }

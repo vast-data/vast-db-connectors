@@ -39,98 +39,141 @@ import java.util.stream.IntStream;
 
 import static spark.sql.catalog.ndb.NDBRowLevelOperationIdentifier.adaptTableIdentifiersToRowLevelOp;
 
-public class NDBParser implements ParserInterface {
-    private static final Logger LOG = LoggerFactory.getLogger(NDBParser.class);
-
+public class NDBParser
+        implements ParserInterface
+{
     public static final Seq<LogicalPlan> EMPTY_LOGICAL_PLAN_SEQ = (Seq<LogicalPlan>) Seq$.MODULE$.<LogicalPlan>empty();
-
+    private static final Logger LOG = LoggerFactory.getLogger(NDBParser.class);
     private final SparkSession session;
     private final ParserInterface parser;
 
-
-    public NDBParser(SparkSession sparkSession, ParserInterface parserInterface) {
+    public NDBParser(SparkSession sparkSession, ParserInterface parserInterface)
+    {
         session = sparkSession;
         parser = parserInterface;
     }
 
     @Override
-    public LogicalPlan parsePlan(String sqlText) throws ParseException {
+    public LogicalPlan parsePlan(String sqlText)
+            throws ParseException
+    {
         final LogicalPlan original = parser.parsePlan(sqlText);
         if (original instanceof DeleteFromTable) {
-            LOG.debug("NDBParser.parsePlan original LogicalPlan is DeleteFromTable: {}", original);
+            LOG.debug(
+                    "NDBParser.parsePlan original LogicalPlan is DeleteFromTable: {}",
+                    original);
             Function1<LogicalPlan, LogicalPlan> func = p -> {
                 if (p instanceof UnresolvedRelation) {
                     UnresolvedRelation unresolvedRel = (UnresolvedRelation) p;
                     Seq<String> origIdentifiers = unresolvedRel.multipartIdentifier();
-                    java.util.List<String> origIdentList = new ArrayList<>(origIdentifiers.size());
-                    IntStream.range(0, origIdentifiers.size()).forEachOrdered(i -> origIdentList.add(origIdentifiers.apply(i)));
+                    java.util.List<String> origIdentList = new ArrayList<>(
+                            origIdentifiers.size());
+                    IntStream.range(0, origIdentifiers.size()).forEachOrdered(
+                            i -> origIdentList.add(origIdentifiers.apply(i)));
                     Builder<String, List<String>> newIdentifiersBuilder = List.newBuilder();
                     Consumer<String> resultConsumer = newIdentifiersBuilder::$plus$eq;
-                    adaptTableIdentifiersToRowLevelOp(origIdentList, resultConsumer);
-                    Seq<String> adaptedIdentifiers =  newIdentifiersBuilder.result();
-                    return unresolvedRel.copy(adaptedIdentifiers, unresolvedRel.options(), unresolvedRel.isStreaming());
+                    adaptTableIdentifiersToRowLevelOp(origIdentList,
+                            resultConsumer);
+                    Seq<String> adaptedIdentifiers = newIdentifiersBuilder.result();
+                    return unresolvedRel.copy(adaptedIdentifiers,
+                            unresolvedRel.options(),
+                            unresolvedRel.isStreaming());
                 }
                 else {
                     return p;
                 }
             };
-            PartialFunction<LogicalPlan, LogicalPlan> transformer = PartialFunction.fromFunction(func);
+            PartialFunction<LogicalPlan, LogicalPlan> transformer = PartialFunction.fromFunction(
+                    func);
             LogicalPlan transformed = original.transform(transformer);
             LOG.info("Transformed row level operation plan: {}", transformed);
             return transformed;
-        } else if (original instanceof ShowViews) {
-            LOG.debug("NDBParser.parsePlan original LogicalPlan is a ShowViews plan");
+        }
+        else if (original instanceof ShowViews) {
+            LOG.debug(
+                    "NDBParser.parsePlan original LogicalPlan is a ShowViews plan");
             return ShowNDBViewsPlan.instance((ShowViews) original);
-        } else if (original instanceof CreateView) {
-            LOG.debug("NDBParser.parsePlan original LogicalPlan is a CreateView plan, with child: {}", ((CreateView) original).child());
-            final String currentCatalog = session.sessionState().catalogManager().currentCatalog().name();
-            final String[] currentNamespace = session.sessionState().catalogManager().currentNamespace();
-            return CreateNDBViewPlan.instance((CreateView) original, currentCatalog, currentNamespace);
-        } else if (original instanceof DropView) {
-            LOG.debug("NDBParser.parsePlan original LogicalPlan is a DropView plan");
+        }
+        else if (original instanceof CreateView) {
+            LOG.debug(
+                    "NDBParser.parsePlan original LogicalPlan is a CreateView plan, with child: {}",
+                    ((CreateView) original).child());
+            final String currentCatalog = session
+                    .sessionState()
+                    .catalogManager()
+                    .currentCatalog()
+                    .name();
+            final String[] currentNamespace = session
+                    .sessionState()
+                    .catalogManager()
+                    .currentNamespace();
+            return CreateNDBViewPlan.instance((CreateView) original,
+                    currentCatalog, currentNamespace);
+        }
+        else if (original instanceof DropView) {
+            LOG.debug(
+                    "NDBParser.parsePlan original LogicalPlan is a DropView plan");
             return DropNDBViewPlan.instance((DropView) original);
-        } else if (original instanceof AlterViewAs) {
-            LOG.debug("NDBParser.parsePlan original LogicalPlan is an AlterViewAs plan");
+        }
+        else if (original instanceof AlterViewAs) {
+            LOG.debug(
+                    "NDBParser.parsePlan original LogicalPlan is an AlterViewAs plan");
             return AlterNDBViewAsPlan.instance((AlterViewAs) original);
-        } else if (original instanceof RenameTable && ((RenameTable) original).isView()) {
-            LOG.debug("NDBParser.parsePlan original LogicalPlan is an RenameTable(isView=True) plan");
+        }
+        else if (original instanceof RenameTable && ((RenameTable) original).isView()) {
+            LOG.debug(
+                    "NDBParser.parsePlan original LogicalPlan is an RenameTable(isView=True) plan");
             return RenameNDBViewPlan.instance((RenameTable) original);
         }
         return original;
     }
 
     @Override
-    public Expression parseExpression(String sqlText) throws ParseException {
+    public Expression parseExpression(String sqlText)
+            throws ParseException
+    {
         return parser.parseExpression(sqlText);
     }
 
     @Override
-    public TableIdentifier parseTableIdentifier(String sqlText) throws ParseException {
+    public TableIdentifier parseTableIdentifier(String sqlText)
+            throws ParseException
+    {
         return parser.parseTableIdentifier(sqlText);
     }
 
     @Override
-    public FunctionIdentifier parseFunctionIdentifier(String sqlText) throws ParseException {
+    public FunctionIdentifier parseFunctionIdentifier(String sqlText)
+            throws ParseException
+    {
         return parser.parseFunctionIdentifier(sqlText);
     }
 
     @Override
-    public Seq<String> parseMultipartIdentifier(String sqlText) throws ParseException {
+    public Seq<String> parseMultipartIdentifier(String sqlText)
+            throws ParseException
+    {
         return parser.parseMultipartIdentifier(sqlText);
     }
 
     @Override
-    public StructType parseTableSchema(String sqlText) throws ParseException {
+    public StructType parseTableSchema(String sqlText)
+            throws ParseException
+    {
         return parser.parseTableSchema(sqlText);
     }
 
     @Override
-    public DataType parseDataType(String sqlText) throws ParseException {
+    public DataType parseDataType(String sqlText)
+            throws ParseException
+    {
         return parser.parseDataType(sqlText);
     }
 
     @Override
-    public LogicalPlan parseQuery(String sqlText) throws ParseException {
+    public LogicalPlan parseQuery(String sqlText)
+            throws ParseException
+    {
         return parser.parseQuery(sqlText);
     }
 }

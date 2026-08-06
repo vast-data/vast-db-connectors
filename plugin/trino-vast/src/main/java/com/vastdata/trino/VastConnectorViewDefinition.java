@@ -11,7 +11,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-public final class VastConnectorViewDefinition extends ConnectorViewDefinition {
+public final class VastConnectorViewDefinition
+        extends ConnectorViewDefinition
+{
     private final Map<String, String> properties;
 
     public VastConnectorViewDefinition(final String originalSql,
@@ -24,7 +26,8 @@ public final class VastConnectorViewDefinition extends ConnectorViewDefinition {
                                        final List<CatalogSchemaName> path,
                                        final Map<String, String> properties)
     {
-        super(originalSql, catalog, schema, columns, comment, owner, runAsInvoker, path);
+        super(originalSql, catalog, schema, columns, comment, owner,
+                runAsInvoker, path);
         this.properties = Collections.unmodifiableMap(properties);
     }
 

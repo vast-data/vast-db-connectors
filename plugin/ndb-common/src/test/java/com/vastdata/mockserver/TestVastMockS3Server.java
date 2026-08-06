@@ -26,11 +26,10 @@ import static org.testng.Assert.assertTrue;
 public class TestVastMockS3Server
 {
     private static final Logger LOG = Logger.get(TestVastMockS3Server.class);
-
-    private static VastMockS3Server mockServer;
     private static final VastRootHandler handler = new VastRootHandler();
-    private int testPort;
+    private static VastMockS3Server mockServer;
     private final InputStreamToByteArrayReader inputStreamToByteArrayReader = new InputStreamToByteArrayReader();
+    private int testPort;
 
     @BeforeClass
     public void startMockServer()
@@ -66,11 +65,15 @@ public class TestVastMockS3Server
         con.setReadTimeout(2000);
         Optional<String> response;
         try (InputStream inputStream = con.getInputStream()) {
-            byte[] bytes = inputStreamToByteArrayReader.readAllBytes(inputStream);
+            byte[] bytes = inputStreamToByteArrayReader.readAllBytes(
+                    inputStream);
             response = Optional.of(new String(bytes, Charset.defaultCharset()));
         }
         assertEquals(con.getResponseCode(), 200);
-        assertTrue(response.get().startsWith(MockListBucketsReply.LIST_BUCKETS_REPLY_PREFIX), response.get());
+        assertTrue(response
+                        .get()
+                        .startsWith(MockListBucketsReply.LIST_BUCKETS_REPLY_PREFIX),
+                response.get());
     }
 
     @Test
@@ -80,7 +83,8 @@ public class TestVastMockS3Server
         MockUtils mockUtils = new MockUtils();
         String bucket1 = "bucket1";
         mockUtils.createBucket(this.testPort, bucket1);
-        ListSchemasResponse bucketSchemas = mockUtils.getBucketSchemas(this.testPort, bucket1);
+        ListSchemasResponse bucketSchemas = mockUtils.getBucketSchemas(
+                this.testPort, bucket1);
         assertEquals(bucketSchemas.schemasLength(), 0);
     }
 }

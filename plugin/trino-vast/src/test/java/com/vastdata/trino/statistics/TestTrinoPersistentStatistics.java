@@ -6,8 +6,10 @@ package com.vastdata.trino.statistics;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vastdata.client.QueryDataExtraParams;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastConfig;
+import com.vastdata.client.VastObjectDetails;
 import com.vastdata.client.error.VastRuntimeException;
 import com.vastdata.client.error.VastServerException;
 import com.vastdata.trino.VastColumnHandle;
@@ -32,6 +34,7 @@ import java.util.Optional;
 
 import static com.vastdata.client.importdata.VastImportDataMetadataUtils.BIG_CATALOG_SCHEMA_PREFIX;
 import static com.vastdata.client.importdata.VastImportDataMetadataUtils.BIG_CATALOG_TABLE_NAME;
+import static com.vastdata.client.schema.TestVastMetadataUtils.createObjectDetails;
 import static java.lang.String.format;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -46,22 +49,24 @@ import static org.mockito.MockitoAnnotations.openMocks;
 
 public class TestTrinoPersistentStatistics
 {
-    private static final ColumnStatistics DUMMY_COLUMN_STATISTICS = ColumnStatistics.builder()
+    private static final ColumnStatistics DUMMY_COLUMN_STATISTICS = ColumnStatistics
+            .builder()
             .setDataSize(Estimate.of(32.00))
             .setDistinctValuesCount(Estimate.of(10.00))
             .setNullsFraction(Estimate.unknown())
             .setRange(new io.trino.spi.statistics.DoubleRange(1.00, 100000.00))
             .build();
     public static final int RETRY_MAX_COUNT = 1;
-    @Mock
-    private VastClient mockClient;
+    @Mock private VastClient mockClient;
 
     private AutoCloseable autoCloseable;
+    private VastObjectDetails objectDetails;
 
     @BeforeEach
     public void setup()
     {
         autoCloseable = openMocks(this);
+        this.objectDetails = createObjectDetails("tableName", "handle123");
     }
 
     @AfterEach
@@ -87,12 +92,16 @@ public class TestTrinoPersistentStatistics
     {
         VastClient client = mockClient;
         VastConfig config = getMockServerReadyVastConfig();
-        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(client, config, null);
-        VastTableHandle table = new VastTableHandle(BIG_CATALOG_SCHEMA_PREFIX + BIG_CATALOG_SCHEMA_PREFIX,
-                BIG_CATALOG_TABLE_NAME, "id", false);
-        TableStatistics stats = TableStatistics.builder().setRowCount(Estimate.of(11.0)).build();
+        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(
+                client, config, null);
+        VastTableHandle table = new VastTableHandle(
+                BIG_CATALOG_SCHEMA_PREFIX + BIG_CATALOG_SCHEMA_PREFIX,
+                BIG_CATALOG_TABLE_NAME, objectDetails, false, false);
+        TableStatistics stats = TableStatistics.builder().setRowCount(
+                Estimate.of(11.0)).build();
         persistentStatistics.setTableStatistics(table, stats);
-        Optional<TableStatistics> fetchedStats = persistentStatistics.getTableStatistics(table);
+        Optional<TableStatistics> fetchedStats = persistentStatistics.getTableStatistics(
+                table);
         assertEquals(stats, fetchedStats.orElseThrow());
     }
 
@@ -101,14 +110,16 @@ public class TestTrinoPersistentStatistics
     {
         Field field = Field.nullable("x", new ArrowType.Int(32, true));
         ColumnHandle colHandle = VastColumnHandle.fromField(field);
-        TableStatistics stats = TableStatistics.builder()
-                .setRowCount(Estimate.of(11.0))
-                .setColumnStatistics(colHandle, DUMMY_COLUMN_STATISTICS)
-                .build();
+        TableStatistics stats = TableStatistics.builder().setRowCount(
+                Estimate.of(11.0)).setColumnStatistics(colHandle,
+                DUMMY_COLUMN_STATISTICS).build();
         ObjectMapper mapper = TrinoStatisticsMapper.instance();
         try {
-            String tsBuffer = mapper.writeValueAsString(new TrinoSerializableTableStatistics(stats));
-            TableStatistics newStats = mapper.readValue(tsBuffer, TrinoSerializableTableStatistics.class).getTableStatistics();
+            String tsBuffer = mapper.writeValueAsString(
+                    new TrinoSerializableTableStatistics(stats));
+            TableStatistics newStats = mapper
+                    .readValue(tsBuffer, TrinoSerializableTableStatistics.class)
+                    .getTableStatistics();
             assertEquals(stats, newStats);
         }
         catch (JsonProcessingException e) {
@@ -122,20 +133,23 @@ public class TestTrinoPersistentStatistics
     {
         VastClient client = mockClient;
         VastConfig config = getMockServerReadyVastConfig();
-        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(client, config, null);
+        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(
+                client, config, null);
         Field field = Field.nullable("x", new ArrowType.Int(32, true));
         ColumnHandle colHandle = VastColumnHandle.fromField(field);
-        TableStatistics stats = TableStatistics.builder()
-                .setRowCount(Estimate.of(11.0))
-                .setColumnStatistics(colHandle, DUMMY_COLUMN_STATISTICS)
-                .build();
-        VastTableHandle table = new VastTableHandle("buck/schem", "tab", "id", false);
+        TableStatistics stats = TableStatistics.builder().setRowCount(
+                Estimate.of(11.0)).setColumnStatistics(colHandle,
+                DUMMY_COLUMN_STATISTICS).build();
+        VastTableHandle table = new VastTableHandle("buck/schem", "tab", objectDetails,
+                false, false);
         ObjectMapper mapper = TrinoStatisticsMapper.instance();
-        String tsBuffer = mapper.writeValueAsString(new TrinoSerializableTableStatistics(stats));
-        when(mockClient.s3GetObj(anyString(), anyString()))
-                .thenReturn(Optional.ofNullable(tsBuffer));
+        String tsBuffer = mapper.writeValueAsString(
+                new TrinoSerializableTableStatistics(stats));
+        when(mockClient.s3GetObj(anyString(), anyString())).thenReturn(
+                Optional.ofNullable(tsBuffer));
         persistentStatistics.deleteTableStatistics(table);
-        Optional<TableStatistics> newStats = persistentStatistics.getTableStatistics(table);
+        Optional<TableStatistics> newStats = persistentStatistics.getTableStatistics(
+                table);
         assertEquals(newStats.orElseGet(TableStatistics::empty), stats);
     }
 
@@ -145,21 +159,24 @@ public class TestTrinoPersistentStatistics
     {
         VastClient client = mockClient;
         VastConfig config = getMockServerReadyVastConfig();
-        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(client, config, null);
+        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(
+                client, config, null);
         Field field = Field.nullable("x", new ArrowType.Int(32, true));
         ColumnHandle colHandle = VastColumnHandle.fromField(field);
-        TableStatistics stats = TableStatistics.builder()
-                .setRowCount(Estimate.of(11.0))
-                .setColumnStatistics(colHandle, DUMMY_COLUMN_STATISTICS)
-                .build();
-        VastTableHandle table = new VastTableHandle("buck/schem", "tab", "id", false);
+        TableStatistics stats = TableStatistics.builder().setRowCount(
+                Estimate.of(11.0)).setColumnStatistics(colHandle,
+                DUMMY_COLUMN_STATISTICS).build();
+        VastTableHandle table = new VastTableHandle("buck/schem", "tab", objectDetails,
+                false, false);
         ObjectMapper mapper = TrinoStatisticsMapper.instance();
-        String tsBuffer = mapper.writeValueAsString(new TrinoSerializableTableStatistics(stats));
-        when(mockClient.s3GetObj(anyString(), anyString()))
-                .thenReturn(null);
+        String tsBuffer = mapper.writeValueAsString(
+                new TrinoSerializableTableStatistics(stats));
+        when(mockClient.s3GetObj(anyString(), anyString())).thenReturn(null);
         persistentStatistics.deleteTableStatistics(table);
-        Optional<TableStatistics> newStats = persistentStatistics.getTableStatistics(table);
-        assertEquals(newStats.orElseGet(TableStatistics::empty), TableStatistics.empty());
+        Optional<TableStatistics> newStats = persistentStatistics.getTableStatistics(
+                table);
+        assertEquals(newStats.orElseGet(TableStatistics::empty),
+                TableStatistics.empty());
         assertEquals(persistentStatistics.getCurrentCacheSize(), 0);
     }
 
@@ -169,21 +186,25 @@ public class TestTrinoPersistentStatistics
     {
         VastClient client = mockClient;
         VastConfig config = getMockServerReadyVastConfig();
-        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(client, config, null);
+        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(
+                client, config, null);
         Field field = Field.nullable("x", new ArrowType.Int(32, true));
         ColumnHandle colHandle = VastColumnHandle.fromField(field);
-        TableStatistics stats = TableStatistics.builder()
-                .setRowCount(Estimate.of(11.0))
-                .setColumnStatistics(colHandle, DUMMY_COLUMN_STATISTICS)
-                .build();
-        VastTableHandle table = new VastTableHandle("buck/schem", "tab", "id", false);
+        TableStatistics stats = TableStatistics.builder().setRowCount(
+                Estimate.of(11.0)).setColumnStatistics(colHandle,
+                DUMMY_COLUMN_STATISTICS).build();
+        VastTableHandle table = new VastTableHandle("buck/schem", "tab", objectDetails,
+                false, false);
         ObjectMapper mapper = TrinoStatisticsMapper.instance();
-        String tsBuffer = mapper.writeValueAsString(new TrinoSerializableTableStatistics(stats));
-        when(mockClient.s3GetObj(anyString(), anyString()))
-                .thenReturn(Optional.empty());
+        String tsBuffer = mapper.writeValueAsString(
+                new TrinoSerializableTableStatistics(stats));
+        when(mockClient.s3GetObj(anyString(), anyString())).thenReturn(
+                Optional.empty());
         persistentStatistics.deleteTableStatistics(table);
-        Optional<TableStatistics> newStats = persistentStatistics.getTableStatistics(table);
-        assertEquals(newStats.orElseGet(TableStatistics::empty), TableStatistics.empty());
+        Optional<TableStatistics> newStats = persistentStatistics.getTableStatistics(
+                table);
+        assertEquals(newStats.orElseGet(TableStatistics::empty),
+                TableStatistics.empty());
         assertEquals(persistentStatistics.getCurrentCacheSize(), 1);
     }
 
@@ -191,9 +212,12 @@ public class TestTrinoPersistentStatistics
     public void testTableStatisticsFetchRetryOnNetworkError()
     {
         VastConfig config = getMockServerReadyVastConfig();
-        VastClient spyClient = spy(new VastClient(null, config, new VastTrinoDependenciesFactory(null)));
-        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(spyClient, config, null, stats -> "{}");
-        VastTableHandle table = new VastTableHandle("buck/schem", "tab", "id", false);
+        VastClient spyClient = spy(new VastClient(null, config,
+                new VastTrinoDependenciesFactory(null)));
+        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(
+                spyClient, config, null, stats -> "{}");
+        VastTableHandle table = new VastTableHandle("buck/schem", "tab", objectDetails,
+                false, false);
         try {
             persistentStatistics.setTableStatistics(table, null);
         }
@@ -202,9 +226,11 @@ public class TestTrinoPersistentStatistics
             while (cause != null && cause.getCause() != null) {
                 cause = cause.getCause();
             }
-            assertTrue(cause instanceof ConnectException, format("Cause is: %s", cause));
+            assertTrue(cause instanceof ConnectException,
+                    format("Cause is: %s", cause));
         }
-        verify(spyClient, times(RETRY_MAX_COUNT + 1)).getPutObjectResult(anyString(), anyString(), anyString());
+        verify(spyClient, times(RETRY_MAX_COUNT + 1)).getPutObjectResult(
+                anyString(), anyString(), anyString());
 
         try {
             persistentStatistics.getTableStatistics(table);
@@ -214,9 +240,11 @@ public class TestTrinoPersistentStatistics
             while (cause != null && cause.getCause() != null) {
                 cause = cause.getCause();
             }
-            assertTrue(cause instanceof VastServerException, format("Cause is: %s", cause));
+            assertTrue(cause instanceof VastServerException,
+                    format("Cause is: %s", cause));
         }
-        verify(spyClient, times(RETRY_MAX_COUNT + 1)).getObjectAsString(anyString(), anyString());
+        verify(spyClient, times(RETRY_MAX_COUNT + 1)).getObjectAsString(
+                anyString(), anyString());
     }
 
     @Test
@@ -224,22 +252,31 @@ public class TestTrinoPersistentStatistics
     {
         VastClient mockClient = this.mockClient;
         VastConfig config = getMockServerReadyVastConfig();
-        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(mockClient, config, null);
-        TableStatistics stats = TableStatistics.builder()
-                .setRowCount(Estimate.of(11.0))
-                .build();
-        VastTableHandle handle1 = new VastTableHandle("buck/schem", "tab", "id", false);
-        VastTableHandle handle2 = new VastTableHandle("buck/schem", "tab", List.of(), Optional.empty(), TupleDomain.all(), null, Optional.empty(), List.of(), Optional.of(13L), false, "id");
-        VastTableHandle handle3 = new VastTableHandle("buck/schem", "tab2", "id", false);
+        TrinoPersistentStatistics persistentStatistics = new TrinoPersistentStatistics(
+                mockClient, config, null);
+        TableStatistics stats = TableStatistics.builder().setRowCount(
+                Estimate.of(11.0)).build();
+        VastTableHandle handle1 = new VastTableHandle("buck/schem", "tab", objectDetails,
+                false, false);
+        VastTableHandle handle2 = new VastTableHandle("buck/schem", "tab",
+                List.of(), Optional.empty(), Optional.empty(),
+                TupleDomain.all(), null, Optional.empty(), List.of(),
+                Optional.empty(), Optional.of(13L), new QueryDataExtraParams(),
+                false, false, objectDetails);
+        VastTableHandle handle3 = new VastTableHandle("buck/schem", "tab2",
+                objectDetails, false, false);
 
         persistentStatistics.setTableStatistics(handle1, stats);
-        Optional<TableStatistics> fetchedStats1 = persistentStatistics.getTableStatistics(handle1);
+        Optional<TableStatistics> fetchedStats1 = persistentStatistics.getTableStatistics(
+                handle1);
         assertEquals(stats, fetchedStats1.orElseThrow());
 
-        Optional<TableStatistics> fetchedStats2 = persistentStatistics.getTableStatistics(handle2);
+        Optional<TableStatistics> fetchedStats2 = persistentStatistics.getTableStatistics(
+                handle2);
         assertEquals(stats, fetchedStats2.orElseThrow());
 
-        Optional<TableStatistics> fetchedStats3 = persistentStatistics.getTableStatistics(handle3);
+        Optional<TableStatistics> fetchedStats3 = persistentStatistics.getTableStatistics(
+                handle3);
         assertEquals(stats, fetchedStats3.orElseThrow());
 
         verify(mockClient, never()).s3GetObj(any(), any());

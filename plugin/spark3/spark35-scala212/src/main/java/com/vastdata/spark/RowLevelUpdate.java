@@ -7,7 +7,8 @@ package com.vastdata.spark;
 public class RowLevelUpdate
         extends VastDeltaOperation
 {
-    public RowLevelUpdate(VastTable vastTable) {
+    public RowLevelUpdate(VastTable vastTable)
+    {
         super(vastTable);
         vastTable.getTableMD().setForUpdate();
     }

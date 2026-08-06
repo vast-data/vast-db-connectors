@@ -24,36 +24,49 @@ import static com.vastdata.client.error.VastExceptionFactory.toRuntime;
 public final class NDBTransactionFunctionsUtil
 {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final Logger LOG = LoggerFactory.getLogger(NDBTransactionFunctionsUtil.class);
+    private static final Logger LOG = LoggerFactory.getLogger(
+            NDBTransactionFunctionsUtil.class);
 
-    private NDBTransactionFunctionsUtil() {}
+    private NDBTransactionFunctionsUtil()
+    {
+    }
 
-    public static void create(BiConsumer<Boolean, UnaryOperator<Optional<String>>> alterTransaction, Supplier<VastClient> vastClient) {
+    public static void create(
+            BiConsumer<Boolean, UnaryOperator<Optional<String>>> alterTransaction,
+            Supplier<VastClient> vastClient)
+    {
         final String endUser = null;
-        VastSparkTransactionsManager transactionsManager = VastSparkTransactionsManager.getInstance(vastClient.get(), new VastTransactionFactory());
+        VastSparkTransactionsManager transactionsManager = VastSparkTransactionsManager.getInstance(
+                vastClient.get(), new VastTransactionFactory());
         alterTransaction.accept(false, maybeTransaction -> {
             if (!maybeTransaction.isPresent()) {
-                SimpleVastTransaction simpleVastTransaction = transactionsManager.startTransaction(endUser);
+                SimpleVastTransaction simpleVastTransaction = transactionsManager.startTransaction(
+                        endUser);
                 String tx_str = simpleVastTransaction.toString();
                 LOG.info("creating tx={}", tx_str);
                 return Optional.of(tx_str);
             }
             else {
-                throw toRuntime(new VastUserException("Active transaction was found"));
+                throw toRuntime(
+                        new VastUserException("Active transaction was found"));
             }
         });
     }
 
-    public static void commit(BiConsumer<Boolean, UnaryOperator<Optional<String>>> alterTransaction, Supplier<VastClient> vastClient)
+    public static void commit(
+            BiConsumer<Boolean, UnaryOperator<Optional<String>>> alterTransaction,
+            Supplier<VastClient> vastClient)
     {
         final String endUser = null;
-        final VastSparkTransactionsManager transactionsManager = VastSparkTransactionsManager.getInstance(vastClient.get(), new VastTransactionFactory());
+        final VastSparkTransactionsManager transactionsManager = VastSparkTransactionsManager.getInstance(
+                vastClient.get(), new VastTransactionFactory());
         alterTransaction.accept(true, maybeTransaction -> {
             if (maybeTransaction.isPresent()) {
                 try {
                     String tx_str = maybeTransaction.get();
                     LOG.info("commit t={}, env={}", tx_str, alterTransaction);
-                    SimpleVastTransaction tx = OBJECT_MAPPER.readValue(tx_str, SimpleVastTransaction.class);
+                    SimpleVastTransaction tx = OBJECT_MAPPER.readValue(tx_str,
+                            SimpleVastTransaction.class);
                     transactionsManager.commit(tx, endUser);
                     return Optional.empty();
                 }
@@ -62,20 +75,26 @@ public final class NDBTransactionFunctionsUtil
                 }
             }
             else {
-                throw toRuntime(new VastUserException("Failing commit as active transaction was not found"));
+                throw toRuntime(new VastUserException(
+                        "Failing commit as active transaction was not found"));
             }
         });
     }
 
-    public static void rollback(BiConsumer<Boolean, UnaryOperator<Optional<String>>> alterTransaction, Supplier<VastClient> client) {
+    public static void rollback(
+            BiConsumer<Boolean, UnaryOperator<Optional<String>>> alterTransaction,
+            Supplier<VastClient> client)
+    {
         final String endUser = null;
-        final VastSparkTransactionsManager transactionsManager = VastSparkTransactionsManager.getInstance(client.get(), new VastTransactionFactory());
+        final VastSparkTransactionsManager transactionsManager = VastSparkTransactionsManager.getInstance(
+                client.get(), new VastTransactionFactory());
         alterTransaction.accept(true, maybeTransaction -> {
             if (maybeTransaction.isPresent()) {
                 try {
                     String tx_str = maybeTransaction.get();
                     LOG.info("rollback tx={}", tx_str);
-                    SimpleVastTransaction tx = OBJECT_MAPPER.readValue(tx_str, SimpleVastTransaction.class);
+                    SimpleVastTransaction tx = OBJECT_MAPPER.readValue(tx_str,
+                            SimpleVastTransaction.class);
                     transactionsManager.rollback(tx, endUser);
                     return Optional.empty();
                 }
@@ -84,7 +103,8 @@ public final class NDBTransactionFunctionsUtil
                 }
             }
             else {
-                throw toRuntime(new VastUserException("Failing rollback as active transaction was not found"));
+                throw toRuntime(new VastUserException(
+                        "Failing rollback as active transaction was not found"));
             }
         });
     }

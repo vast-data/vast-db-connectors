@@ -23,7 +23,8 @@ public class VastResponse
     private final byte[] contents;
     private final URI requestUri;
 
-    public VastResponse(int status, Multimap<HeaderName, String> headers, byte[] contents, URI requestUri)
+    public VastResponse(int status, Multimap<HeaderName, String> headers,
+            byte[] contents, URI requestUri)
     {
         this.status = status;
         this.headers = headers;

@@ -9,11 +9,15 @@ import org.apache.spark.sql.connector.metric.CustomTaskMetric;
 
 public final class CustomTaskMetricFactory
 {
-    private CustomTaskMetricFactory() {}
-
-    public static CustomTaskMetric customTaskMetric(CustomMetric metric, long value)
+    private CustomTaskMetricFactory()
     {
-        return new CustomTaskMetric() {
+    }
+
+    public static CustomTaskMetric customTaskMetric(CustomMetric metric,
+            long value)
+    {
+        return new CustomTaskMetric()
+        {
             @Override
             public String name()
             {

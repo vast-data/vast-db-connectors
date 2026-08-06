@@ -27,31 +27,22 @@ public class VastMergePage
     private final Optional<Page> deletePage;
     private final Optional<Page> insertPage;
 
-    private VastMergePage(Optional<Page> updatePage, Optional<Page> deletePage, Optional<Page> insertPage)
+    private VastMergePage(Optional<Page> updatePage,
+                          Optional<Page> deletePage,
+                          Optional<Page> insertPage)
     {
         this.updatePage = updatePage;
         this.deletePage = deletePage;
         this.insertPage = insertPage;
     }
 
-    public Optional<Page> getUpdatePage()
-    {
-        return updatePage;
-    }
-
-    public Optional<Page> getDeletePage()
-    {
-        return deletePage;
-    }
-
-    public Optional<Page> getInsertPage()
-    {
-        return insertPage;
-    }
-    public static VastMergePage createVastUpdateDeleteInsertPages(final Page page, final int columnCount)
+    public static VastMergePage createVastUpdateDeleteInsertPages(final Page page,
+                                                                  final int columnCount)
     {
         final int rowCount = page.getPositionCount();
-        LOG.debug("createVastUpdateDeleteInsertPages: pageChannelCount: %s, rowCount: %s, columnCount: %s", page.getChannelCount(), rowCount, columnCount);
+        LOG.debug(
+                "createVastUpdateDeleteInsertPages: pageChannelCount: %s, rowCount: %s, columnCount: %s",
+                page.getChannelCount(), rowCount, columnCount);
 
         // See https://trino.io/docs/current/develop/supporting-merge.html#connectormergesink-api for details
         // In the Trino 462 -> 475 upgrade an additional channel was added before the row ID channel, so it was changed from `+ 1` to `+ 2`
@@ -88,7 +79,8 @@ public class VastMergePage
                     updatePositions[updatePositionCount] = position;
                     updatePositionCount++;
                 }
-                default -> throw new IllegalStateException("Unexpected value: " + operation);
+                default -> throw new IllegalStateException(
+                        "Unexpected value: " + operation);
             }
         }
 
@@ -98,14 +90,19 @@ public class VastMergePage
 
         if (insertPositionCount > 0) {
             LOG.debug("MERGE insert page: %s", page);
-            insertPage = Optional.of(page.getPositions(insertPositions, 0, insertPositionCount).getColumns(dataChannels));
+            insertPage = Optional.of(page
+                    .getPositions(insertPositions, 0, insertPositionCount)
+                    .getColumns(dataChannels));
         }
 
         if (deletePositionCount > 0) {
             // delete should only have `row_id` column
             LOG.debug("MERGE delete page: %s", page);
-            deletePositions = sortPositionsByRowId(deletePositions, deletePositionCount, page.getBlock(rowIdChannel));
-            deletePage = Optional.of(page.getPositions(deletePositions, 0, deletePositionCount).getColumns(rowIdChannel));
+            deletePositions = sortPositionsByRowId(deletePositions,
+                    deletePositionCount, page.getBlock(rowIdChannel));
+            deletePage = Optional.of(page
+                    .getPositions(deletePositions, 0, deletePositionCount)
+                    .getColumns(rowIdChannel));
         }
 
         if (updatePositionCount > 0) {
@@ -116,22 +113,43 @@ public class VastMergePage
             for (int i = 0; i < columnCount; i++) {
                 updateChannels[i + 1] = i;
             }
-            updatePositions = sortPositionsByRowId(updatePositions, updatePositionCount, page.getBlock(rowIdChannel));
-            updatePage = Optional.of(page.getPositions(updatePositions, 0, updatePositionCount).getColumns(updateChannels));
+            updatePositions = sortPositionsByRowId(updatePositions,
+                    updatePositionCount, page.getBlock(rowIdChannel));
+            updatePage = Optional.of(page
+                    .getPositions(updatePositions, 0, updatePositionCount)
+                    .getColumns(updateChannels));
         }
 
         return new VastMergePage(updatePage, deletePage, insertPage);
     }
 
     // Workaround for ORION-147374 (currently VAST backend requires ascending row IDs for UPDATE/DELETE)
-    static int[] sortPositionsByRowId(int[] positions, int count, Block rowIdsBlock)
+    static int[] sortPositionsByRowId(int[] positions,
+                                      int count,
+                                      Block rowIdsBlock)
     {
-        Comparator<Integer> comparator = BlockComparatorFunction.INSTANCE.apply(rowIdsBlock);
+        Comparator<Integer> comparator = BlockComparatorFunction.INSTANCE.apply(
+                rowIdsBlock);
         return Arrays
                 .stream(positions, 0, count)
                 .boxed()
                 .sorted(comparator)
                 .mapToInt(Integer::intValue)
                 .toArray();
+    }
+
+    public Optional<Page> getUpdatePage()
+    {
+        return updatePage;
+    }
+
+    public Optional<Page> getDeletePage()
+    {
+        return deletePage;
+    }
+
+    public Optional<Page> getInsertPage()
+    {
+        return insertPage;
     }
 }

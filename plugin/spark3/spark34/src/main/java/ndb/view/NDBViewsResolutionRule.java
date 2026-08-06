@@ -52,71 +52,94 @@ import static spark.sql.catalog.ndb.NDBRowLevelOperationIdentifier.isForRowLevel
 public class NDBViewsResolutionRule
         extends Rule<LogicalPlan>
 {
-    private static final Logger LOG = LoggerFactory.getLogger(NDBViewsResolutionRule.class);
     public static final Seq<String> EMPTY_STRING_SEQ = (Seq<String>) Seq$.MODULE$.empty();
+    private static final Logger LOG = LoggerFactory.getLogger(
+            NDBViewsResolutionRule.class);
+    private static final Function<LogicalPlan, Supplier<Seq<String>>> unresolvedIdentifierSeqSupplier = p -> {
+        if (p instanceof UnresolvedRelation) {
+            return ((UnresolvedRelation) p)::multipartIdentifier;
+        }
+        else if (p instanceof UnresolvedTableOrView) {
+            return ((UnresolvedTableOrView) p)::multipartIdentifier;
+        }
+        else if (p instanceof UnresolvedView) {
+            return ((UnresolvedView) p)::multipartIdentifier;
+        }
+        else {
+            throw new RuntimeException(
+                    "Unexpected class for unresolved identifier resolution: " + p.getClass());
+        }
+    };
     private final SparkSession session;
     private VastCatalog vastCatalog = null;
+    final BiFunction<Seq<String>, String[], VastView> viewLoader = (uRelName, currentNamespace) -> {
+        String[] namespaceForLookup;
+        try {
+            namespaceForLookup = new VastNamespaceResolver().apply(uRelName,
+                    currentNamespace);
+        }
+        catch (Exception e) {
+            throw new RuntimeException(
+                    "Failed to resolve namespace for view: " + uRelName, e);
+        }
+        Identifier ident = Identifier.of(namespaceForLookup, uRelName.last());
+        LOG.debug("Trying to load view for identifier {}", ident);
+        try {
+            VastView vastView = getVastCatalog().loadView(ident,
+                    Optional.empty());
+            LOG.debug("Loaded view: {}", vastView);
+            return vastView;
+        }
+        catch (Exception e) {
+            throw new RuntimeException(
+                    "Unable to load view for identifier: " + ident, e);
+        }
+    };
 
     public NDBViewsResolutionRule(SparkSession session)
     {
         this.session = session;
     }
 
-    private static final Function<LogicalPlan, Supplier<Seq<String>>> unresolvedIdentifierSeqSupplier = p -> {
-           if (p instanceof UnresolvedRelation) {
-               return ((UnresolvedRelation) p)::multipartIdentifier;
-           }
-           else if (p instanceof UnresolvedTableOrView) {
-               return ((UnresolvedTableOrView) p)::multipartIdentifier;
-           }
-           else if (p instanceof UnresolvedView) {
-               return ((UnresolvedView) p)::multipartIdentifier;
-           }
-           else throw new RuntimeException("Unexpected class for unresolved identifier resolution: " + p.getClass());
-    };
-
-     final BiFunction<Seq<String>, String[], VastView> viewLoader = (uRelName, currentNamespace) -> {
-        String[] namespaceForLookup;
-        try {
-            namespaceForLookup = new VastNamespaceResolver().apply(uRelName, currentNamespace);
-        }
-        catch (Exception e) {
-            throw new RuntimeException("Failed to resolve namespace for view: " + uRelName, e);
-        }
-        Identifier ident = Identifier.of(namespaceForLookup, uRelName.last());
-        LOG.debug("Trying to load view for identifier {}", ident);
-        try {
-            VastView vastView = getVastCatalog().loadView(ident, Optional.empty());
-            LOG.debug("Loaded view: {}", vastView);
-            return vastView;
-        }
-        catch (Exception e) {
-            throw new RuntimeException("Unable to load view for identifier: " + ident, e);
-        }
-    };
+    private static void addAlias(Expression outputField, String columnAlias,
+            Builder<NamedExpression, List<NamedExpression>> namedExpressionListBuilder)
+    {
+        NamedExpression al = new Alias(outputField, columnAlias,
+                NamedExpression.newExprId(), EMPTY_STRING_SEQ,
+                Option.apply(Metadata.empty()), EMPTY_STRING_SEQ);
+        namedExpressionListBuilder.addOne(al);
+    }
 
     @Override
     public LogicalPlan apply(LogicalPlan plan)
     {
-        if (plan instanceof DropNDBViewPlan ||
-                plan instanceof ShowNDBViewsPlan) {
+        if (plan instanceof DropNDBViewPlan || plan instanceof ShowNDBViewsPlan) {
             return plan;
         }
         Function1<LogicalPlan, LogicalPlan> resolveViewFunc = p -> {
             if (p instanceof UnresolvedRelation) {
                 LOG.debug("Trying to resolve UnresolvedRelation: {}", p);
-                Seq<String> uRelName = unresolvedIdentifierSeqSupplier.apply(p).get();
-                String[] currentNamespace = session.sessionState().catalogManager().currentNamespace();
+                Seq<String> uRelName = unresolvedIdentifierSeqSupplier
+                        .apply(p)
+                        .get();
+                String[] currentNamespace = session
+                        .sessionState()
+                        .catalogManager()
+                        .currentNamespace();
                 if (isForRowLevelOp(uRelName.last())) {
-                    LOG.info("Skipping resolution for row-level-op UnresolvedRelation: {}", uRelName);
+                    LOG.info(
+                            "Skipping resolution for row-level-op UnresolvedRelation: {}",
+                            uRelName);
                     return p;
                 }
                 VastView vastView;
                 try {
-                    vastView = this.viewLoader.apply(uRelName, currentNamespace);
+                    vastView = this.viewLoader.apply(uRelName,
+                            currentNamespace);
                 }
                 catch (Exception e) {
-                    LOG.error("Failed to resolve UnresolvedRelation: {}", uRelName, e);
+                    LOG.error("Failed to resolve UnresolvedRelation: {}",
+                            uRelName, e);
                     return p;
                 }
                 String viewName = vastView.name();
@@ -126,15 +149,19 @@ public class NDBViewsResolutionRule
                     parsedQueryPlan = session.sql(query).logicalPlan();
                 }
                 catch (Exception e) {
-                    throw new RuntimeException(QueryCompilationErrors.invalidViewText(query, viewName));
+                    throw new RuntimeException(
+                            QueryCompilationErrors.invalidViewText(query,
+                                    viewName));
                 }
                 Builder<String, List<String>> namespaceSeqBuilder = List.newBuilder();
                 for (String part : vastView.currentNamespace()) {
                     namespaceSeqBuilder.addOne(part);
                 }
                 List<String> namespaceSeq = namespaceSeqBuilder.result();
-                AliasIdentifier aliasIdentifier = AliasIdentifier.apply(viewName, namespaceSeq);
-                LOG.debug("Resolved view plan with alias identifier {}: {}", aliasIdentifier, parsedQueryPlan);
+                AliasIdentifier aliasIdentifier = AliasIdentifier.apply(
+                        viewName, namespaceSeq);
+                LOG.debug("Resolved view plan with alias identifier {}: {}",
+                        aliasIdentifier, parsedQueryPlan);
 
                 LogicalPlan newPlan = parsedQueryPlan;
                 String[] columnAliases = vastView.columnAliases();
@@ -144,39 +171,61 @@ public class NDBViewsResolutionRule
                         Builder<NamedExpression, List<NamedExpression>> namedExpressionListBuilder = List$.MODULE$.newBuilder();
                         for (int i = 0; i < columnAliases.length; i++) {
                             String columnAlias = columnAliases[i];
-                            addAlias(output.apply(i), columnAlias, namedExpressionListBuilder);
+                            addAlias(output.apply(i), columnAlias,
+                                    namedExpressionListBuilder);
                         }
                         Seq<NamedExpression> projectList = namedExpressionListBuilder.result();
                         newPlan = new Project(projectList, parsedQueryPlan);
                     }
                     else {
-                        throw new RuntimeException(format("Number of Aliases doesn't match number of projections. Aliases: %s, projections: %s",
-                                Arrays.toString(columnAliases), newPlan.output()));
+                        throw new RuntimeException(
+                                format("Number of Aliases doesn't match number of projections. Aliases: %s, projections: %s",
+                                        Arrays.toString(columnAliases),
+                                        newPlan.output()));
                     }
                 }
-                SubqueryAlias subqueryAlias = new SubqueryAlias(aliasIdentifier, newPlan);
-                LOG.debug("Returning resolved view plan with subquery alias {}", subqueryAlias);
+                SubqueryAlias subqueryAlias = new SubqueryAlias(aliasIdentifier,
+                        newPlan);
+                LOG.debug("Returning resolved view plan with subquery alias {}",
+                        subqueryAlias);
                 return subqueryAlias;
             }
             else if (p instanceof UnresolvedTableOrView) {
                 LOG.debug("Trying to resolve UnresolvedTableOrView: {}", p);
-                Seq<String> uRelName = unresolvedIdentifierSeqSupplier.apply(p).get();
-                String[] currentNamespace = session.sessionState().catalogManager().currentNamespace();
+                Seq<String> uRelName = unresolvedIdentifierSeqSupplier
+                        .apply(p)
+                        .get();
+                String[] currentNamespace = session
+                        .sessionState()
+                        .catalogManager()
+                        .currentNamespace();
                 VastView vastView;
                 try {
-                    vastView = this.viewLoader.apply(uRelName, currentNamespace);
+                    vastView = this.viewLoader.apply(uRelName,
+                            currentNamespace);
                 }
                 catch (Exception e) {
-                    LOG.error("Failed to resolve UnresolvedTableOrView: {}", uRelName, e);
+                    LOG.error("Failed to resolve UnresolvedTableOrView: {}",
+                            uRelName, e);
                     return p;
                 }
-                Identifier identifier = Identifier.of(vastView.currentNamespace(), vastView.name());
+                Identifier identifier = Identifier.of(
+                        vastView.currentNamespace(), vastView.name());
                 UnresolvedTableOrView unresolvedTableOrView = (UnresolvedTableOrView) p;
-                boolean alterView = unresolvedTableOrView.commandName().startsWith("ALTER VIEW");
+                boolean alterView = unresolvedTableOrView
+                        .commandName()
+                        .startsWith("ALTER VIEW");
                 if (alterView) {
-                    StructType structType = session.sql(vastView.query()).logicalPlan().schema();
-                    ResolvedPersistentView resolvedView = new ResolvedPersistentView(InitializedVastCatalog.getVastCatalog(), identifier, structType);
-                    LOG.debug("Successfully transformed UnresolvedTableOrView to ResolvedPersistentView: {}", resolvedView);
+                    StructType structType = session
+                            .sql(vastView.query())
+                            .logicalPlan()
+                            .schema();
+                    ResolvedPersistentView resolvedView = new ResolvedPersistentView(
+                            InitializedVastCatalog.getVastCatalog(), identifier,
+                            structType);
+                    LOG.debug(
+                            "Successfully transformed UnresolvedTableOrView to ResolvedPersistentView: {}",
+                            resolvedView);
                     return resolvedView;
                 }
                 else {
@@ -185,55 +234,75 @@ public class NDBViewsResolutionRule
                     for (StructField field : vastViewTable.schema().fields()) {
                         attributeListBuilder.addOne(field.toAttribute());
                     }
-                    ResolvedTable resolvedTable = new ResolvedTable(InitializedVastCatalog.getVastCatalog(), identifier, vastViewTable, attributeListBuilder.result());
-                    LOG.debug("Successfully transformed UnresolvedTableOrView to ResolvedTable: {}", resolvedTable);
+                    ResolvedTable resolvedTable = new ResolvedTable(
+                            InitializedVastCatalog.getVastCatalog(), identifier,
+                            vastViewTable, attributeListBuilder.result());
+                    LOG.debug(
+                            "Successfully transformed UnresolvedTableOrView to ResolvedTable: {}",
+                            resolvedTable);
                     return resolvedTable;
                 }
             }
             else if (p instanceof UnresolvedView) {
                 LOG.debug("Trying to resolve UnresolvedView: {}", p);
-                Seq<String> uRelName = unresolvedIdentifierSeqSupplier.apply(p).get();
-                String[] currentNamespace = session.sessionState().catalogManager().currentNamespace();
+                Seq<String> uRelName = unresolvedIdentifierSeqSupplier
+                        .apply(p)
+                        .get();
+                String[] currentNamespace = session
+                        .sessionState()
+                        .catalogManager()
+                        .currentNamespace();
                 VastView vastView;
                 try {
-                    vastView = this.viewLoader.apply(uRelName, currentNamespace);
+                    vastView = this.viewLoader.apply(uRelName,
+                            currentNamespace);
                 }
                 catch (Exception e) {
-                    LOG.error("Failed to resolve UnresolvedView: {}", uRelName, e);
+                    LOG.error("Failed to resolve UnresolvedView: {}", uRelName,
+                            e);
                     return p;
                 }
                 LOG.debug("Loaded view from UnresolvedView: {}", vastView);
-                Identifier identifier = Identifier.of(vastView.currentNamespace(), vastView.name());
-                StructType structType = session.sql(vastView.query()).logicalPlan().schema();
-                ResolvedPersistentView resolvedView = new ResolvedPersistentView(InitializedVastCatalog.getVastCatalog(), identifier, structType);
-                LOG.debug("Successfully transformed UnresolvedView to ResolvedPersistentView: {}", resolvedView);
+                Identifier identifier = Identifier.of(
+                        vastView.currentNamespace(), vastView.name());
+                StructType structType = session
+                        .sql(vastView.query())
+                        .logicalPlan()
+                        .schema();
+                ResolvedPersistentView resolvedView = new ResolvedPersistentView(
+                        InitializedVastCatalog.getVastCatalog(), identifier,
+                        structType);
+                LOG.debug(
+                        "Successfully transformed UnresolvedView to ResolvedPersistentView: {}",
+                        resolvedView);
                 return resolvedView;
             }
             else if (p instanceof CreateNDBViewPlan) {
                 CreateNDBViewPlan createNDBViewPlan = (CreateNDBViewPlan) p;
-                LogicalPlan resolvedQuery = session.sessionState().analyzer().execute(createNDBViewPlan.children().apply(1));
-                LOG.debug("Successfully resolved CreateNDBViewPlan query to LogicalPlan: {}", resolvedQuery);
-                LogicalPlan[] r = new LogicalPlan[] {createNDBViewPlan.children().apply(0), resolvedQuery};
-                ArraySeq<LogicalPlan> result = ArraySeq$.MODULE$.unsafeWrapArray(r);
+                LogicalPlan resolvedQuery = session
+                        .sessionState()
+                        .analyzer()
+                        .execute(createNDBViewPlan.children().apply(1));
+                LOG.debug(
+                        "Successfully resolved CreateNDBViewPlan query to LogicalPlan: {}",
+                        resolvedQuery);
+                LogicalPlan[] r = new LogicalPlan[] {createNDBViewPlan.children().apply(
+                        0), resolvedQuery};
+                ArraySeq<LogicalPlan> result = ArraySeq$.MODULE$.unsafeWrapArray(
+                        r);
                 return createNDBViewPlan.withNewChildrenInternal(result);
             }
             else {
                 return p;
             }
         };
-        PartialFunction<LogicalPlan, LogicalPlan> transformer = PartialFunction.fromFunction(resolveViewFunc);
+        PartialFunction<LogicalPlan, LogicalPlan> transformer = PartialFunction.fromFunction(
+                resolveViewFunc);
         return plan.resolveOperators(transformer);
     }
 
-    private static void addAlias(Expression outputField, String columnAlias, Builder<NamedExpression, List<NamedExpression>> namedExpressionListBuilder)
+    private synchronized VastCatalog getVastCatalog()
     {
-        NamedExpression al = new Alias(outputField, columnAlias, NamedExpression.newExprId(), EMPTY_STRING_SEQ, Option.apply(Metadata.empty()), EMPTY_STRING_SEQ);
-        namedExpressionListBuilder.addOne(al);
-    }
-
-
-
-    private synchronized VastCatalog getVastCatalog() {
         if (vastCatalog == null) {
             setVastCatalog();
         }

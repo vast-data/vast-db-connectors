@@ -8,8 +8,8 @@ public class VastTransactionFactory
         implements VastTransactionInstantiator<SimpleVastTransaction>
 {
     @Override
-    public SimpleVastTransaction apply(ParsedStartTransactionResponse parsedStartTransactionResponse)
+    public SimpleVastTransaction apply(VastTransaction tx)
     {
-        return new SimpleVastTransaction(parsedStartTransactionResponse.getId());
+        return new SimpleVastTransaction(tx.getId());
     }
 }

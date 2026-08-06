@@ -16,11 +16,16 @@ public class QueryDataBaseFieldsWithProjectionsMappingBuilder
     private final LinkedHashMap<Field, LinkedHashMap<List<Integer>, Integer>> map = new LinkedHashMap<>();
     private int responseIndex;
 
-    public QueryDataBaseFieldsWithProjectionsMappingBuilder put(Field field, List<Integer> projection)
+    public QueryDataBaseFieldsWithProjectionsMappingBuilder put(Field field,
+                                                                List<Integer> projection)
     {
-        Integer existingMapping = map.computeIfAbsent(field, f -> new LinkedHashMap<>(1)).putIfAbsent(projection, responseIndex++);
+        Integer existingMapping = map
+                .computeIfAbsent(field, f -> new LinkedHashMap<>(1))
+                .putIfAbsent(projection, responseIndex++);
         if (existingMapping != null) {
-            throw new IllegalStateException(format("Found duplicate projection path mapping for field: %s, path: %s, index: %s", field, projection, responseIndex));
+            throw new IllegalStateException(
+                    format("Found duplicate projection path mapping for field: %s, path: %s, index: %s",
+                            field, projection, responseIndex));
         }
         return this;
     }

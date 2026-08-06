@@ -5,6 +5,7 @@
 package com.vastdata.client.importdata;
 
 import com.google.common.collect.ImmutableList;
+import com.vastdata.client.QueryDataExtraParams;
 import com.vastdata.client.VastClient;
 import com.vastdata.client.VastResponse;
 import com.vastdata.client.error.ImportDataFailure;
@@ -58,21 +59,24 @@ public class TestImportDataExecutor
         autoCloseable.close();
     }
 
-    @Test(expectedExceptions = VastRuntimeException.class, expectedExceptionsMessageRegExp = ".*Number of attempts exceeded configuration: " + (NUMBER_OF_RETRIES + 1))
+    @Test(expectedExceptions = VastRuntimeException.class,
+            expectedExceptionsMessageRegExp = ".*Number of attempts exceeded configuration: " + (NUMBER_OF_RETRIES + 1))
     public void testExecuteThrowsExceptionOnMaxRetries()
             throws VastException
     {
         testExecute(503);
     }
 
-    @Test(expectedExceptions = ImportDataFailure.class, expectedExceptionsMessageRegExp = ".*" + ImportDataFailure.REQUEST_EXECUTION_ERROR_NOT_FOUND + ".*")
+    @Test(expectedExceptions = ImportDataFailure.class,
+            expectedExceptionsMessageRegExp = ".*" + ImportDataFailure.REQUEST_EXECUTION_ERROR_NOT_FOUND + ".*")
     public void testExecuteThrowsExceptionOnObjectNotFound()
             throws VastException
     {
         testExecute(404);
     }
 
-    @Test(expectedExceptions = ImportDataFailure.class, expectedExceptionsMessageRegExp = ".*" + ImportDataFailure.REQUEST_EXECUTION_ERROR_PERMISSIONS + ".*")
+    @Test(expectedExceptions = ImportDataFailure.class,
+            expectedExceptionsMessageRegExp = ".*" + ImportDataFailure.REQUEST_EXECUTION_ERROR_PERMISSIONS + ".*")
     public void testExecuteThrowsExceptionOnBadPermissions()
             throws VastException
     {
@@ -86,20 +90,27 @@ public class TestImportDataExecutor
         when(mockResponse.getStatus()).thenReturn(returnCode);
         when(mockResponse.getRequestUri()).thenReturn(uri1);
         when(mockResponse.getErrorMessage()).thenReturn(Optional.empty());
-        when(mockResponse.getBytes()).thenReturn("dummy".getBytes(StandardCharsets.UTF_8));
-        when(mockClient.importData(any(VastTransaction.class), any(VastTraceToken.class), any(ImportDataContext.class), any(), any(URI.class), nullable(String.class)))
-                .thenReturn(mockResponse);
-        when(mockCtx.getSourceFiles()).thenReturn(ImmutableList.of(mockImportDataFile));
+        when(mockResponse.getBytes()).thenReturn(
+                "dummy".getBytes(StandardCharsets.UTF_8));
+        when(mockClient.importData(any(VastTransaction.class),
+                any(VastTraceToken.class), any(ImportDataContext.class), any(),
+                any(URI.class), any(QueryDataExtraParams.class), nullable(String.class))).thenReturn(
+                mockResponse);
+        when(mockCtx.getSourceFiles()).thenReturn(
+                ImmutableList.of(mockImportDataFile));
         when(mockCtx.getDest()).thenReturn("bucket/schema/table");
         when(mockCtx.getChunkLimit()).thenReturn(Optional.empty());
         when(mockImportDataFile.hasSchemaRoot()).thenReturn(Boolean.TRUE);
-        ImportDataExecutor<VastTransaction> unit = new ImportDataExecutor<>(mockClient);
+        ImportDataExecutor<VastTransaction> unit = new ImportDataExecutor<>(
+                mockClient);
         Supplier<RetryStrategy> retryStrategy = this::getRetryStrategy;
-        unit.execute(mockCtx, mockTrans, mockTraceToken, ImmutableList.of(uri1, uri2), retryStrategy, true, null);
+        unit.execute(mockCtx, mockTrans, mockTraceToken,
+                ImmutableList.of(uri1, uri2), retryStrategy, true, new QueryDataExtraParams(), null);
     }
 
     private RetryStrategy getRetryStrategy()
     {
-        return RetryStrategyFactory.fixedSleepBetweenRetries(NUMBER_OF_RETRIES, 1);
+        return RetryStrategyFactory.fixedSleepBetweenRetries(NUMBER_OF_RETRIES,
+                1);
     }
 }

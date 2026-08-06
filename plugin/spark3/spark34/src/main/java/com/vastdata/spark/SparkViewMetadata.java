@@ -49,7 +49,8 @@ import static spark.sql.catalog.ndb.UnsupportedTypes.UNSUPPORTED_TYPE_PREDICATE;
 
 public class SparkViewMetadata
 {
-    private static final Logger LOG = LoggerFactory.getLogger(SparkViewMetadata.class);
+    private static final Logger LOG = LoggerFactory.getLogger(
+            SparkViewMetadata.class);
 
     private final Identifier identifier;
     private final boolean replace;
@@ -63,9 +64,11 @@ public class SparkViewMetadata
     private final UTF8String[] columnComments;
     private final UTF8String[] aliases;
 
-    public SparkViewMetadata(Identifier identifier, boolean replace, boolean allowExisting, Option<String> comment,
-            Map<String, String> properties, String origRawViewSqlDefinition, StructType schema, String currentCatalog,
-            String[] currentNamespace, String[] columnComments, String[] aliases)
+    public SparkViewMetadata(Identifier identifier, boolean replace,
+            boolean allowExisting, Option<String> comment,
+            Map<String, String> properties, String origRawViewSqlDefinition,
+            StructType schema, String currentCatalog, String[] currentNamespace,
+            String[] columnComments, String[] aliases)
     {
         this.identifier = identifier;
         this.replace = replace;
@@ -76,14 +79,19 @@ public class SparkViewMetadata
         this.schema = schema;
         this.currentCatalog = currentCatalog;
         this.currentNamespace = currentNamespace;
-        this.columnComments = Arrays.stream(columnComments).map(UTF8String::fromString).toArray(UTF8String[]::new);
-        this.aliases = Arrays.stream(aliases).map(UTF8String::fromString).toArray(UTF8String[]::new);
+        this.columnComments = Arrays.stream(columnComments).map(
+                UTF8String::fromString).toArray(UTF8String[]::new);
+        this.aliases = Arrays
+                .stream(aliases)
+                .map(UTF8String::fromString)
+                .toArray(UTF8String[]::new);
     }
 
-    public SparkViewMetadata(Identifier identifier, boolean replace, boolean allowExisting,
-            Option<String> comment, Seq<Tuple2<String, Option<String>>> userSpecifiedColumns,
-            Map<String, String> properties, String origRawViewSqlDefinition, StructType schema,
-            String currentCatalog, String[] currentNamespace)
+    public SparkViewMetadata(Identifier identifier, boolean replace,
+            boolean allowExisting, Option<String> comment,
+            Seq<Tuple2<String, Option<String>>> userSpecifiedColumns,
+            Map<String, String> properties, String origRawViewSqlDefinition,
+            StructType schema, String currentCatalog, String[] currentNamespace)
     {
         this.identifier = identifier;
         this.replace = replace;
@@ -96,7 +104,8 @@ public class SparkViewMetadata
         this.currentNamespace = currentNamespace;
         if (!userSpecifiedColumns.isEmpty()) {
             int size = schema.size();
-            SparkViewUserDefinedColumnsValidator.validateNumberOfUserDefinedColumns(size, userSpecifiedColumns.size());
+            SparkViewUserDefinedColumnsValidator.validateNumberOfUserDefinedColumns(
+                    size, userSpecifiedColumns.size());
             columnComments = new UTF8String[size];
             aliases = new UTF8String[size];
             AtomicInteger i = new AtomicInteger();
@@ -104,7 +113,8 @@ public class SparkViewMetadata
                 int currIndex = i.getAndIncrement();
                 aliases[currIndex] = UTF8String.fromString(tup._1());
                 if (tup._2().isDefined()) {
-                    columnComments[currIndex] = UTF8String.fromString(tup._2().get());
+                    columnComments[currIndex] = UTF8String.fromString(
+                            tup._2().get());
                 }
                 return null;
             });
@@ -133,8 +143,11 @@ public class SparkViewMetadata
     public VastViewMetadata toVastCreateViewContext()
     {
         ArrowWriter arrowWriter;
-        BufferAllocator writerAllocator = VastArrowAllocator.writeAllocator().newChildAllocator("CreateSparkViewContext", 0, Long.MAX_VALUE);
-        VectorSchemaRoot currentRoot = VectorSchemaRoot.create(VastViewMetadata.VIEW_DETAILS_SCHEMA, writerAllocator);
+        BufferAllocator writerAllocator = VastArrowAllocator
+                .writeAllocator()
+                .newChildAllocator("CreateSparkViewContext", 0, Long.MAX_VALUE);
+        VectorSchemaRoot currentRoot = VectorSchemaRoot.create(
+                VastViewMetadata.VIEW_DETAILS_SCHEMA, writerAllocator);
         try {
             arrowWriter = TypeUtil.getArrowSchemaWriter(currentRoot);
         }
@@ -143,29 +156,40 @@ public class SparkViewMetadata
             throw toRuntime(any);
         }
 
-        GenericInternalRow internalRow = new GenericInternalRow(VastViewMetadata.VIEW_DETAILS_SCHEMA.getFields().size());
+        GenericInternalRow internalRow = new GenericInternalRow(
+                VastViewMetadata.VIEW_DETAILS_SCHEMA.getFields().size());
 
-        internalRow.update(indexOf(FIELD_SQL), UTF8String.fromString(origRawViewSqlDefinition));
+        internalRow.update(indexOf(FIELD_SQL),
+                UTF8String.fromString(origRawViewSqlDefinition));
 
-        internalRow.update(indexOf(FIELD_CURRENT_CATALOG), UTF8String.fromString(currentCatalog));
+        internalRow.update(indexOf(FIELD_CURRENT_CATALOG),
+                UTF8String.fromString(currentCatalog));
 
-        internalRow.update(indexOf(FIELD_COMMENT), UTF8String.fromString(comment.isEmpty() ? "" : comment.get()));
+        internalRow.update(indexOf(FIELD_COMMENT),
+                UTF8String.fromString(comment.isEmpty() ? "" : comment.get()));
 
-        ArrayData currentNameSpaceAsArrayData = ArrayData$.MODULE$.allocateArrayData(-1, currentNamespace.length,
+        ArrayData currentNameSpaceAsArrayData = ArrayData$.MODULE$.allocateArrayData(
+                -1, currentNamespace.length,
                 "Error during CurrentNamespace array creation");
         for (int i = 0; i < currentNamespace.length; i++) {
-            currentNameSpaceAsArrayData.update(i, UTF8String.fromString(currentNamespace[i]));
+            currentNameSpaceAsArrayData.update(i,
+                    UTF8String.fromString(currentNamespace[i]));
         }
-        internalRow.update(indexOf(FIELD_CURRENT_NAMESPACE), currentNameSpaceAsArrayData);
+        internalRow.update(indexOf(FIELD_CURRENT_NAMESPACE),
+                currentNameSpaceAsArrayData);
 
         ArrayData emptyArray = ArrayData$.MODULE$.allocateArrayData(-1, 0,
                 "Error during empty array creation");
         internalRow.update(indexOf(FIELD_QUERY_COLUMN_NAMES), emptyArray);
 
-        ArrayData columnAliasesArray = aliases.length > 0 ? ArrayData.toArrayData(aliases): emptyArray;
+        ArrayData columnAliasesArray = aliases.length > 0 ?
+                ArrayData.toArrayData(aliases) :
+                emptyArray;
         internalRow.update(indexOf(FIELD_COLUMN_ALIASES), columnAliasesArray);
 
-        ArrayData columnCommentsArray = columnComments.length > 0 ? ArrayData.toArrayData(columnComments): emptyArray;
+        ArrayData columnCommentsArray = columnComments.length > 0 ?
+                ArrayData.toArrayData(columnComments) :
+                emptyArray;
         internalRow.update(indexOf(FIELD_COLUMN_COMMENTS), columnCommentsArray);
 
         MapData emptyMap = new ArrayBasedMapData(emptyArray, emptyArray);
@@ -177,33 +201,45 @@ public class SparkViewMetadata
         finally {
             arrowWriter.finish();
         }
-        List<Field> viewFieldsSafe = Arrays.stream(schema.fields()).map(column -> {
-            try {
-                Field field = TypeUtil.sparkFieldToArrowField(column);
-                if (UNSUPPORTED_TYPE_PREDICATE.test(field)) {
-                    LOG.warn("Defaulting to binary column for unsupported view column: {}. Arrow field: {}", column, field);
-                    return defaultViewColumn(column.name());
-                }
-                if (!field.isNullable()) {
-                    LOG.warn("Adapting nullability of non-null view column: {}, Arrow field: {}", column, field);
-                    return new Field(field.getName(), FieldType.nullable(field.getType()), field.getChildren());
-                }
-                return field;
-            }
-            catch (Exception any) {
-                LOG.warn(format("Converting spark column to arrow field failed. Defaulting to binary column for view column: %s", column), any);
-                return defaultViewColumn(column.name());
-            }
-        }).collect(Collectors.toList());
+        List<Field> viewFieldsSafe = Arrays.stream(schema.fields()).map(
+                column -> {
+                    try {
+                        Field field = TypeUtil.sparkFieldToArrowField(column);
+                        if (UNSUPPORTED_TYPE_PREDICATE.test(field)) {
+                            LOG.warn(
+                                    "Defaulting to binary column for unsupported view column: {}. Arrow field: {}",
+                                    column, field);
+                            return defaultViewColumn(column.name());
+                        }
+                        if (!field.isNullable()) {
+                            LOG.warn(
+                                    "Adapting nullability of non-null view column: {}, Arrow field: {}",
+                                    column, field);
+                            return new Field(field.getName(),
+                                    FieldType.nullable(field.getType()),
+                                    field.getChildren());
+                        }
+                        return field;
+                    }
+                    catch (Exception any) {
+                        LOG.warn(
+                                format("Converting spark column to arrow field failed. Defaulting to binary column for view column: %s",
+                                        column), any);
+                        return defaultViewColumn(column.name());
+                    }
+                }).collect(Collectors.toList());
         Schema viewSchemaSafe = new Schema(viewFieldsSafe);
-        LOG.warn("Creating VastViewMetadata with safe schema: {}", viewSchemaSafe);
-        return new VastViewMetadata(compose(identifier.namespace()), identifier.name(), currentRoot, viewSchemaSafe);
+        LOG.warn("Creating VastViewMetadata with safe schema: {}",
+                viewSchemaSafe);
+        return new VastViewMetadata(compose(identifier.namespace()),
+                identifier.name(), currentRoot, viewSchemaSafe);
     }
 
     @Override
     public String toString()
     {
-        return new StringJoiner(", ", SparkViewMetadata.class.getSimpleName() + "[", "]")
+        return new StringJoiner(", ",
+                SparkViewMetadata.class.getSimpleName() + "[", "]")
                 .add("identifier=" + identifier)
                 .add("replace=" + replace)
                 .add("allowExisting=" + allowExisting)

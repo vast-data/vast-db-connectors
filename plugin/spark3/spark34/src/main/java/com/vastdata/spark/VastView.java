@@ -26,7 +26,8 @@ import java.util.Set;
 import java.util.StringJoiner;
 import java.util.stream.IntStream;
 
-public class VastView implements View
+public class VastView
+        implements View
 {
     private static final Logger LOG = LoggerFactory.getLogger(VastView.class);
 
@@ -40,15 +41,10 @@ public class VastView implements View
     private final String[] columnComments_;
     private final Map<String, String> properties_;
 
-    public VastView(final String name,
-                    final String query,
-                    final String catalog,
-                    final String comment,
-                    final String[] namespace,
-                    final StructType schema,
-                    final String[] queryColumnNames,
-                    final String[] columnAliases,
-                    final String[] columnComments)
+    public VastView(final String name, final String query, final String catalog,
+            final String comment, final String[] namespace,
+            final StructType schema, final String[] queryColumnNames,
+            final String[] columnAliases, final String[] columnComments)
     {
         this.name_ = name;
         this.query_ = query;
@@ -57,44 +53,30 @@ public class VastView implements View
         this.queryColumnNames_ = queryColumnNames;
         this.columnAliases_ = columnAliases;
         this.columnComments_ = columnComments;
-        this.properties_ = Strings.isNullOrEmpty(comment) ? ImmutableMap.of() : ImmutableMap.of("comment", comment);
-        this.schema_ = adaptViewSchemaIfNeeded(schema, columnComments_, columnAliases_);
+        this.properties_ = Strings.isNullOrEmpty(comment) ?
+                ImmutableMap.of() :
+                ImmutableMap.of("comment", comment);
+        this.schema_ = adaptViewSchemaIfNeeded(schema, columnComments_,
+                columnAliases_);
     }
 
-    @Override
-    public String name() {
-        return name_;
-    }
-
-    @Override
-    public String query() {
-        return query_;
-    }
-
-    @Override
-    public String currentCatalog() {
-        return catalog;
-    }
-
-    @Override
-    public String[] currentNamespace() {
-        return namespace;
-    }
-
-    @Override
-    public StructType schema() {
-        return schema_;
-    }
-
-    private static StructType adaptViewSchemaIfNeeded(StructType schema, String[] columnComments, String[] columnAlias)
+    private static StructType adaptViewSchemaIfNeeded(StructType schema,
+            String[] columnComments, String[] columnAlias)
     {
         if (columnComments.length > 0 || columnAlias.length > 0) {
-            LOG.debug("adaptViewSchemaIfNeeded for schema: {}. Using column comments and column aliases: {}, {}", schema, Arrays.toString(columnComments), Arrays.toString(columnAlias));
-            StructField[] fieldsWithComments = IntStream.range(0, schema.fields().length).mapToObj(i -> {
+            LOG.debug(
+                    "adaptViewSchemaIfNeeded for schema: {}. Using column comments and column aliases: {}, {}",
+                    schema, Arrays.toString(columnComments),
+                    Arrays.toString(columnAlias));
+            StructField[] fieldsWithComments = IntStream.range(0,
+                    schema.fields().length).mapToObj(i -> {
                 StructField f = schema.fields()[i];
-                String comment = columnComments.length > 0 ? columnComments[i] : null;
+                String comment = columnComments.length > 0 ?
+                        columnComments[i] :
+                        null;
                 String alias = columnAlias.length > 0 ? columnAlias[i] : null;
-                if (Strings.isNullOrEmpty(comment) && Strings.isNullOrEmpty(alias)) {
+                if (Strings.isNullOrEmpty(comment) && Strings.isNullOrEmpty(
+                        alias)) {
                     return f;
                 }
                 else {
@@ -104,7 +86,9 @@ public class VastView implements View
                         newMD = f.metadata();
                     }
                     else {
-                        scala.collection.immutable.Map<String, Object> map = f.metadata().map();
+                        scala.collection.immutable.Map<String, Object> map = f
+                                .metadata()
+                                .map();
                         ReusableBuilder<Tuple2<String, Object>, HashMap<String, Object>> mdMapBuilder = HashMap$.MODULE$.newBuilder();
                         map.foreach(t -> {
                             mdMapBuilder.addOne(t);
@@ -119,7 +103,8 @@ public class VastView implements View
                     else {
                         newName = alias;
                     }
-                    return new StructField(newName, f.dataType(), f.nullable(), newMD);
+                    return new StructField(newName, f.dataType(), f.nullable(),
+                            newMD);
                 }
             }).toArray(StructField[]::new);
             return new StructType(fieldsWithComments);
@@ -128,22 +113,56 @@ public class VastView implements View
     }
 
     @Override
-    public String[] queryColumnNames() {
+    public String name()
+    {
+        return name_;
+    }
+
+    @Override
+    public String query()
+    {
+        return query_;
+    }
+
+    @Override
+    public String currentCatalog()
+    {
+        return catalog;
+    }
+
+    @Override
+    public String[] currentNamespace()
+    {
+        return namespace;
+    }
+
+    @Override
+    public StructType schema()
+    {
+        return schema_;
+    }
+
+    @Override
+    public String[] queryColumnNames()
+    {
         return queryColumnNames_;
     }
 
     @Override
-    public String[] columnAliases() {
+    public String[] columnAliases()
+    {
         return columnAliases_;
     }
 
     @Override
-    public String[] columnComments() {
+    public String[] columnComments()
+    {
         return columnComments_;
     }
 
     @Override
-    public Map<String, String> properties() {
+    public Map<String, String> properties()
+    {
         return properties_;
     }
 
@@ -165,7 +184,8 @@ public class VastView implements View
 
     public Table asTable()
     {
-        return new Table() {
+        return new Table()
+        {
             @Override
             public String name()
             {
@@ -193,11 +213,9 @@ public class VastView implements View
             @Override
             public String toString()
             {
-                return new StringJoiner(", ", "VastViewAsTable" + "[", "]")
-                        .add("name=" + name())
-                        .add("schema=" + schema())
-                        .add("properties=" + properties())
-                        .toString();
+                return new StringJoiner(", ", "VastViewAsTable" + "[", "]").add(
+                        "name=" + name()).add("schema=" + schema()).add(
+                        "properties=" + properties()).toString();
             }
         };
     }

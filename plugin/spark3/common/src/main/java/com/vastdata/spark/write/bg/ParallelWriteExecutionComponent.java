@@ -16,17 +16,21 @@ import static java.lang.String.format;
 public abstract class ParallelWriteExecutionComponent
         implements Runnable, CompletedWriteExecutionComponent
 {
-    private static final Logger LOG = LoggerFactory.getLogger(ParallelWriteExecutionComponent.class);
-    protected final Set<CompletionListener> registeredBlockingCompletionListeners = new HashSet<>(1);
+    private static final Logger LOG = LoggerFactory.getLogger(
+            ParallelWriteExecutionComponent.class);
+    protected final Set<CompletionListener> registeredBlockingCompletionListeners = new HashSet<>(
+            1);
     protected final AtomicBoolean isDone = new AtomicBoolean(false);
     protected final int ordinal;
     protected Throwable runtimeError = null;
 
-    ParallelWriteExecutionComponent(int ordinal) {
+    ParallelWriteExecutionComponent(int ordinal)
+    {
         this.ordinal = ordinal;
     }
 
     public abstract void doRun();
+
     public abstract String getTaskName();
 
     @Override
@@ -63,18 +67,20 @@ public abstract class ParallelWriteExecutionComponent
         }
     }
 
-    public boolean isDone() {
+    public boolean isDone()
+    {
         return isDone.get();
     }
 
-    public synchronized void registerCompletionListener(CompletionListener listener)
+    public synchronized void registerCompletionListener(
+            CompletionListener listener)
     {
         this.registeredBlockingCompletionListeners.add(listener);
     }
 
-
     private synchronized void reportComplete()
     {
-        registeredBlockingCompletionListeners.forEach(completionListener -> completionListener.completed(this));
+        registeredBlockingCompletionListeners.forEach(
+                completionListener -> completionListener.completed(this));
     }
 }

@@ -5,7 +5,8 @@
 package com.vastdata.client.error;
 
 public abstract class VastException
-        extends Exception implements VastErrorTypeSupplier
+        extends Exception
+        implements VastErrorTypeSupplier
 {
     VastException(String msg, Throwable rootCause)
     {
@@ -17,7 +18,10 @@ public abstract class VastException
         super(msg);
     }
 
-    public VastException(Exception e) { super(e);}
+    public VastException(Exception e)
+    {
+        super(e);
+    }
 
     public abstract ErrorType getErrorType();
 }

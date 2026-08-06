@@ -31,9 +31,22 @@ public class DeleteHandler
 {
     private static final Logger LOG = Logger.get(DeleteHandler.class);
 
-    public DeleteHandler(Map<String, Set<MockMapSchema>> schema, Set<String> openTransactions)
+    public DeleteHandler(Map<String, Set<MockMapSchema>> schema,
+            Set<String> openTransactions)
     {
         super(schema, openTransactions);
+    }
+
+    private static String readColumnSchema(HttpExchange he)
+            throws IOException
+    {
+        try (ArrowStreamReader reader = new ArrowStreamReader(
+                he.getRequestBody(), new RootAllocator())) {
+            reader.loadNextBatch();
+            Schema schema = reader.getVectorSchemaRoot().getSchema();
+            List<Field> fields = schema.getFields();
+            return Iterables.getOnlyElement(fields).getName();
+        }
     }
 
     @Override
@@ -69,9 +82,19 @@ public class DeleteHandler
                 LOG.info("Bucket %s exists, deleting", bucket);
                 Set<MockMapSchema> mockMapSchemas = schemaMap.get(bucket);
                 String schemaName = parsedURL.getSchemaName();
-                Optional<MockMapSchema> existingSchema = mockMapSchemas.stream().filter(mockSchema -> mockSchema.getName().equals(schemaName)).findAny();
+                Optional<MockMapSchema> existingSchema = mockMapSchemas
+                        .stream()
+                        .filter(mockSchema -> mockSchema
+                                .getName()
+                                .equals(schemaName))
+                        .findAny();
                 if (existingSchema.isPresent()) {
-                    Set<MockMapSchema> filteredSchemas = mockMapSchemas.stream().filter(mockSchema -> !mockSchema.getName().equals(schemaName)).collect(Collectors.toSet());
+                    Set<MockMapSchema> filteredSchemas = mockMapSchemas
+                            .stream()
+                            .filter(mockSchema -> !mockSchema
+                                    .getName()
+                                    .equals(schemaName))
+                            .collect(Collectors.toSet());
                     schemaMap.put(bucket, filteredSchemas);
                     respond("", he, 200);
                 }
@@ -90,11 +113,18 @@ public class DeleteHandler
             else {
                 Set<MockMapSchema> mockMapSchemas = schemaMap.get(bucket);
                 String schemaName = parsedURL.getSchemaName();
-                Optional<MockMapSchema> existingSchema = mockMapSchemas.stream().filter(mockSchema -> mockSchema.getName().equals(schemaName)).findAny();
+                Optional<MockMapSchema> existingSchema = mockMapSchemas
+                        .stream()
+                        .filter(mockSchema -> mockSchema
+                                .getName()
+                                .equals(schemaName))
+                        .findAny();
                 if (existingSchema.isPresent()) {
                     String tableName = parsedURL.getTableName();
                     if (query.equals("view")) {
-                        Map<String, MockView> views = existingSchema.get().getViews();
+                        Map<String, MockView> views = existingSchema
+                                .get()
+                                .getViews();
                         if (!views.containsKey(tableName)) {
                             LOG.error("View %s does not exist", tableName);
                             respondError(he);
@@ -110,7 +140,9 @@ public class DeleteHandler
                             }
                         }
                     }
-                    Map<String, MockTable> tables = existingSchema.get().getTables();
+                    Map<String, MockTable> tables = existingSchema
+                            .get()
+                            .getTables();
                     if (!tables.containsKey(tableName)) {
                         LOG.error("Table %s does not exist", tableName);
                         respondError(he);
@@ -119,7 +151,8 @@ public class DeleteHandler
                         switch (query) {
                             case "table":
                                 if (tables.remove(tableName) == null) {
-                                    LOG.error("Failed deleting table %s", tableName);
+                                    LOG.error("Failed deleting table %s",
+                                            tableName);
                                     respondError(he);
                                 }
                                 else {
@@ -131,7 +164,9 @@ public class DeleteHandler
                                 Map<String, Field> columns = mockTable.getColumns();
                                 String colName = readColumnSchema(he);
                                 if (columns.remove(colName) == null) {
-                                    LOG.error("Column %s does not exist in table %s", colName, tableName);
+                                    LOG.error(
+                                            "Column %s does not exist in table %s",
+                                            colName, tableName);
                                     respondError(he);
                                 }
                                 else {
@@ -141,7 +176,6 @@ public class DeleteHandler
                             default:
                                 respondError(he);
                         }
-
                     }
                 }
                 else {
@@ -152,17 +186,6 @@ public class DeleteHandler
         }
         else {
             respondError(he);
-        }
-    }
-
-    private static String readColumnSchema(HttpExchange he)
-            throws IOException
-    {
-        try (ArrowStreamReader reader = new ArrowStreamReader(he.getRequestBody(), new RootAllocator())) {
-            reader.loadNextBatch();
-            Schema schema = reader.getVectorSchemaRoot().getSchema();
-            List<Field> fields = schema.getFields();
-            return Iterables.getOnlyElement(fields).getName();
         }
     }
 }

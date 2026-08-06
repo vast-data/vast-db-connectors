@@ -7,6 +7,6 @@ import org.apache.arrow.vector.types.pojo.Field;
 
 import java.util.function.Supplier;
 
-interface RowIDStrategy extends Supplier<Field>
-{
-}
+interface RowIDStrategy
+        extends Supplier<Field>
+{}

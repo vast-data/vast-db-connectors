@@ -5,11 +5,11 @@
 package ndb.view;
 
 import com.vastdata.client.VastClient;
+import com.vastdata.client.tx.VastAutocommitTransaction;
 import com.vastdata.client.tx.VastTransaction;
+import com.vastdata.client.tx.VastTransactionFactory;
 import com.vastdata.spark.SparkViewMetadata;
 import com.vastdata.spark.VastView;
-import com.vastdata.client.tx.VastAutocommitTransaction;
-import com.vastdata.client.tx.VastTransactionFactory;
 import com.vastdata.spark.tx.VastSparkTransactionsManager;
 import ndb.NDB;
 import org.apache.spark.sql.SparkSession;
@@ -45,7 +45,8 @@ public class AlterNDBViewAsCommand
     private final ResolvedPersistentView resolvedView;
     private Seq<SparkPlan> children = (Seq<SparkPlan>) Seq$.MODULE$.<SparkPlan>empty();
 
-    private AlterNDBViewAsCommand(SparkSession session, String originalText, LogicalPlan query, ResolvedPersistentView resolvedView)
+    private AlterNDBViewAsCommand(SparkSession session, String originalText,
+            LogicalPlan query, ResolvedPersistentView resolvedView)
     {
         super();
         this.session = session;
@@ -54,6 +55,13 @@ public class AlterNDBViewAsCommand
         this.resolvedView = resolvedView;
     }
 
+    public static AlterNDBViewAsCommand instance(final AlterNDBViewAsPlan plan,
+            SparkSession session)
+    {
+        return new AlterNDBViewAsCommand(session, plan.getOriginalText(),
+                plan.children().apply(1),
+                (ResolvedPersistentView) plan.children().apply(0));
+    }
 
     @Override
     public Seq<InternalRow> run()
@@ -63,18 +71,25 @@ public class AlterNDBViewAsCommand
         Identifier viewIdentifier = resolvedView.identifier();
         try {
             VastClient vastClient = NDB.getVastClient(NDB.getConfig());
-            VastSparkTransactionsManager transactionsManager = VastSparkTransactionsManager.getInstance(vastClient, new VastTransactionFactory());
-            try (final VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(transactionsManager, () -> transactionsManager.startTransaction(endUser), endUser)) {
+            VastSparkTransactionsManager transactionsManager = VastSparkTransactionsManager.getInstance(
+                    vastClient, new VastTransactionFactory());
+            try (final VastAutocommitTransaction tx = VastAutocommitTransaction.createNewOrReuseFromEnv(
+                    transactionsManager,
+                    () -> transactionsManager.startTransaction(endUser),
+                    endUser)) {
                 try {
                     Optional<VastTransaction> txToUse = Optional.of(tx);
-                    VastView vastView = catalog.loadView(viewIdentifier, txToUse);
+                    VastView vastView = catalog.loadView(viewIdentifier,
+                            txToUse);
 
                     String comment = vastView.properties().get("comment");
                     String[] columnAliases = vastView.columnAliases();
                     String[] columnComments = vastView.columnComments();
                     Builder<Tuple2<String, String>, Map<String, String>> mapBuilder = Map.newBuilder();
                     java.util.Map<String, String> currentProperties = vastView.properties();
-                    currentProperties.entrySet().stream()
+                    currentProperties
+                            .entrySet()
+                            .stream()
                             .filter(e -> !e.getKey().equals("comment"))
                             .map(e -> Tuple2.apply(e.getKey(), e.getValue()))
                             .forEach(mapBuilder::addOne);
@@ -84,15 +99,20 @@ public class AlterNDBViewAsCommand
 
                     StructType newSchema = this.query.schema();
                     // schema changes, but spark doesn't allow setting new aliases and comments, so it has to be reset, otherwise view resolution errors might happen
-                    StructType oldSchema = session.sql(vastView.query()).logicalPlan().schema();
+                    StructType oldSchema = session
+                            .sql(vastView.query())
+                            .logicalPlan()
+                            .schema();
                     if (!newSchema.equals(oldSchema)) {
                         columnAliases = new String[0];
                         columnComments = new String[0];
                     }
 
-                    SparkViewMetadata ctx = new SparkViewMetadata(viewIdentifier, false, false,
-                            Option.apply(comment), propsScalaMap, originalText, newSchema,
-                            currentCatalog, currentNamespace, columnComments, columnAliases);
+                    SparkViewMetadata ctx = new SparkViewMetadata(
+                            viewIdentifier, false, false, Option.apply(comment),
+                            propsScalaMap, originalText, newSchema,
+                            currentCatalog, currentNamespace, columnComments,
+                            columnAliases);
 
                     catalog.dropView(viewIdentifier, txToUse);
                     catalog.createView(ctx, false, txToUse);
@@ -152,11 +172,5 @@ public class AlterNDBViewAsCommand
     public int productArity()
     {
         return 0;
-    }
-
-    public static AlterNDBViewAsCommand instance(final AlterNDBViewAsPlan plan, SparkSession session)
-    {
-        return new AlterNDBViewAsCommand(session, plan.getOriginalText(),
-                plan.children().apply(1), (ResolvedPersistentView) plan.children().apply(0));
     }
 }

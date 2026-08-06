@@ -17,9 +17,11 @@ public class TestRetryStrategyFactory
     {
         int numberOfRetries = 2;
         int sleepDuration = 1000;
-        RetryStrategy unit = RetryStrategyFactory.fixedSleepBetweenRetries(numberOfRetries, sleepDuration);
+        RetryStrategy unit = RetryStrategyFactory.fixedSleepBetweenRetries(
+                numberOfRetries, sleepDuration);
         for (int i = 0; i < numberOfRetries; i++) {
-            assertTrue(unit.shouldRetry(), String.format("Failed on iteration number %s", i));
+            assertTrue(unit.shouldRetry(),
+                    String.format("Failed on iteration number %s", i));
             assertEquals(unit.getWaitingPeriodMillis(), sleepDuration);
         }
         assertFalse(unit.shouldRetry());

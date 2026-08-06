@@ -25,11 +25,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class TestVastProjectionPushdown
 {
-    private static final VastProjectionPushdown pushdown = new VastProjectionPushdown(null);
+    private static final VastProjectionPushdown pushdown = new VastProjectionPushdown(
+            null);
 
-    private static Optional<VastExpression> apply(ConnectorExpression expression)
+    private static Optional<VastExpression> apply(
+            ConnectorExpression expression)
     {
-        return pushdown.apply(expression).map(result -> result.getPushedDown().getFirst());
+        return pushdown.apply(expression).map(
+                result -> result.getPushedDown().getFirst());
     }
 
     @Test
@@ -41,44 +44,44 @@ public class TestVastProjectionPushdown
     @Test
     public void testUnary()
     {
-        ConnectorExpression expression = new Call(BOOLEAN, IS_NULL_FUNCTION_NAME, List.of(new Variable("x", INTEGER)));
-        assertThat(apply(expression).map(VastExpression::getSymbol))
-                .isEqualTo(Optional.of("is_null(x)"));
+        ConnectorExpression expression = new Call(BOOLEAN,
+                IS_NULL_FUNCTION_NAME, List.of(new Variable("x", INTEGER)));
+        assertThat(apply(expression).map(VastExpression::getSymbol)).isEqualTo(
+                Optional.of("is_null(x)"));
 
         expression = new Call(BOOLEAN, NOT_FUNCTION_NAME, List.of(expression));
-        assertThat(apply(expression).map(VastExpression::getSymbol))
-                .isEqualTo(Optional.of("is_valid(x)"));
+        assertThat(apply(expression).map(VastExpression::getSymbol)).isEqualTo(
+                Optional.of("is_valid(x)"));
 
         expression = new Call(BOOLEAN, NOT_FUNCTION_NAME, List.of(expression));
-        assertThat(apply(expression).map(VastExpression::getSymbol))
-                .isEmpty();
+        assertThat(apply(expression).map(VastExpression::getSymbol)).isEmpty();
     }
 
     @Test
     public void testComparison()
     {
-        ConnectorExpression expression = new Call(BOOLEAN, EQUAL_OPERATOR_FUNCTION_NAME, List.of(
-                new Variable("x", INTEGER),
-                new Constant(123L, INTEGER)));
-        assertThat(apply(expression).map(VastExpression::getSymbol))
-                .isEqualTo(Optional.of("equal(x,123)"));
+        ConnectorExpression expression = new Call(BOOLEAN,
+                EQUAL_OPERATOR_FUNCTION_NAME,
+                List.of(new Variable("x", INTEGER),
+                        new Constant(123L, INTEGER)));
+        assertThat(apply(expression).map(VastExpression::getSymbol)).isEqualTo(
+                Optional.of("equal(x,123)"));
 
-        expression = new Call(BOOLEAN, EQUAL_OPERATOR_FUNCTION_NAME, List.of(
-                new Variable("s", VARCHAR),
-                new Constant(Slices.utf8Slice("ABC"), VARCHAR)));
-        assertThat(apply(expression).map(VastExpression::getSymbol))
-                .isEqualTo(Optional.of("equal(s,ABC)"));
+        expression = new Call(BOOLEAN, EQUAL_OPERATOR_FUNCTION_NAME,
+                List.of(new Variable("s", VARCHAR),
+                        new Constant(Slices.utf8Slice("ABC"), VARCHAR)));
+        assertThat(apply(expression).map(VastExpression::getSymbol)).isEqualTo(
+                Optional.of("equal(s,ABC)"));
 
-        expression = new Call(BOOLEAN, EQUAL_OPERATOR_FUNCTION_NAME, List.of(
-                new Variable("s", VARCHAR),
-                new Constant(Slices.utf8Slice(""), VARCHAR)));
-        assertThat(apply(expression).map(VastExpression::getSymbol))
-                .isEqualTo(Optional.of("equal(s,)"));
+        expression = new Call(BOOLEAN, EQUAL_OPERATOR_FUNCTION_NAME,
+                List.of(new Variable("s", VARCHAR),
+                        new Constant(Slices.utf8Slice(""), VARCHAR)));
+        assertThat(apply(expression).map(VastExpression::getSymbol)).isEqualTo(
+                Optional.of("equal(s,)"));
 
-        expression = new Call(BOOLEAN, IDENTICAL_OPERATOR_FUNCTION_NAME, List.of(
-                new Variable("x", INTEGER),
-                new Variable("y", INTEGER)));
-        assertThat(apply(expression).map(VastExpression::getSymbol))
-                .isEmpty();
+        expression = new Call(BOOLEAN, IDENTICAL_OPERATOR_FUNCTION_NAME,
+                List.of(new Variable("x", INTEGER),
+                        new Variable("y", INTEGER)));
+        assertThat(apply(expression).map(VastExpression::getSymbol)).isEmpty();
     }
 }

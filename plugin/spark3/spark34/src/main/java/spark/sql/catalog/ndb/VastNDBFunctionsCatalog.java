@@ -18,24 +18,31 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 class VastNDBFunctionsCatalog
-    implements FunctionCatalog
+        implements FunctionCatalog
 {
-    private static final Logger LOG = LoggerFactory.getLogger(VastNDBFunctionsCatalog.class);
+    private static final Logger LOG = LoggerFactory.getLogger(
+            VastNDBFunctionsCatalog.class);
 
-    private final Map<String, Supplier<UnboundFunction>> functions = new HashMap<>(3);
+    private final Map<String, Supplier<UnboundFunction>> functions = new HashMap<>(
+            3);
 
     @Override
     public void initialize(String name, CaseInsensitiveStringMap options)
     {
-        functions.put(NDBFunction.CREATE_TX.getFuncName(), NDBFunctionFactory.getFor(NDBFunction.CREATE_TX));
-        functions.put(NDBFunction.COMMIT_TX.getFuncName(), NDBFunctionFactory.getFor(NDBFunction.COMMIT_TX));
-        functions.put(NDBFunction.ROLLBACK_TX.getFuncName(), NDBFunctionFactory.getFor(NDBFunction.ROLLBACK_TX));
+        functions.put(NDBFunction.CREATE_TX.getFuncName(),
+                NDBFunctionFactory.getFor(NDBFunction.CREATE_TX));
+        functions.put(NDBFunction.COMMIT_TX.getFuncName(),
+                NDBFunctionFactory.getFor(NDBFunction.COMMIT_TX));
+        functions.put(NDBFunction.ROLLBACK_TX.getFuncName(),
+                NDBFunctionFactory.getFor(NDBFunction.ROLLBACK_TX));
     }
 
     @Override
     public Identifier[] listFunctions(String[] namespace)
     {
-        return functions.keySet().stream().map(ndbFunc -> Identifier.of(namespace, ndbFunc)).toArray(Identifier[]::new);
+        return functions.keySet().stream().map(
+                ndbFunc -> Identifier.of(namespace, ndbFunc)).toArray(
+                Identifier[]::new);
     }
 
     @Override
@@ -43,7 +50,8 @@ class VastNDBFunctionsCatalog
             throws NoSuchFunctionException
     {
         LOG.info("loadFunction: {}", ident);
-        Supplier<UnboundFunction> function = functions.get(ident.name().toLowerCase(Locale.getDefault()));
+        Supplier<UnboundFunction> function = functions.get(
+                ident.name().toLowerCase(Locale.getDefault()));
         if (function != null) {
             return function.get();
         }

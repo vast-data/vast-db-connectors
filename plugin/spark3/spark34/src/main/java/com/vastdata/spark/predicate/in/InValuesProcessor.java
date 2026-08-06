@@ -9,7 +9,6 @@ import org.apache.spark.sql.connector.expressions.LiteralValue;
 import org.apache.spark.sql.connector.expressions.filter.Predicate;
 import org.apache.spark.sql.types.DataType;
 
-
 interface InValuesProcessor<T>
 {
     int compare(T val1, T val2);
@@ -24,12 +23,15 @@ interface InValuesProcessor<T>
         return ((LiteralValue<T>) exp).value();
     }
 
-    default Predicate[] processValues(Expression[] values, DataType dataType, ResultFunction resultFunction)
+    default Predicate[] processValues(Expression[] values, DataType dataType,
+            ResultFunction resultFunction)
     {
-        return resultFunction.apply(getProcessedInValues(values, dataType), values);
+        return resultFunction.apply(getProcessedInValues(values, dataType),
+                values);
     }
 
-    default ProcessedInValues<LiteralValue<?>> getProcessedInValues(Expression[] values, DataType dataType)
+    default ProcessedInValues<LiteralValue<?>> getProcessedInValues(
+            Expression[] values, DataType dataType)
     {
         int nullCount = 0;
         T min = null;
@@ -57,6 +59,7 @@ interface InValuesProcessor<T>
         boolean range = isFullRange(min, max, nullCount, values);
         LiteralValue<T> minLiteral = new LiteralValue<>(min, dataType);
         LiteralValue<T> maxLiteral = new LiteralValue<>(max, dataType);
-        return new ProcessedInValues<>(minLiteral, maxLiteral, range, nullCount);
+        return new ProcessedInValues<>(minLiteral, maxLiteral, range,
+                nullCount);
     }
 }

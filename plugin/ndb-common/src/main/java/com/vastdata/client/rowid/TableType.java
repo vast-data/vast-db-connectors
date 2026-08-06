@@ -5,6 +5,5 @@ package com.vastdata.client.rowid;
 
 public enum TableType
 {
-    SORTED,
-    REGULAR;
+    SORTED, REGULAR
 }

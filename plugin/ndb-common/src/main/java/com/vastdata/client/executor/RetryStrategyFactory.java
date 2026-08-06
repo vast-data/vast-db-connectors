@@ -4,18 +4,22 @@
 
 package com.vastdata.client.executor;
 
-import com.google.common.base.Verify;
-
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static com.google.common.base.Verify.verify;
 
 public final class RetryStrategyFactory
 {
-    private RetryStrategyFactory() {}
-
-    public static RetryStrategy fixedSleepBetweenRetries(int numberOfRetries, int sleepDuration)
+    private RetryStrategyFactory()
     {
-        Verify.verify(numberOfRetries >= 0, "Number of retries can't be negative");
-        return new FixedSleepBetweenRetries(new VastRetryConfig(numberOfRetries, sleepDuration));
+    }
+
+    public static RetryStrategy fixedSleepBetweenRetries(int numberOfRetries,
+            int sleepDuration)
+    {
+        verify(numberOfRetries >= 0, "Number of retries can't be negative");
+        return new FixedSleepBetweenRetries(
+                new VastRetryConfig(numberOfRetries, sleepDuration));
     }
 
     private static class FixedSleepBetweenRetries

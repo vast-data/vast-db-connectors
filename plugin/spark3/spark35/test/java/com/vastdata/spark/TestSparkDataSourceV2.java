@@ -7,12 +7,14 @@ package com.vastdata.spark;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
+import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
 
 import java.util.List;
 
 import static org.testng.Assert.assertEquals;
 
+@Listeners(CommonSparkTestUtils.TestListener.class)
 public class TestSparkDataSourceV2
 {
     @Test(enabled = false)

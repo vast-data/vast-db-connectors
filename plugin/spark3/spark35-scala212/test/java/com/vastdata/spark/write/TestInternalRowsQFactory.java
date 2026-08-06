@@ -4,9 +4,11 @@
 
 package com.vastdata.spark.write;
 
+import com.vastdata.spark.CommonSparkTestUtils;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.catalyst.InternalRow$;
 import org.apache.spark.unsafe.types.UTF8String;
+import org.testng.annotations.Listeners;
 import org.testng.annotations.Test;
 import scala.collection.immutable.List;
 import scala.collection.immutable.List$;
@@ -16,12 +18,13 @@ import java.util.Queue;
 
 import static org.testng.Assert.assertEquals;
 
+@Listeners(CommonSparkTestUtils.TestListener.class)
 public class TestInternalRowsQFactory
 {
     @Test
     public void testForUpdate()
     {
-        Queue<InternalRow> unit = InternalRowsQFactory.forUpdate(10);
+        Queue<InternalRow> unit = InternalRowsQFactory.forUpdate(10, false);
         Builder<Object, List<Object>> valuesBuilder = List$.MODULE$.newBuilder();
         valuesBuilder.$plus$eq(1L);
         valuesBuilder.$plus$eq(UTF8String.fromString("aaa"));

@@ -11,9 +11,11 @@ import io.airlift.log.Logger;
 import java.io.IOException;
 import java.io.InputStream;
 
-public class VastXmlResponsesSaxParser extends XmlResponsesSaxParser
+public class VastXmlResponsesSaxParser
+        extends XmlResponsesSaxParser
 {
-    private static final Logger LOG = Logger.get(VastXmlResponsesSaxParser.class);
+    private static final Logger LOG = Logger.get(
+            VastXmlResponsesSaxParser.class);
 
     public String parseError(InputStream is)
             throws IOException

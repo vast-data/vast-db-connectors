@@ -15,12 +15,12 @@ import static org.apache.arrow.vector.types.pojo.ArrowType.ArrowTypeID.Int;
 public class TrinoRowIDFieldFactory
         extends RowIDFieldFactory<VastTableHandle>
 {
+    public static final TrinoRowIDFieldFactory INSTANCE = new TrinoRowIDFieldFactory();
+
     private TrinoRowIDFieldFactory()
     {
         super(TrinoRowIDTypeFactory.INSTANCE);
     }
-
-    public static final TrinoRowIDFieldFactory INSTANCE = new TrinoRowIDFieldFactory();
 
     public static Type getRowIDTypeFromArrowType(ArrowType arrowType)
     {

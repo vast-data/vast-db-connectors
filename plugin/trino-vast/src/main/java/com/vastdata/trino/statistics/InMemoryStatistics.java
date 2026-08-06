@@ -22,7 +22,8 @@ public class InMemoryStatistics
     }
 
     @Override
-    public void setTableStatistics(String tableUrl, TableStatistics tableStatistics)
+    public void setTableStatistics(String tableUrl,
+                                   TableStatistics tableStatistics)
     {
         statisticsMap.put(tableUrl, tableStatistics);
     }
